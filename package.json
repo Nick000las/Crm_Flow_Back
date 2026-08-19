@@ -1,0 +1,41 @@
+{
+  "name": "crm-flow-back",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "imports": {
+    "#api/*": "./src/api/*",
+    "#core/*": "./src/core/*",
+    "#shared/*": "./src/shared/*",
+    "#modules/*": "./src/modules/*"
+  },
+  "scripts": {
+    "dev": "node --watch src/api/server.js",
+    "start": "node src/api/server.js",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rls-coverage": "vitest run src/core/db/__tests__/rls-coverage.test.js",
+    "test:tenant-isolation": "vitest run src/core/db/__tests__/tenant-isolation.test.js",
+    "db:generate": "prisma generate",
+    "db:build-schema": "node scripts/build-schema.js",
+    "db:apply-modules": "prisma db execute --file prisma/modules-schema.generated.sql --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev && npm run db:build-schema && npm run db:apply-modules"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.5.0",
+    "fastify": "^5.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "eslint": "^9.20.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "prisma": "^6.5.0",
+    "vitest": "^3.0.5"
+  }
+}

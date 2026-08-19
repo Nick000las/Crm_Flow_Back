@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+prisma/modules-schema.generated.sql
+*.log

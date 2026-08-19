@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  nome      String
+  subdomain String   @unique
+  status    String   @default("trial")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  usuarios      Usuario[]
+  modulosAtivos TenantModule[]
+  featureFlags  TenantModuleFeature[]
+
+  @@map("tenants")
+}
+
+model TenantModule {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  moduleKey  String   @map("module_key")
+  enabledAt  DateTime @default(now()) @map("enabled_at")
+  configJson Json?    @map("config_jsonb")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleKey])
+  @@map("tenant_modules")
+}
+
+model TenantModuleFeature {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  moduleKey  String   @map("module_key")
+  featureKey String   @map("feature_key")
+  enabledAt  DateTime @default(now()) @map("enabled_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleKey, featureKey])
+  @@map("tenant_module_features")
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  nome      String
+  email     String
+  senhaHash String   @map("senha_hash")
+  role      String   @default("OPERADOR")
+  mfaAtivo  Boolean  @default(false) @map("mfa_ativo")
+  mfaSecret String?  @map("mfa_secret")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@map("usuarios")
+}

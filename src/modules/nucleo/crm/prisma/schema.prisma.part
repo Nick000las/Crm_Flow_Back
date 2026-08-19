@@ -1,0 +1,35 @@
+CREATE SCHEMA IF NOT EXISTS modulo_crm;
+
+CREATE TABLE modulo_crm.funil_estagios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nome VARCHAR NOT NULL,
+  "order" INTEGER NOT NULL DEFAULT 0,
+  system_stage VARCHAR,
+  limite_vacuo_horas INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE modulo_crm.leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nome VARCHAR NOT NULL,
+  telefone VARCHAR NOT NULL,
+  valor NUMERIC,
+  funil_estagio_id UUID REFERENCES modulo_crm.funil_estagios(id),
+  usuario_responsavel_id UUID,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE modulo_crm.funil_estagios ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.funil_estagios
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+ALTER TABLE modulo_crm.leads ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.leads
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_leads_tenant_id ON modulo_crm.leads(tenant_id);
+CREATE INDEX idx_leads_tenant_estagio ON modulo_crm.leads(tenant_id, funil_estagio_id);
+CREATE INDEX idx_funil_estagios_tenant_order ON modulo_crm.funil_estagios(tenant_id, "order");
