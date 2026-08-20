@@ -1,5 +1,3 @@
-import { verifyAccessToken } from '#core/auth/jwt.js';
-
 /**
  * @typedef {import('#core/types/module.js').TenantContext} TenantContext
  * @typedef {import('#core/types/module.js').Role} Role
@@ -10,15 +8,24 @@ import { verifyAccessToken } from '#core/auth/jwt.js';
  * @param {import('fastify').FastifyReply} reply
  */
 export async function authenticateHook(req, reply) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return reply.code(401).send({ error: 'Token ausente' });
-  }
   try {
-    req.tenantContext = verifyAccessToken(authHeader.slice('Bearer '.length));
+    const payload = await req.accessJwtVerify();
+    if (!isTenantContext(payload)) throw new Error('Payload JWT inválido');
+    req.tenantContext = payload;
   } catch {
     return reply.code(401).send({ error: 'Token inválido ou expirado' });
   }
+}
+
+/** @param {unknown} payload */
+function isTenantContext(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const value = /** @type {Partial<TenantContext>} */ (payload);
+  return (
+    typeof value.tenantId === 'string' &&
+    typeof value.userId === 'string' &&
+    ['MASTER', 'DONO', 'OPERADOR'].includes(value.role ?? '')
+  );
 }
 
 /**

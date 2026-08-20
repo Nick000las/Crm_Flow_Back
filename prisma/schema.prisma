@@ -7,61 +7,205 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id        String   @id @default(uuid())
-  nome      String
-  subdomain String   @unique
-  status    String   @default("trial")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+// O Prisma gerencia o núcleo no schema public. Os schemas modulo_* são criados
+// pela migration SQL com RLS, triggers, pgvector e constraints não suportadas
+// pelo Prisma Schema Language.
 
-  usuarios      Usuario[]
-  modulosAtivos TenantModule[]
-  featureFlags  TenantModuleFeature[]
+model Tenant {
+  id                    String    @id @default(uuid()) @db.Uuid
+  nome                  String    @db.VarChar
+  subdomain             String    @unique @db.VarChar
+  dominioCustomizado    String?   @unique @map("dominio_customizado") @db.VarChar
+  status                String    @default("trial") @db.VarChar
+  temaJson              Json?     @default("{}") @map("tema_json") @db.JsonB
+  byok                  Boolean   @default(false)
+  dataRegion            String?   @default("sa-east-1") @map("data_region") @db.VarChar
+  retencaoConversaMeses Int?      @default(18) @map("retencao_conversa_meses")
+  canceladoEm           DateTime? @map("cancelado_em") @db.Timestamp(6)
+  createdAt             DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt             DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  usuarios       Usuario[]
+  modulosAtivos  TenantModule[]
+  featureFlags   TenantModuleFeature[]
+  assinaturas    Assinatura[]
+  cobrancas      Cobranca[]
+  wallets        Wallet[]
+  walletLedger   WalletLedger[]
+  qualityRatings QualityRatingHistory[]
+  auditLogs      AuditLog[]
 
   @@map("tenants")
 }
 
-model TenantModule {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  moduleKey  String   @map("module_key")
-  enabledAt  DateTime @default(now()) @map("enabled_at")
-  configJson Json?    @map("config_jsonb")
+model Usuario {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  nome      String    @db.VarChar
+  email     String    @db.VarChar
+  senhaHash String    @map("senha_hash") @db.VarChar
+  role      String    @default("OPERADOR") @db.VarChar
+  mfaAtivo  Boolean   @default(false) @map("mfa_ativo")
+  mfaSecret String?   @map("mfa_secret") @db.VarChar
+  presenca  String?   @default("offline") @db.VarChar
+  ativo     Boolean   @default(true)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([tenantId, email])
+  @@index([tenantId], map: "idx_usuarios_tenant_id")
+  @@index([email], map: "idx_usuarios_email")
+  @@map("usuarios")
+}
+
+model TenantModule {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  moduleKey           String    @map("module_key") @db.VarChar
+  precoMensalCentavos Int?      @map("preco_mensal_centavos")
+  configJson          Json?     @default("{}") @map("config_jsonb") @db.JsonB
+  enabledAt           DateTime? @default(now()) @map("enabled_at") @db.Timestamp(6)
+  disabledAt          DateTime? @map("disabled_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([tenantId, moduleKey])
+  @@index([tenantId], map: "idx_tenant_modules_tenant")
   @@map("tenant_modules")
 }
 
 model TenantModuleFeature {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  moduleKey  String   @map("module_key")
-  featureKey String   @map("feature_key")
-  enabledAt  DateTime @default(now()) @map("enabled_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  moduleKey  String    @map("module_key") @db.VarChar
+  featureKey String    @map("feature_key") @db.VarChar
+  enabledAt  DateTime? @default(now()) @map("enabled_at") @db.Timestamp(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([tenantId, moduleKey, featureKey])
+  @@index([tenantId], map: "idx_tmf_tenant")
   @@map("tenant_module_features")
 }
 
-model Usuario {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  nome      String
-  email     String
-  senhaHash String   @map("senha_hash")
-  role      String   @default("OPERADOR")
-  mfaAtivo  Boolean  @default(false) @map("mfa_ativo")
-  mfaSecret String?  @map("mfa_secret")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model Assinatura {
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  gateway               String    @db.VarChar
+  gatewaySubscriptionId String?   @map("gateway_subscription_id") @db.VarChar
+  metodo                String    @default("pix_automatico") @db.VarChar
+  valorMensalCentavos   Int       @map("valor_mensal_centavos")
+  diaCobranca           Int?      @map("dia_cobranca")
+  ativa                 Boolean   @default(true)
+  createdAt             DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt             DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cobrancas Cobranca[]
 
-  @@unique([tenantId, email])
-  @@map("usuarios")
+  @@index([tenantId], map: "idx_assinaturas_tenant")
+  @@map("assinaturas")
+}
+
+model Cobranca {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  assinaturaId    String?   @map("assinatura_id") @db.Uuid
+  valorCentavos   Int       @map("valor_centavos")
+  status          String    @default("pendente") @db.VarChar
+  gatewayChargeId String?   @map("gateway_charge_id") @db.VarChar
+  vencimento      DateTime  @db.Date
+  pagoEm          DateTime? @map("pago_em") @db.Timestamp(6)
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  assinatura Assinatura? @relation(fields: [assinaturaId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([tenantId], map: "idx_cobrancas_tenant")
+  @@index([tenantId, status], map: "idx_cobrancas_tenant_status")
+  @@map("cobrancas")
+}
+
+model PaymentWebhookEvent {
+  id           String    @id @default(uuid()) @db.Uuid
+  gateway      String    @db.VarChar
+  eventId      String    @map("event_id") @db.VarChar
+  eventType    String    @map("event_type") @db.VarChar
+  payload      Json      @db.JsonB
+  processado   Boolean   @default(false)
+  processadoEm DateTime? @map("processado_em") @db.Timestamp(6)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([gateway, eventId])
+  @@map("payment_webhook_events")
+}
+
+model Wallet {
+  id                       String    @id @default(uuid()) @db.Uuid
+  tenantId                 String    @unique @map("tenant_id") @db.Uuid
+  saldoCentavos            BigInt    @default(0) @map("saldo_centavos")
+  autoRecarga              Boolean   @default(false) @map("auto_recarga")
+  autoRecargaValorCentavos Int?      @map("auto_recarga_valor_centavos")
+  limiteAlertaPct          Int?      @default(10) @map("limite_alerta_pct")
+  createdAt                DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ledger WalletLedger[]
+
+  @@index([tenantId], map: "idx_wallets_tenant")
+  @@map("wallets")
+}
+
+model WalletLedger {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  walletId          String    @map("wallet_id") @db.Uuid
+  tipo              String    @db.VarChar
+  valorCentavos     BigInt    @map("valor_centavos")
+  descricao         String?   @db.VarChar
+  referenciaExterna String?   @map("referencia_externa") @db.VarChar
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_wallet_ledger_tenant_data")
+  @@index([tenantId, tipo, createdAt], map: "idx_wallet_ledger_tipo")
+  @@map("wallet_ledger")
+}
+
+model QualityRatingHistory {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  phoneNumberId String    @map("phone_number_id") @db.VarChar
+  rating        String?   @db.VarChar
+  messagingTier String?   @map("messaging_tier") @db.VarChar
+  capturedAt    DateTime? @default(now()) @map("captured_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId, phoneNumberId, capturedAt(sort: Desc)], map: "idx_quality_rating_tenant_time")
+  @@map("quality_rating_history")
+}
+
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  usuarioId  String?   @map("usuario_id") @db.Uuid
+  acao       String    @db.VarChar
+  entidade   String?   @db.VarChar
+  entidadeId String?   @map("entidade_id") @db.Uuid
+  detalhes   Json?     @default("{}") @db.JsonB
+  ipOrigem   String?   @map("ip_origem") @db.Inet
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_audit_log_tenant_time")
+  @@index([tenantId, entidade, entidadeId], map: "idx_audit_log_entidade")
+  @@map("audit_log")
 }

@@ -1,51 +1,37 @@
-import jwt from 'jsonwebtoken';
-
 /** @typedef {import('#core/types/module.js').TenantContext} TenantContext */
 
-const ACCESS_TOKEN_TTL = '15m'; // Bloco 8.2
-const REFRESH_TOKEN_TTL = '7d';
-
-const JWT_SECRET = requireEnv('JWT_SECRET');
-const JWT_REFRESH_SECRET = requireEnv('JWT_REFRESH_SECRET');
-
 /**
+ * @param {import('fastify').FastifyInstance} app
  * @param {TenantContext} ctx
  * @returns {string}
  */
-export function signAccessToken(ctx) {
-  return jwt.sign(ctx, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
+export function signAccessToken(app, ctx) {
+  return app.jwt.access.sign(ctx);
 }
 
 /**
+ * @param {import('fastify').FastifyInstance} app
  * @param {string} userId
  * @returns {string}
  */
-export function signRefreshToken(userId) {
-  return jwt.sign({ userId }, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_TTL });
+export function signRefreshToken(app, userId) {
+  return app.jwt.refresh.sign({ userId });
 }
 
 /**
+ * @param {import('fastify').FastifyInstance} app
  * @param {string} token
  * @returns {TenantContext}
  */
-export function verifyAccessToken(token) {
-  return /** @type {TenantContext} */ (jwt.verify(token, JWT_SECRET));
+export function verifyAccessToken(app, token) {
+  return /** @type {TenantContext} */ (app.jwt.access.verify(token));
 }
 
 /**
+ * @param {import('fastify').FastifyInstance} app
  * @param {string} token
  * @returns {{ userId: string }}
  */
-export function verifyRefreshToken(token) {
-  return /** @type {{ userId: string }} */ (jwt.verify(token, JWT_REFRESH_SECRET));
-}
-
-/**
- * @param {string} name
- * @returns {string}
- */
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value) throw new Error(`Variável de ambiente obrigatória ausente: ${name}`);
-  return value;
+export function verifyRefreshToken(app, token) {
+  return /** @type {{ userId: string }} */ (app.jwt.refresh.verify(token));
 }
