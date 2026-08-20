@@ -7,27 +7,27 @@ import { getTenantClient, getAdminClient } from '#core/db/tenantClient.js';
 const prisma = getAdminClient();
 const tenantA = randomUUID();
 const tenantB = randomUUID();
+const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 
-beforeAll(async () => {
-  await prisma.tenant.createMany({
-    data: [
-      { id: tenantA, nome: 'Tenant Teste A', subdomain: `teste-a-${tenantA.slice(0, 8)}` },
-      { id: tenantB, nome: 'Tenant Teste B', subdomain: `teste-b-${tenantB.slice(0, 8)}` },
-    ],
+describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vazamento)', () => {
+  beforeAll(async () => {
+    await prisma.tenant.createMany({
+      data: [
+        { id: tenantA, nome: 'Tenant Teste A', subdomain: `teste-a-${tenantA.slice(0, 8)}` },
+        { id: tenantB, nome: 'Tenant Teste B', subdomain: `teste-b-${tenantB.slice(0, 8)}` },
+      ],
+    });
+    await getTenantClient(tenantA, (tx) =>
+      tx.usuario.create({ data: { tenantId: tenantA, nome: 'A', email: 'a@teste.com', senhaHash: 'x' } }),
+    );
+    await getTenantClient(tenantB, (tx) =>
+      tx.usuario.create({ data: { tenantId: tenantB, nome: 'B', email: 'b@teste.com', senhaHash: 'x' } }),
+    );
   });
-  await getTenantClient(tenantA, (tx) =>
-    tx.usuario.create({ data: { tenantId: tenantA, nome: 'A', email: 'a@teste.com', senhaHash: 'x' } }),
-  );
-  await getTenantClient(tenantB, (tx) =>
-    tx.usuario.create({ data: { tenantId: tenantB, nome: 'B', email: 'b@teste.com', senhaHash: 'x' } }),
-  );
-});
 
-afterAll(async () => {
-  await prisma.tenant.deleteMany({ where: { id: { in: [tenantA, tenantB] } } });
-});
-
-describe('Isolamento de dados entre tenants (tentativa ativa de vazamento)', () => {
+  afterAll(async () => {
+    await prisma.tenant.deleteMany({ where: { id: { in: [tenantA, tenantB] } } });
+  });
   it('contexto do tenant A NUNCA deve enxergar usuário do tenant B', async () => {
     const resultado = await getTenantClient(tenantA, (tx) => tx.$queryRaw`SELECT id FROM usuarios`);
     const usuarioB = await prisma.usuario.findFirst({ where: { tenantId: tenantB } });

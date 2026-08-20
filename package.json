@@ -16,19 +16,23 @@
     "dev": "node --watch src/api/server.js",
     "start": "node src/api/server.js",
     "lint": "eslint .",
+    "check": "pnpm lint && pnpm test",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls-coverage": "vitest run src/core/db/__tests__/rls-coverage.test.js",
     "test:tenant-isolation": "vitest run src/core/db/__tests__/tenant-isolation.test.js",
     "db:generate": "prisma generate",
-    "db:build-schema": "node scripts/build-schema.js",
-    "db:apply-modules": "prisma db execute --file prisma/modules-schema.generated.sql --schema prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev && npm run db:build-schema && npm run db:apply-modules"
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/jwt": "^10.2.2",
     "@prisma/client": "^6.5.0",
-    "fastify": "^5.2.0",
-    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "nodemon": "^3.1.14",
     "zod": "^3.24.1"
   },
   "devDependencies": {

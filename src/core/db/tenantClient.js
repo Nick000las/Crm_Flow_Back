@@ -36,6 +36,11 @@ export function getAdminClient() {
   return prisma;
 }
 
+/** Encerra o pool durante o shutdown gracioso e ao finalizar testes. */
+export async function disconnectDatabase() {
+  await prisma.$disconnect();
+}
+
 /**
  * @param {string} value
  * @returns {boolean}

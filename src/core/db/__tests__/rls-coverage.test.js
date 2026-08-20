@@ -4,6 +4,7 @@ import { getAdminClient } from '#core/db/tenantClient.js';
 /** BLOQUEADOR DE MERGE (Bloco 2.1). Varre TODAS as tabelas do banco (qualquer schema). */
 
 const prisma = getAdminClient();
+const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 
 /**
  * @typedef {object} TabelaSemRLS
@@ -11,7 +12,7 @@ const prisma = getAdminClient();
  * @property {string} tabela
  */
 
-describe('Cobertura de RLS multi-tenant', () => {
+describeWithDatabase('Cobertura de RLS multi-tenant', () => {
   it('nenhuma tabela com tenant_id deve estar sem RLS habilitado', async () => {
     /** @type {TabelaSemRLS[]} */
     const tabelasSemRLS = await prisma.$queryRaw`

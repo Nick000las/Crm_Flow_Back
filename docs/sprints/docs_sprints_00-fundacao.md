@@ -20,8 +20,8 @@ precisar perguntar nada ao outro.
 | `src/core/db/tenantClient.ts` | Gateway multi-tenant — `getTenantClient()` com `SET LOCAL app.current_tenant` via `$transaction` interativo (decisão de MVP, Bloco 2.1) |
 | `src/core/auth/jwt.ts` | Assinatura/verificação de access token (15 min) e refresh token (7 dias) — Bloco 8.2 |
 | `src/core/auth/rbac.ts` | Hook de autenticação (`authenticateHook`) + `requireRole()` |
-| `prisma/schema.prisma` | Modelos `Tenant`, `Usuario`, `TenantModule`, `TenantModuleFeature` |
-| `prisma/migrations/0001_init/rls.sql` | RLS aplicado nas 3 tabelas do core, com o modelo comentado pra tabelas de módulo |
+| `prisma/schema.prisma` | Modelos do núcleo `public`: tenant, auth, módulos, billing, wallet e auditoria |
+| `prisma/migrations/0001_init/migration.sql` | Schema PostgreSQL completo, incluindo módulos, constraints, triggers e RLS |
 | `src/core/db/__tests__/rls-coverage.test.ts` | Bloqueador de CI — varre o banco procurando `tenant_id` sem RLS |
 | `src/core/db/__tests__/tenant-isolation.test.ts` | Bloqueador de CI — tenta vazar dado entre dois tenants de teste |
 | `MODULE_CONTRACT.md` | Especificação completa de como um módulo deve ser construído |
