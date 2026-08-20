@@ -1,0 +1,67 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-foundation:
+    name: Validação de Segurança e Isolamento
+    runs-on: ubuntu-latest
+    
+    # Prática de segurança: Princípio do Menor Privilégio
+    permissions:
+      contents: read
+      
+    # Configuração do banco de dados efêmero para rodar os testes
+    services:
+      postgres:
+        image: postgres:15  # PostgreSQL 14+ suporta as extensões necessárias
+        env:
+          POSTGRES_USER: tester
+          POSTGRES_PASSWORD: tester_password
+          POSTGRES_DB: swas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Variáveis de ambiente injetadas no runner
+    env:
+      DATABASE_URL: postgresql://tester:tester_password@localhost:5432/swas_test?schema=public
+      JWT_SECRET: "chave-mock-para-testes-123"
+      JWT_REFRESH_SECRET: "chave-mock-para-testes-456"
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        
+      - name: Configurar Node.js (>= 20.11)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Validação de Fronteiras de Módulo (Lint)
+        run: npm run lint
+
+      - name: Aplicar Migrations no Banco de Teste
+        run: npm run db:migrate
+        
+      - name: CI Gate (Bloqueador) - Cobertura de RLS
+        run: npm run test:rls-coverage
+
+      - name: CI Gate (Bloqueador) - Teste de Isolamento de Tenant
+        run: npm run test:tenant-isolation
