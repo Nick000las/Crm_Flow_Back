@@ -66,6 +66,16 @@ export default [
       ],
     },
     rules: {
+      'no-magic-numbers': [
+        'error',
+        {
+          ignore: [-1, 0, 1],
+          ignoreArrayIndexes: true,
+          ignoreDefaultValues: true,
+          enforceConst: true,
+          detectObjects: true,
+        },
+      ],
       // Regra 4 do contrato: nenhum módulo importa de outro módulo.
       'boundaries/element-types': [
         'error',
@@ -132,6 +142,13 @@ export default [
     rules: {
       'boundaries/element-types': 'off',
       'no-restricted-imports': 'off',
+    },
+  },
+
+  {
+    files: ['src/**/constants.js', 'src/**/constants/**/*.js'],
+    rules: {
+      'no-magic-numbers': 'off',
     },
   },
 

@@ -25,15 +25,16 @@ model Tenant {
   createdAt             DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt             DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  usuarios       Usuario[]
-  modulosAtivos  TenantModule[]
-  featureFlags   TenantModuleFeature[]
-  assinaturas    Assinatura[]
-  cobrancas      Cobranca[]
-  wallets        Wallet[]
-  walletLedger   WalletLedger[]
-  qualityRatings QualityRatingHistory[]
-  auditLogs      AuditLog[]
+  usuarios             Usuario[]
+  modulosAtivos        TenantModule[]
+  featureFlags         TenantModuleFeature[]
+  assinaturas          Assinatura[]
+  cobrancas            Cobranca[]
+  wallets              Wallet[]
+  walletLedger         WalletLedger[]
+  qualityRatings       QualityRatingHistory[]
+  auditLogs            AuditLog[]
+  codigosAtivacaoSenha CodigoAtivacaoSenha[]
 
   @@map("tenants")
 }
@@ -43,7 +44,7 @@ model Usuario {
   tenantId  String    @map("tenant_id") @db.Uuid
   nome      String    @db.VarChar
   email     String    @db.VarChar
-  senhaHash String    @map("senha_hash") @db.VarChar
+  senhaHash String?   @map("senha_hash") @db.VarChar
   role      String    @default("OPERADOR") @db.VarChar
   mfaAtivo  Boolean   @default(false) @map("mfa_ativo")
   mfaSecret String?   @map("mfa_secret") @db.VarChar
@@ -52,12 +53,31 @@ model Usuario {
   createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  codigosAtivacaoSenha CodigoAtivacaoSenha[]
 
   @@unique([tenantId, email])
   @@index([tenantId], map: "idx_usuarios_tenant_id")
   @@index([email], map: "idx_usuarios_email")
   @@map("usuarios")
+}
+
+model CodigoAtivacaoSenha {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  codigoHash String    @map("codigo_hash") @db.VarChar
+  expiraEm   DateTime  @map("expira_em") @db.Timestamp(6)
+  usadoEm    DateTime? @map("usado_em") @db.Timestamp(6)
+  tentativas Int       @default(0)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tenantId], map: "idx_codigos_ativacao_tenant")
+  @@index([usuarioId, expiraEm], map: "idx_codigos_ativacao_usuario_expiracao")
+  @@map("codigos_ativacao_senha")
 }
 
 model TenantModule {

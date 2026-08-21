@@ -7,14 +7,23 @@ import { getTenantClient, getAdminClient } from '#core/db/tenantClient.js';
 const prisma = getAdminClient();
 const tenantA = randomUUID();
 const tenantB = randomUUID();
+const SUBDOMAIN_UUID_PREFIX_LENGTH = 8;
 const describeWithDatabase = process.env.DATABASE_URL ? describe : describe.skip;
 
 describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vazamento)', () => {
   beforeAll(async () => {
     await prisma.tenant.createMany({
       data: [
-        { id: tenantA, nome: 'Tenant Teste A', subdomain: `teste-a-${tenantA.slice(0, 8)}` },
-        { id: tenantB, nome: 'Tenant Teste B', subdomain: `teste-b-${tenantB.slice(0, 8)}` },
+        {
+          id: tenantA,
+          nome: 'Tenant Teste A',
+          subdomain: `teste-a-${tenantA.slice(0, SUBDOMAIN_UUID_PREFIX_LENGTH)}`,
+        },
+        {
+          id: tenantB,
+          nome: 'Tenant Teste B',
+          subdomain: `teste-b-${tenantB.slice(0, SUBDOMAIN_UUID_PREFIX_LENGTH)}`,
+        },
       ],
     });
     await getTenantClient(tenantA, (tx) =>
