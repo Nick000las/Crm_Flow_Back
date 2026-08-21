@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sendSuccess } from '#shared/http/response.js';
 import { listarCardsDoBoard, moverCardDeColuna } from '../services/board.service.js';
 
 const moverCardBodySchema = z.object({ novaColunaId: z.string().uuid() });
@@ -13,7 +14,7 @@ export function registrarRotasKanban(app) {
   app.get('/kanban/boards/:boardId/cards', async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { boardId } = boardParamsSchema.parse(req.params);
-    return reply.send(await listarCardsDoBoard(tenantId, boardId));
+    return sendSuccess(reply, await listarCardsDoBoard(tenantId, boardId));
   });
 
   app.patch('/kanban/cards/:cardId/mover', async (req, reply) => {
@@ -21,6 +22,6 @@ export function registrarRotasKanban(app) {
     const { cardId } = cardParamsSchema.parse(req.params);
     const { novaColunaId } = moverCardBodySchema.parse(req.body);
     await moverCardDeColuna(tenantId, cardId, novaColunaId);
-    return reply.code(204).send();
+    return sendSuccess(reply, null);
   });
 }

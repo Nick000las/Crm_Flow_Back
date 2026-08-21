@@ -1,10 +1,11 @@
 import { ZodError } from 'zod';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { sendError } from '#shared/http/response.js';
 
 /** @param {import('fastify').FastifyInstance} app */
 export function registerErrorHandlers(app) {
   app.setNotFoundHandler((request, reply) =>
-    reply.code(404).send({
-      error: 'Rota não encontrada',
+    sendError(reply, HTTP_STATUS.NOT_FOUND, 'Rota não encontrada', {
       method: request.method,
       path: request.url,
     }),
@@ -12,8 +13,7 @@ export function registerErrorHandlers(app) {
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
-      return reply.code(400).send({
-        error: 'Dados inválidos',
+      return sendError(reply, HTTP_STATUS.BAD_REQUEST, 'Dados inválidos', {
         issues: error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
@@ -22,11 +22,18 @@ export function registerErrorHandlers(app) {
     }
 
     const statusCode = Number(error.statusCode);
-    if (statusCode >= 400 && statusCode < 500) {
-      return reply.code(statusCode).send({ error: error.message });
+    if (
+      statusCode >= HTTP_STATUS.BAD_REQUEST &&
+      statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR
+    ) {
+      return sendError(reply, statusCode, error.message);
     }
 
     request.log.error({ err: error }, 'Erro não tratado durante a requisição');
-    return reply.code(500).send({ error: 'Erro interno do servidor' });
+    return sendError(
+      reply,
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      'Erro interno do servidor',
+    );
   });
 }

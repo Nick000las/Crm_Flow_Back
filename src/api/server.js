@@ -2,29 +2,31 @@ import { pathToFileURL } from 'node:url';
 import { buildApp } from '#api/app.js';
 import { loadEnv } from '#core/config/env.js';
 
+const ENTRY_SCRIPT_ARGUMENT_INDEX = 1;
+const FAILURE_EXIT_CODE = 1;
+
 export { buildApp } from '#api/app.js';
 
 async function main() {
   const config = loadEnv();
   const app = await buildApp({ config });
 
-  const shutdown = async (signal) => {
-    app.log.info({ signal }, 'Encerrando servidor');
+  const shutdown = async () => {
     await app.close();
   };
 
-  process.once('SIGINT', () => void shutdown('SIGINT'));
-  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => void shutdown());
+  process.once('SIGTERM', () => void shutdown());
 
   await app.listen({ port: config.PORT, host: config.HOST });
 }
 
 if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  process.argv[ENTRY_SCRIPT_ARGUMENT_INDEX] &&
+  import.meta.url === pathToFileURL(process.argv[ENTRY_SCRIPT_ARGUMENT_INDEX]).href
 ) {
   main().catch((err) => {
     console.error(err);
-    process.exit(1);
+    process.exit(FAILURE_EXIT_CODE);
   });
 }

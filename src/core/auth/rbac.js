@@ -1,3 +1,6 @@
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { sendError } from '#shared/http/response.js';
+
 /**
  * @typedef {import('#core/types/module.js').TenantContext} TenantContext
  * @typedef {import('#core/types/module.js').Role} Role
@@ -13,7 +16,7 @@ export async function authenticateHook(req, reply) {
     if (!isTenantContext(payload)) throw new Error('Payload JWT inválido');
     req.tenantContext = payload;
   } catch {
-    return reply.code(401).send({ error: 'Token inválido ou expirado' });
+    return sendError(reply, HTTP_STATUS.UNAUTHORIZED, 'Token inválido ou expirado');
   }
 }
 
@@ -40,7 +43,11 @@ export function requireRole(allowedRoles) {
   return async (req, reply) => {
     const ctx = req.tenantContext;
     if (!ctx || !allowedRoles.includes(ctx.role)) {
-      return reply.code(403).send({ error: 'Permissão insuficiente para esta ação' });
+      return sendError(
+        reply,
+        HTTP_STATUS.FORBIDDEN,
+        'Permissão insuficiente para esta ação',
+      );
     }
   };
 }
