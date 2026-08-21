@@ -1,4 +1,7 @@
+import { AppError } from '#core/errors/app-error.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarLeadsPorTenant, criarLead } from '../adapters/leads.repository.js';
 
 /**
@@ -23,7 +26,12 @@ export async function listarLeadsFormatados(tenantId) {
  */
 export async function registrarNovoLead(tenantId, input) {
   if (input.nome.trim().length === 0) {
-    throw new Error('Nome do lead não pode ser vazio');
+    throw new AppError({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      code: ERROR_CODES.VALIDATION_ERROR,
+      message: 'Nome do lead não pode ser vazio',
+      fields: { nome: ['Informe o nome do lead'] },
+    });
   }
   return criarLead(tenantId, input);
 }

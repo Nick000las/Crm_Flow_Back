@@ -42,6 +42,31 @@ pnpm check
 
 Os testes que exigem PostgreSQL são ignorados quando `DATABASE_URL` não está definida.
 
+## Contrato de erros HTTP
+
+Toda resposta de erro usa o status HTTP correspondente e o mesmo envelope:
+
+```json
+{
+  "statusCode": 400,
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Revise os campos destacados",
+    "fields": {
+      "email": ["Informe um e-mail válido"]
+    }
+  },
+  "requestId": "req-1"
+}
+```
+
+- `error.code` é estável e deve orientar fluxos no cliente.
+- `error.message` é uma mensagem pública, segura e pronta para exibição.
+- `error.fields` e `error.details` são opcionais.
+- `requestId` permite correlacionar a resposta com os logs do servidor.
+- Erros inesperados nunca expõem stack, SQL ou mensagens internas.
+
 ## Estrutura
 
 ```text
