@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import { registerAuthRoutes } from '#api/routes/auth.js';
+import { MODULES } from '#api/modules.js';
+import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.js';
 import { registerJwt } from '#core/auth/plugin.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
