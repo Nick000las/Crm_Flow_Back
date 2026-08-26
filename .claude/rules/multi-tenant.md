@@ -26,7 +26,17 @@ Antes de escrever ou revisar:
 5. Nenhum módulo importa de outro módulo. Se dois módulos precisam compartilhar
    algo, isso pertence a `#core` ou `#shared`.
 6. Toda tabela nova tem `tenant_id UUID NOT NULL` + RLS habilitado + policy
-   (copiar `prisma/migrations/0001_init/rls.sql`).
+   (copiar `prisma/migrations/0001_init/rls.sql`). RLS habilitado sozinho
+   NÃO basta pra segurança real — quem conecta como dono da tabela ignora
+   RLS por padrão. `getTenantClient()` conecta como o role `app_tenant`
+   (não-dono, migration `0004_tenant_role_least_privilege`) exatamente
+   pra fechar isso; `getAdminClient()` continua no role dono, de propósito.
+   Tabela nova dentro de um schema `modulo_*` já existente é coberta
+   automaticamente (default privileges). **Schema `modulo_*` novo** (módulo
+   vertical novo) precisa de `GRANT USAGE ON SCHEMA` + `ALTER DEFAULT
+   PRIVILEGES` pro `app_tenant`, copiando o padrão da migration 0004 —
+   senão as tabelas desse módulo ficam com RLS habilitado mas
+   inacessíveis (falha visível na hora, não vazamento silencioso).
 7. Depois de mudança de schema, rodar `npm run test:rls-coverage`.
 8. Antes de considerar qualquer tarefa concluída, rodar `npm run lint` —
    é o que pega import indevido entre módulos, já que nada impede fisicamente.

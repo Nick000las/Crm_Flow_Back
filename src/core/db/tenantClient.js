@@ -10,7 +10,17 @@ import { PrismaClient } from '@prisma/client';
  * client raw dedicado: utilização do pool do Neon > 70-80% em uso normal.
  */
 
-const prisma = new PrismaClient();
+// DATABASE_URL — role dono das tabelas, acesso cross-tenant DE PROPÓSITO
+// (provisionamento/gestão de tenant precisa enxergar todo mundo).
+const adminPrisma = new PrismaClient();
+
+// TENANT_DATABASE_URL — role `app_tenant` (migration 0004), sem privilégio
+// de dono. É isso que faz o RLS ser garantia do Postgres e não só
+// convenção de código: dono de tabela ignora RLS por padrão, um role
+// comum não tem escolha.
+const tenantPrisma = new PrismaClient({
+  datasources: { db: { url: process.env.TENANT_DATABASE_URL } },
+});
 
 /**
  * @template T
@@ -22,7 +32,7 @@ export async function getTenantClient(tenantId, callback) {
   if (!isValidUuid(tenantId)) {
     throw new Error(`tenantId inválido recebido pelo gateway multi-tenant: "${tenantId}"`);
   }
-  return prisma.$transaction(async (tx) => {
+  return tenantPrisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
     return callback(tx);
   });
@@ -33,12 +43,12 @@ export async function getTenantClient(tenantId, callback) {
  * @returns {PrismaClient}
  */
 export function getAdminClient() {
-  return prisma;
+  return adminPrisma;
 }
 
-/** Encerra o pool durante o shutdown gracioso e ao finalizar testes. */
+/** Encerra os pools durante o shutdown gracioso e ao finalizar testes. */
 export async function disconnectDatabase() {
-  await prisma.$disconnect();
+  await Promise.all([adminPrisma.$disconnect(), tenantPrisma.$disconnect()]);
 }
 
 /**
