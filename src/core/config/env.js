@@ -33,6 +33,9 @@ const envSchema = z.object({
       `JWT_REFRESH_SECRET deve ter pelo menos ${JWT_SECRET_MIN_LENGTH} caracteres`,
     ),
   DATABASE_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
+  // Role `app_tenant` (migration 0004) — sem privilégio de dono, é por
+  // onde getTenantClient() conecta pra RLS ser garantia real do Postgres.
+  TENANT_DATABASE_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
   SMTP_HOST: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
   SMTP_PORT: z.coerce
     .number()
@@ -51,6 +54,16 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_SMTP_TIMEOUT_MS),
+}).superRefine((data, ctx) => {
+  // Falha rápido em vez de deixar getTenantClient() conectar com URL vazia
+  // e reintroduzir o bypass de RLS por acidente de configuração.
+  if (data.DATABASE_URL && !data.TENANT_DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['TENANT_DATABASE_URL'],
+      message: 'TENANT_DATABASE_URL é obrigatório quando DATABASE_URL está definido — getTenantClient() não pode usar o role de dono.',
+    });
+  }
 });
 
 /**

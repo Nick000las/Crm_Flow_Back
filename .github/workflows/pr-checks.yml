@@ -38,6 +38,11 @@ jobs:
     # Variáveis de ambiente injetadas no runner
     env:
       DATABASE_URL: postgresql://tester:tester_password@localhost:5432/swas_test?schema=public
+      # Role `app_tenant`, criado pela migration 0004 (o Postgres efêmero do
+      # CI roda como superusuário, então o bloco CREATE ROLE da migration
+      # não é no-op aqui — cria o role de verdade). Faz o gate de isolamento
+      # validar o fix de RLS de ponta a ponta, não só em produção.
+      TENANT_DATABASE_URL: postgresql://app_tenant:ci_local_dev_only_change_me@localhost:5432/swas_test?schema=public
       JWT_SECRET: "chave-mock-para-testes-123"
       JWT_REFRESH_SECRET: "chave-mock-para-testes-456"
 
