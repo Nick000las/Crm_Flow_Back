@@ -1,21 +1,30 @@
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { MODULES } from '#api/modules.js';
+import { AppError } from '#core/errors/app-error.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
 
 /** @param {string[]} moduleKeys */
 function validarModuleKeys(moduleKeys) {
   for (const moduleKey of moduleKeys) {
-    if (!moduleKey || typeof moduleKey !== 'string') {
-      const error = new Error(`Module key inválido: ${moduleKey}`);
-      error.statusCode = 400;
-      throw error;
-    }
-    const existe = MODULES.some((mod) => mod.key === moduleKey);
-    if (!existe) {
-      const error = new Error(`Module key não existe: ${moduleKey}`);
-      error.statusCode = 400;
-      throw error;
+    if (!moduleKey || typeof moduleKey !== 'string' || !MODULES.some((mod) => mod.key === moduleKey)) {
+      throw new AppError({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        code: ERROR_CODES.VALIDATION_ERROR,
+        message: `Module key inválido: ${moduleKey}`,
+        fields: { modulosContratados: [`"${moduleKey}" não é um módulo válido`] },
+      });
     }
   }
+}
+
+/** @param {string} tenantId */
+function erroTenantNaoEncontrado(tenantId) {
+  return new AppError({
+    statusCode: HTTP_STATUS.NOT_FOUND,
+    code: ERROR_CODES.RESOURCE_NOT_FOUND,
+    message: `Tenant com ID "${tenantId}" não encontrado`,
+  });
 }
 
 /**
@@ -24,11 +33,7 @@ function validarModuleKeys(moduleKeys) {
  */
 async function buscarTenantOuFalhar(prisma, tenantId) {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  if (!tenant) {
-    const error = new Error(`Tenant com ID "${tenantId}" não encontrado`);
-    error.statusCode = 404;
-    throw error;
-  }
+  if (!tenant) throw erroTenantNaoEncontrado(tenantId);
   return tenant;
 }
 
@@ -50,22 +55,18 @@ export class TenantManagement {
         subdomain: true,
         status: true,
         createdAt: true,
-        modulosAtivos: { select: { moduleKey: true, enabledAt: true, disabled_at: true } },
+        modulosAtivos: { select: { moduleKey: true, enabledAt: true, disabledAt: true } },
       },
     });
-    if (!tenant) {
-      const error = new Error(`Tenant com ID "${tenantId}" não encontrado`);
-      error.statusCode = 404;
-      throw error;
-    }
+    if (!tenant) throw erroTenantNaoEncontrado(tenantId);
     return tenant;
   }
 
   /**
    * Atualiza campos simples do tenant. NÃO mexe em status nem em módulos
-   * contratados — isso é garantido pelo schema Zod da rota (admin-tenants.js),
-   * que só aceita os campos permitidos aqui; não precisa reforçar de novo
-   * nesta camada.
+   * contratados — isso é garantido pelo schema Zod da rota
+   * (admin-tenants.routes.js), que só aceita os campos permitidos aqui; não
+   * precisa reforçar de novo nesta camada.
    *
    * @param {string} tenantId
    * @param {object} data
@@ -121,17 +122,19 @@ export class TenantManagement {
     });
   }
 
-  /** Soft-disable — mantém a linha (histórico de billing), só marca `disabled_at`. */
+  /** Soft-disable — mantém a linha (histórico de billing), só marca `disabledAt`. */
   static async desligarModuleTenant(tenantId, moduleKey) {
     const prisma = getAdminClient();
     const resultado = await prisma.tenantModule.updateMany({
-      where: { tenantId, moduleKey, disabled_at: null },
-      data: { disabled_at: new Date() },
+      where: { tenantId, moduleKey, disabledAt: null },
+      data: { disabledAt: new Date() },
     });
     if (resultado.count === 0) {
-      const error = new Error(`Tenant "${tenantId}" não tem o módulo "${moduleKey}" ativo`);
-      error.statusCode = 404;
-      throw error;
+      throw new AppError({
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        code: ERROR_CODES.RESOURCE_NOT_FOUND,
+        message: `Tenant "${tenantId}" não tem o módulo "${moduleKey}" ativo`,
+      });
     }
     return { tenantId, moduleKey, disabled: true };
   }

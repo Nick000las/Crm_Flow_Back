@@ -136,6 +136,40 @@ export default [
     },
   },
 
+  // core/auth/login/ não é módulo (MODULE_CONTRACT.md §1 — auth não é
+  // destravável por tenant), mas tem a mesma forma em camadas de um módulo
+  // real — mesma disciplina de fronteira, espelhando os 3 blocos acima.
+  {
+    files: ['src/core/auth/login/controllers/**/*.js'],
+    rules: {
+      'no-restricted-imports': restringirImports({
+        paths: [TENANT_CLIENT_PROIBIDO],
+        patterns: [
+          {
+            group: ['**/repositories/*'],
+            message: 'Camadas só se chamam numa direção: controller → service → repository.',
+          },
+        ],
+      }),
+    },
+  },
+
+  {
+    files: ['src/core/auth/login/services/**/*.js'],
+    rules: {
+      'no-restricted-imports': restringirImports({
+        paths: [TENANT_CLIENT_PROIBIDO, FASTIFY_PROIBIDO],
+      }),
+    },
+  },
+
+  {
+    files: ['src/core/auth/login/repositories/**/*.js'],
+    rules: {
+      'no-restricted-imports': restringirImports({ paths: [FASTIFY_PROIBIDO] }),
+    },
+  },
+
   {
     files: ['**/*.test.js'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly' } },

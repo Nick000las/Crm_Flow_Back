@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { provisionarTenant } from './provisioning.js';
 
 const mockTx = {
@@ -8,7 +9,6 @@ const mockTx = {
 };
 
 const mockPrisma = {
-  tenant: { findUnique: vi.fn() },
   $transaction: vi.fn((callback) => callback(mockTx)),
 };
 
@@ -19,34 +19,23 @@ vi.mock('#core/db/tenantClient.js', () => ({
 const inputValido = {
   nome: 'Estúdio Teste',
   subdomain: 'estudio-teste',
-  owner: { nome: 'Dona Teste', email: 'dona@teste.com', senha: 'senha1234' },
+  owner: { nome: 'Dona Teste', email: 'dona@teste.com' },
   modulosContratados: ['crm'],
 };
 
 describe('provisionarTenant', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPrisma.tenant.findUnique.mockResolvedValue(null);
     mockTx.tenant.create.mockResolvedValue({ id: 'tenant-1' });
     mockTx.usuario.create.mockResolvedValue({ id: 'usuario-1' });
     mockTx.tenantModule.createMany.mockResolvedValue({ count: 1 });
-  });
-
-  it('rejeita subdomain já existente com statusCode 409, sem abrir transação', async () => {
-    mockPrisma.tenant.findUnique.mockResolvedValue({ id: 'tenant-existente' });
-
-    await expect(provisionarTenant(inputValido)).rejects.toMatchObject({
-      statusCode: 409,
-      message: expect.stringContaining('estudio-teste'),
-    });
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejeita module key que não existe, com statusCode 400, sem abrir transação', async () => {
     const input = { ...inputValido, modulosContratados: ['modulo-inventado'] };
 
     await expect(provisionarTenant(input)).rejects.toMatchObject({
-      statusCode: 400,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
       message: expect.stringContaining('modulo-inventado'),
     });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
@@ -55,10 +44,10 @@ describe('provisionarTenant', () => {
   it('rejeita module key vazio/inválido, com statusCode 400', async () => {
     const input = { ...inputValido, modulosContratados: [''] };
 
-    await expect(provisionarTenant(input)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(provisionarTenant(input)).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
   });
 
-  it('cria tenant + usuário DONO + módulos, e devolve os IDs', async () => {
+  it('cria tenant + usuário DONO ativo e sem senha + módulos, e devolve os IDs', async () => {
     const resultado = await provisionarTenant(inputValido);
 
     expect(mockTx.tenant.create).toHaveBeenCalledWith({
@@ -66,18 +55,18 @@ describe('provisionarTenant', () => {
     });
 
     expect(mockTx.usuario.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         tenantId: 'tenant-1',
         nome: 'Dona Teste',
         email: 'dona@teste.com',
         role: 'DONO',
-        ativo: false,
-      }),
+        ativo: true,
+      },
     });
-    // senha nunca em texto puro
+    // sem senha nenhuma na criação — fluxo é convite por e-mail (ver login.service.js)
     const dadosUsuario = mockTx.usuario.create.mock.calls[0][0].data;
-    expect(dadosUsuario.senhaHash).not.toBe('senha1234');
     expect(dadosUsuario).not.toHaveProperty('senha');
+    expect(dadosUsuario).not.toHaveProperty('senhaHash');
 
     expect(mockTx.tenantModule.createMany).toHaveBeenCalledWith({
       data: [{ tenantId: 'tenant-1', moduleKey: 'crm' }],

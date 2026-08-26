@@ -56,9 +56,14 @@ model Usuario {
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   codigosAtivacaoSenha CodigoAtivacaoSenha[]
 
-  @@unique([tenantId, email])
+  // E-mail é único GLOBALMENTE (não por tenant) — decisão de arquitetura,
+  // ver docs/decisoes-pendentes-auth.md. A constraint real é um índice único
+  // case-insensitive (`CREATE UNIQUE INDEX ... ON usuarios (lower(email))`),
+  // aplicado via SQL cru na migration 0003 — Prisma Schema Language não
+  // representa índice funcional, por isso não há `@@unique([email])` aqui
+  // (evita duas constraints redundantes e incoerentes: uma case-sensitive
+  // do Prisma, outra case-insensitive de verdade no banco).
   @@index([tenantId], map: "idx_usuarios_tenant_id")
-  @@index([email], map: "idx_usuarios_email")
   @@map("usuarios")
 }
 
