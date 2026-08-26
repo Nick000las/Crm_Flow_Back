@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { authenticateHook, requireRole } from '#core/auth/rbac.js';
-import { TENANT_STATUS } from '#shared/constants/index.js';
+import { HTTP_STATUS, TENANT_STATUS } from '#shared/constants/index.js';
+import { sendSuccess } from '#shared/http/response.js';
 import { provisionarTenant } from '#core/tenant/provisioning.js';
 import { TenantManagement } from '#core/tenant/management.js';
 
@@ -9,8 +10,10 @@ const criarTenantBodySchema = z.object({
   subdomain: z.string().min(1).regex(/^[a-z0-9-]+$/),
   owner: z.object({
     nome: z.string().min(1),
-    email: z.string().email(),
-    senha: z.string().min(8),
+    // e-mail é único globalmente via índice case-insensitive (migration
+    // 0003) — normaliza na escrita pra bater com a busca do login (mode:
+    // 'insensitive'), mesmo padrão de login.schema.js.
+    email: z.string().email().transform((email) => email.toLowerCase()),
   }),
   modulosContratados: z.array(z.string()).min(1),
 });
@@ -24,10 +27,10 @@ const moduleKeyParamSchema = z.object({ id: z.string().uuid(), moduleKey: z.stri
 const atualizarTenantBodySchema = z
   .object({
     nome: z.string().min(1).optional(),
-    dominio_customizado: z.string().min(1).optional(),
-    tema_json: z.record(z.unknown()).optional(),
-    data_region: z.string().min(1).optional(),
-    retencao_conversa_meses: z.coerce.number().int().positive().optional(),
+    dominioCustomizado: z.string().min(1).optional(),
+    temaJson: z.record(z.unknown()).optional(),
+    dataRegion: z.string().min(1).optional(),
+    retencaoConversaMeses: z.coerce.number().int().positive().optional(),
   })
   .strict();
 
@@ -47,6 +50,10 @@ const atualizarModulosBodySchema = z.object({
  * requireRole(['MASTER']) (RBAC). Presume que quem chama já é um MASTER
  * autenticado — a própria equipe interna logada no tenant da plataforma.
  *
+ * O owner criado em POST /admin/tenants nasce sem senha (fluxo de convite —
+ * ver core/auth/login/services/login.service.js): ele recebe um e-mail com
+ * código de ativação na primeira tentativa de login, não define senha aqui.
+ *
  * @param {import('fastify').FastifyInstance} app
  */
 export function registerAdminTenantRoutes(app) {
@@ -55,50 +62,50 @@ export function registerAdminTenantRoutes(app) {
   app.post('/admin/tenants', protegida, async (req, reply) => {
     const body = criarTenantBodySchema.parse(req.body);
     const resultado = await provisionarTenant(body);
-    return reply.code(201).send(resultado); // nunca ecoa senha/hash
+    return sendSuccess(reply, resultado, HTTP_STATUS.CREATED);
   });
 
   app.get('/admin/tenants', protegida, async (req, reply) => {
     const tenants = await TenantManagement.listTenants();
-    return reply.send(tenants);
+    return sendSuccess(reply, tenants);
   });
 
   app.get('/admin/tenants/:id', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const tenant = await TenantManagement.getTenantById(id);
-    return reply.send(tenant);
+    return sendSuccess(reply, tenant);
   });
 
   app.put('/admin/tenants/:id', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const body = atualizarTenantBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarTenant(id, body);
-    return reply.send(tenant);
+    return sendSuccess(reply, tenant);
   });
 
   app.put('/admin/tenants/:id/status', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const { status } = atualizarStatusBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarStatusTenant(id, status);
-    return reply.send(tenant);
+    return sendSuccess(reply, tenant);
   });
 
   app.put('/admin/tenants/:id/modules', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const { modulosContratados } = atualizarModulosBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarModulosTenant(id, modulosContratados);
-    return reply.send(tenant);
+    return sendSuccess(reply, tenant);
   });
 
   app.delete('/admin/tenants/:id/modules/:moduleKey', protegida, async (req, reply) => {
     const { id, moduleKey } = moduleKeyParamSchema.parse(req.params);
     const resultado = await TenantManagement.desligarModuleTenant(id, moduleKey);
-    return reply.send(resultado);
+    return sendSuccess(reply, resultado);
   });
 
   app.delete('/admin/tenants/:id', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const tenant = await TenantManagement.deleteTenant(id);
-    return reply.send(tenant);
+    return sendSuccess(reply, tenant);
   });
 }

@@ -42,6 +42,8 @@ src/modules/<categoria>/<nome-do-modulo>/
 │   └── <recurso>.service.test.js
 ├── adapters/
 │   └── <recurso>.repository.js # único ponto de acesso a dado — ver seção 4
+├── schemas/                    # opcional — ver critério abaixo
+│   └── <recurso>.schema.js
 ├── types/
 │   └── index.js                # @typedef do módulo (JSDoc)
 └── prisma/
@@ -52,6 +54,13 @@ src/modules/<categoria>/<nome-do-modulo>/
 (ex: um módulo sem estado próprio, só orquestração) pode omitir a pasta que
 não usa — mas nunca pode inventar uma pasta nova fora deste conjunto sem
 atualizar este documento.
+
+`schemas/` é opcional. Use pasta própria quando o módulo tiver **mais de ~2
+schemas Zod**; com 1 ou 2, mantenha inline no arquivo do `controller` que o
+usa — é o que CRM (`leads.controller.js`) e kanban (`board.controller.js`)
+fazem hoje, 1 schema cada. Nenhum módulo dentro de `src/modules/` precisa
+disso ainda — o critério fica documentado aqui pra quando um crescer o
+suficiente.
 
 Exemplo real: `src/modules/nucleo/crm/` segue essa estrutura à risca — vale
 usar como referência sempre que tiver dúvida de onde algo vai.

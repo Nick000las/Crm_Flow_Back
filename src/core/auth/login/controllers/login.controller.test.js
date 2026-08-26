@@ -4,7 +4,15 @@ import { signPasswordActivationToken } from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { LoginService } from '../services/login.service.js';
+import { activatePassword, verifyActivationCode } from '../services/login.service.js';
+
+vi.mock('../services/login.service.js', () => ({
+  identifyEmail: vi.fn(),
+  authenticateWithPassword: vi.fn(),
+  verifyActivationCode: vi.fn(),
+  activatePassword: vi.fn(),
+  getUserContext: vi.fn(),
+}));
 
 const FRONTEND_ORIGIN = 'http://localhost:5173';
 const ACTIVATION_COOKIE_NAME = 'activation_token';
@@ -57,7 +65,7 @@ describe('cookies do fluxo de ativação', () => {
   });
 
   it('grava o token de ativação somente em cookie HttpOnly', async () => {
-    vi.spyOn(LoginService, 'verifyActivationCode').mockResolvedValue({
+    vi.mocked(verifyActivationCode).mockResolvedValue({
       userId: 'user-id',
       activationCodeId: 'activation-code-id',
     });
@@ -105,9 +113,7 @@ describe('cookies do fluxo de ativação', () => {
       app,
       activationContext
     );
-    const activatePassword = vi
-      .spyOn(LoginService, 'activatePassword')
-      .mockResolvedValue(tenantContext);
+    vi.mocked(activatePassword).mockResolvedValue(tenantContext);
 
     try {
       const response = await app.inject({
@@ -142,7 +148,6 @@ describe('cookies do fluxo de ativação', () => {
   });
 
   it('rejeita a criação de senha sem o cookie de ativação', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const app = await createTestApp();
 
     try {

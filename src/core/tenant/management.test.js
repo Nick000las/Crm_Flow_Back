@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { TenantManagement } from './management.js';
 
 const mockTx = {
@@ -37,7 +38,7 @@ describe('TenantManagement.getTenantById', () => {
   it('rejeita com 404 quando o tenant não existe', async () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
-    await expect(TenantManagement.getTenantById(tenantId)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(TenantManagement.getTenantById(tenantId)).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
   });
 
   it('devolve o tenant, incluindo os módulos ativos', async () => {
@@ -56,7 +57,7 @@ describe('TenantManagement.atualizarTenant', () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
     await expect(TenantManagement.atualizarTenant(tenantId, { nome: 'Novo' })).rejects.toMatchObject({
-      statusCode: 404,
+      statusCode: HTTP_STATUS.NOT_FOUND,
     });
     expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
   });
@@ -82,7 +83,7 @@ describe('TenantManagement.atualizarStatusTenant', () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
     await expect(TenantManagement.atualizarStatusTenant(tenantId, 'active')).rejects.toMatchObject({
-      statusCode: 404,
+      statusCode: HTTP_STATUS.NOT_FOUND,
     });
   });
 
@@ -111,7 +112,7 @@ describe('TenantManagement.atualizarModulosTenant', () => {
 
   it('rejeita module key inválido com 400, sem abrir transação', async () => {
     await expect(TenantManagement.atualizarModulosTenant(tenantId, ['modulo-inventado'])).rejects.toMatchObject({
-      statusCode: 400,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
     });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
@@ -120,7 +121,7 @@ describe('TenantManagement.atualizarModulosTenant', () => {
     mockTx.tenant.findUnique.mockResolvedValue(null);
 
     await expect(TenantManagement.atualizarModulosTenant(tenantId, ['crm'])).rejects.toMatchObject({
-      statusCode: 404,
+      statusCode: HTTP_STATUS.NOT_FOUND,
     });
   });
 
@@ -158,18 +159,18 @@ describe('TenantManagement.desligarModuleTenant', () => {
     mockPrisma.tenantModule.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(TenantManagement.desligarModuleTenant(tenantId, 'crm')).rejects.toMatchObject({
-      statusCode: 404,
+      statusCode: HTTP_STATUS.NOT_FOUND,
     });
   });
 
-  it('marca disabled_at e devolve confirmação', async () => {
+  it('marca disabledAt e devolve confirmação', async () => {
     mockPrisma.tenantModule.updateMany.mockResolvedValue({ count: 1 });
 
     const resultado = await TenantManagement.desligarModuleTenant(tenantId, 'crm');
 
     expect(mockPrisma.tenantModule.updateMany).toHaveBeenCalledWith({
-      where: { tenantId, moduleKey: 'crm', disabled_at: null },
-      data: { disabled_at: expect.any(Date) },
+      where: { tenantId, moduleKey: 'crm', disabledAt: null },
+      data: { disabledAt: expect.any(Date) },
     });
     expect(resultado).toEqual({ tenantId, moduleKey: 'crm', disabled: true });
   });
@@ -181,7 +182,7 @@ describe('TenantManagement.deleteTenant', () => {
   it('rejeita com 404 quando o tenant não existe', async () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
-    await expect(TenantManagement.deleteTenant(tenantId)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(TenantManagement.deleteTenant(tenantId)).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
     expect(mockPrisma.tenant.delete).not.toHaveBeenCalled();
   });
 
