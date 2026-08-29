@@ -1,10 +1,13 @@
 import {
   activatePassword,
+  disableMfa,
+  enableMfa,
   getAuthenticatedUser,
   loginWithPassword,
   logout,
   refreshAccessToken,
   verifyActivationCode,
+  verifyMfaCode,
   verifyUserLoginEmail,
 } from '#core/auth/login/controllers/login.controller.js';
 import { authenticateHook } from '#core/auth/rbac.js';
@@ -21,7 +24,21 @@ export function registerAuthRoutes(app) {
 
   app.post('/auth/activation/password', activatePassword);
 
+  app.post('/auth/mfa/verify', verifyMfaCode);
+
   app.post('/auth/refresh', refreshAccessToken);
+
+  app.put(
+    '/auth/mfa',
+    { preHandler: authenticateHook },
+    enableMfa
+  );
+
+  app.delete(
+    '/auth/mfa',
+    { preHandler: authenticateHook },
+    disableMfa
+  );
 
   app.get(
     '/auth/me',

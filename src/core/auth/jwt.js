@@ -33,6 +33,17 @@ export function signPasswordActivationToken(app, input) {
 
 /**
  * @param {import('fastify').FastifyInstance} app
+ * @param {{ userId: string, mfaCodeId: string }} input
+ */
+export function signLoginMfaToken(app, input) {
+  return app.jwt.access.sign(
+    { ...input, purpose: 'login-mfa' },
+    { expiresIn: JWT_EXPIRATION.LOGIN_MFA_TOKEN },
+  );
+}
+
+/**
+ * @param {import('fastify').FastifyInstance} app
  * @param {string} token
  * @returns {TenantContext}
  */
@@ -77,5 +88,30 @@ export function verifyPasswordActivationToken(app, token) {
   return {
     userId: payload.userId,
     activationCodeId: payload.activationCodeId,
+  };
+}
+
+/**
+ * @param {import('fastify').FastifyInstance} app
+ * @param {string} token
+ */
+export function verifyLoginMfaToken(app, token) {
+  const payload = /** @type {{
+   *   userId?: string,
+   *   mfaCodeId?: string,
+   *   purpose?: string,
+   * }} */ (app.jwt.access.verify(token));
+
+  if (
+    payload.purpose !== 'login-mfa' ||
+    typeof payload.userId !== 'string' ||
+    typeof payload.mfaCodeId !== 'string'
+  ) {
+    throw new Error('Token de MFA inválido');
+  }
+
+  return {
+    userId: payload.userId,
+    mfaCodeId: payload.mfaCodeId,
   };
 }
