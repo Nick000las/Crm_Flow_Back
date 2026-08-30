@@ -20,6 +20,7 @@ export async function getUserEmailAndPassword({ email }) {
       senhaHash: true,
       role: true,
       ativo: true,
+      mfaAtivo: true,
     },
   });
 }
@@ -93,7 +94,8 @@ export async function incrementCodigoVerificacaoAttempts({
  * `senhaHash` faz parte do select porque `disableMfa` precisa revalidar a
  * senha antes de desligar a proteção (só quem prova ser dono da conta pode
  * reduzir segurança) — nenhum chamador atual repassa esse campo cru numa
- * resposta HTTP.
+ * resposta HTTP. `nome`/`email`/`mfaAtivo` existem pra `getUserSettings`
+ * montar a tela de configurações sem precisar de outra query.
  *
  * @param {{ userId: string }} input
  */
@@ -106,6 +108,9 @@ export async function getUserById({ userId }) {
       role: true,
       ativo: true,
       senhaHash: true,
+      nome: true,
+      email: true,
+      mfaAtivo: true,
     },
   });
 }

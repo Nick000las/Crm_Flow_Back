@@ -30,6 +30,7 @@ import {
   enableMfa as enableMfaService,
   disableMfa as disableMfaService,
   getUserContext,
+  getUserSettings as getUserSettingsService,
 } from '../services/login.service.js';
 
 const ACTIVATION_COOKIE_NAME = 'activation_token';
@@ -244,6 +245,19 @@ export async function refreshAccessToken(request, response) {
  */
 export async function getAuthenticatedUser(request, response) {
   return sendSuccess(response, { user: request.tenantContext });
+}
+
+/**
+ * Diferente de `/auth/me` (só ecoa o payload do JWT), esta rota consulta o
+ * banco na hora — é a única forma de a tela de configurações saber o
+ * `mfaAtivo` atual, já que esse campo nunca viaja dentro do token.
+ *
+ * @param {import('fastify').FastifyRequest} request
+ * @param {import('fastify').FastifyReply} response
+ */
+export async function getUserSettings(request, response) {
+  const data = await getUserSettingsService({ userId: request.tenantContext.userId });
+  return sendSuccess(response, data);
 }
 
 /**
