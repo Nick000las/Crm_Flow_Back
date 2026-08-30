@@ -21,6 +21,7 @@
     "test:watch": "vitest",
     "test:rls-coverage": "vitest run src/core/db/__tests__/rls-coverage.test.js",
     "test:tenant-isolation": "vitest run src/core/db/__tests__/tenant-isolation.test.js",
+    "create:master": "node scripts/create-master.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy"

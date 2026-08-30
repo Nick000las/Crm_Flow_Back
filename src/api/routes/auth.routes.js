@@ -3,6 +3,7 @@ import {
   disableMfa,
   enableMfa,
   getAuthenticatedUser,
+  getUserSettings,
   loginWithPassword,
   logout,
   refreshAccessToken,
@@ -44,6 +45,12 @@ export function registerAuthRoutes(app) {
     '/auth/me',
     { preHandler: authenticateHook },
     getAuthenticatedUser
+  );
+
+  app.get(
+    '/auth/settings',
+    { preHandler: authenticateHook },
+    getUserSettings
   );
 
   app.post(

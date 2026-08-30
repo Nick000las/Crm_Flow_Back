@@ -316,6 +316,31 @@ export async function getUserContext({ userId }) {
   };
 }
 
+/**
+ * Dados de conta pra tela de configurações — não é `getUserContext`
+ * (aquele monta o `TenantContext` que vai dentro do JWT); este devolve o
+ * que a UI precisa renderizar e nunca o `senhaHash`.
+ *
+ * @param {{ userId: string }} input
+ */
+export async function getUserSettings({ userId }) {
+  const usuario = await getUserById({ userId });
+
+  if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
+    throw unauthorizedError(
+      ERROR_CODES.AUTH_USER_INACTIVE,
+      'Usuário inativo'
+    );
+  }
+
+  return {
+    nome: usuario.nome,
+    email: usuario.email,
+    role: /** @type {import('#core/types/module.js').Role} */ (usuario.role),
+    mfaAtivo: usuario.mfaAtivo,
+  };
+}
+
 /** @param {{ userId: string }} input */
 export async function enableMfa({ userId }) {
   const usuario = await getUserById({ userId });

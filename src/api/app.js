@@ -29,6 +29,10 @@ export async function buildApp(options = {}) {
   app.register(cors, {
     origin: parseCorsOrigins(config.CORS_ORIGIN),
     credentials: true,
+    // @fastify/cors, ao contrário do pacote `cors` genérico, tem default
+    // restrito a 'GET,HEAD,POST' — sem isso, todo PUT/DELETE da API (ex:
+    // /auth/mfa, /admin/tenants/:id) é barrado no preflight pelo navegador.
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   registerJwt(app, config);
   registerErrorHandlers(app);
