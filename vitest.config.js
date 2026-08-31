@@ -13,6 +13,9 @@ export default defineConfig({
   resolve: { alias },
   test: {
     environment: 'node',
+    // Imports podem carregar o .env. Unitários não compartilham o Redis do app;
+    // integrações opt-in usam a infraestrutura de teste explicitamente configurada.
+    env: process.env.RUN_KANBAN_INTEGRATION === '1' ? {} : { REDIS_URL: '' },
     include: ['src/**/*.test.js'],
     // Testes de RLS e isolamento tocam o banco real — rodam em série.
     fileParallelism: false,

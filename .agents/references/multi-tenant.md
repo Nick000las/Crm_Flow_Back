@@ -1,9 +1,9 @@
 ---
 paths:
-  - "src/core/db/**"
-  - "prisma/**"
-  - "src/modules/nucleo/*/**"
-  - "src/modules/verticais/*/**"
+  - 'src/core/db/**'
+  - 'prisma/**'
+  - 'src/modules/nucleo/*/**'
+  - 'src/modules/verticais/*/**'
 ---
 
 # Regra: Acesso a Dado Multi-tenant e Fronteira de Módulo
@@ -33,13 +33,14 @@ Antes de escrever ou revisar:
    pra fechar isso; `getAdminClient()` continua no role dono, de propósito.
    Tabela nova dentro de um schema `modulo_*` já existente é coberta
    automaticamente (default privileges). **Schema `modulo_*` novo** (módulo
-   vertical novo) precisa de `GRANT USAGE ON SCHEMA` + `ALTER DEFAULT
-   PRIVILEGES` pro `app_tenant`, copiando o padrão da migration 0004 —
+   vertical novo) precisa dos grants `USAGE ON SCHEMA` e `ALTER DEFAULT PRIVILEGES`
+   para `app_tenant`, seguindo a migration 0004 —
    senão as tabelas desse módulo ficam com RLS habilitado mas
    inacessíveis (falha visível na hora, não vazamento silencioso).
-7. Depois de mudança de schema, rodar `npm run test:rls-coverage` e
-   `npm run test:fk-coverage` (toda tabela com `tenant_id` tem FK pra `tenants`).
-8. Antes de considerar qualquer tarefa concluída, rodar `npm run lint` —
+7. Depois de mudança de schema, rodar `pnpm test:rls-coverage` e
+   `pnpm test:fk-coverage` em banco isolado de teste (toda tabela com
+   `tenant_id` tem FK pra `tenants`).
+8. Antes de considerar qualquer tarefa concluída, rodar `pnpm lint` —
    é o que pega import indevido entre módulos, já que nada impede fisicamente.
    A regra de fronteira só enxerga os aliases `#...` por causa do resolver
    `eslint-resolver-imports.cjs`; sem ele, nenhum import por alias é checado.

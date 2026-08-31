@@ -25,8 +25,12 @@ export function sendSuccess(reply, data, statusCode = HTTP_STATUS.OK) {
 export function sendError(reply, { statusCode, code, message, fields, details }) {
   const error = { code, message };
 
-  if (fields !== undefined) error.fields = fields;
-  if (details !== undefined) error.details = details;
+  if (fields !== undefined) {
+    error.fields = fields;
+  }
+  if (details !== undefined) {
+    error.details = details;
+  }
 
   return reply.code(statusCode).send({
     statusCode,

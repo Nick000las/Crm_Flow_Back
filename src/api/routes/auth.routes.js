@@ -3,6 +3,8 @@ import {
   disableMfa,
   enableMfa,
   getAuthenticatedUser,
+  getCurrentSession,
+  restoreCurrentSession,
   getUserSettings,
   loginWithPassword,
   logout,
@@ -17,6 +19,19 @@ import { authenticateHook } from '#core/auth/rbac.js';
  * @param {import('fastify').FastifyInstance} app
  */
 export function registerAuthRoutes(app) {
+  app.get('/auth/session', restoreCurrentSession);
+  app.get(
+    '/me',
+    {
+      preHandler: async (request, reply) => {
+        if (request.headers.authorization) {
+          return authenticateHook(request, reply);
+        }
+      },
+    },
+    getCurrentSession,
+  );
+
   app.post('/auth/login', verifyUserLoginEmail);
 
   app.post('/auth/login/password', loginWithPassword);
@@ -29,33 +44,13 @@ export function registerAuthRoutes(app) {
 
   app.post('/auth/refresh', refreshAccessToken);
 
-  app.put(
-    '/auth/mfa',
-    { preHandler: authenticateHook },
-    enableMfa
-  );
+  app.put('/auth/mfa', { preHandler: authenticateHook }, enableMfa);
 
-  app.delete(
-    '/auth/mfa',
-    { preHandler: authenticateHook },
-    disableMfa
-  );
+  app.delete('/auth/mfa', { preHandler: authenticateHook }, disableMfa);
 
-  app.get(
-    '/auth/me',
-    { preHandler: authenticateHook },
-    getAuthenticatedUser
-  );
+  app.get('/auth/me', { preHandler: authenticateHook }, getAuthenticatedUser);
 
-  app.get(
-    '/auth/settings',
-    { preHandler: authenticateHook },
-    getUserSettings
-  );
+  app.get('/auth/settings', { preHandler: authenticateHook }, getUserSettings);
 
-  app.post(
-    '/auth/logout',
-    { preHandler: authenticateHook },
-    logout
-  );
+  app.post('/auth/logout', { preHandler: authenticateHook }, logout);
 }

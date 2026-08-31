@@ -28,7 +28,9 @@ describeWithDatabase('Cobertura de RLS multi-tenant', () => {
 
     if (tabelasSemRLS.length > 0) {
       const lista = tabelasSemRLS.map((t) => `  - ${t.schema}.${t.tabela}`).join('\n');
-      throw new Error(`Tabelas com tenant_id SEM RLS:\n${lista}\n\nVer MODULE_CONTRACT.md, seção 5.`);
+      throw new Error(
+        `Tabelas com tenant_id SEM RLS:\n${lista}\n\nVer MODULE_CONTRACT.md, seção 5.`,
+      );
     }
     expect(tabelasSemRLS).toHaveLength(0);
   });

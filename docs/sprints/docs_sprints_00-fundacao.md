@@ -15,20 +15,21 @@ precisar perguntar nada ao outro.
 
 ## O que já está pronto no repositório (não recriar)
 
-| Arquivo | O que já faz |
-|---|---|
-| `src/core/db/tenantClient.ts` | Gateway multi-tenant — `getTenantClient()` com `SET LOCAL app.current_tenant` via `$transaction` interativo (decisão de MVP, Bloco 2.1) |
-| `src/core/auth/jwt.ts` | Assinatura/verificação de access token (15 min) e refresh token (7 dias) — Bloco 8.2 |
-| `src/core/auth/rbac.ts` | Hook de autenticação (`authenticateHook`) + `requireRole()` |
-| `prisma/schema.prisma` | Modelos do núcleo `public`: tenant, auth, módulos, billing, wallet e auditoria |
-| `prisma/migrations/0001_init/migration.sql` | Schema PostgreSQL completo, incluindo módulos, constraints, triggers e RLS |
-| `src/core/db/__tests__/rls-coverage.test.ts` | Bloqueador de CI — varre o banco procurando `tenant_id` sem RLS |
-| `src/core/db/__tests__/tenant-isolation.test.ts` | Bloqueador de CI — tenta vazar dado entre dois tenants de teste |
-| `MODULE_CONTRACT.md` | Especificação completa de como um módulo deve ser construído |
+| Arquivo                                          | O que já faz                                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/db/tenantClient.ts`                    | Gateway multi-tenant — `getTenantClient()` com `SET LOCAL app.current_tenant` via `$transaction` interativo (decisão de MVP, Bloco 2.1) |
+| `src/core/auth/jwt.ts`                           | Assinatura/verificação de access token (15 min) e refresh token (7 dias) — Bloco 8.2                                                    |
+| `src/core/auth/rbac.ts`                          | Hook de autenticação (`authenticateHook`) + `requireRole()`                                                                             |
+| `prisma/schema.prisma`                           | Modelos do núcleo `public`: tenant, auth, módulos, billing, wallet e auditoria                                                          |
+| `prisma/migrations/0001_init/migration.sql`      | Schema PostgreSQL completo, incluindo módulos, constraints, triggers e RLS                                                              |
+| `src/core/db/__tests__/rls-coverage.test.ts`     | Bloqueador de CI — varre o banco procurando `tenant_id` sem RLS                                                                         |
+| `src/core/db/__tests__/tenant-isolation.test.ts` | Bloqueador de CI — tenta vazar dado entre dois tenants de teste                                                                         |
+| `MODULE_CONTRACT.md`                             | Especificação completa de como um módulo deve ser construído                                                                            |
 
 ## O que falta implementar, em ordem
 
 ### 1. Provisionar infraestrutura
+
 - [ ] Criar banco no Neon, copiar `DATABASE_URL` pro `.env`
 - [ ] Gerar `JWT_SECRET` e `JWT_REFRESH_SECRET` (`openssl rand -hex 32`, um valor diferente
       pra cada)
@@ -38,20 +39,26 @@ precisar perguntar nada ao outro.
       passar antes de continuar. Se falhar aqui, não avance — é a fundação de tudo.
 
 ### 2. Endpoint de autenticação (falta implementar)
+
 Ainda não existe controller de auth no repositório. Criar `src/core/auth/` (ou um
 módulo `nucleo/auth/` seguindo o padrão controller/service/adapter, à escolha de vocês):
+
 - [ ] `POST /auth/login` — valida e-mail/senha (hash com `argon2` ou `bcrypt`, nunca
       texto puro), retorna `{ accessToken, refreshToken }`
 - [ ] `POST /auth/refresh` — troca refresh token por access token novo
 - [ ] Middleware já existe (`authenticateHook`) — só falta o endpoint que gera o token
 
 ### 3. MFA (Bloco 8.2 — obrigatório para Administradores)
+
 Campos `mfaAtivo`/`mfaSecret` já existem no schema `Usuario`. Falta:
+
 - [ ] Fluxo de ativação (gerar secret TOTP, mostrar QR code, confirmar código)
 - [ ] Checagem de código TOTP no login quando `mfaAtivo = true`
 
 ### 4. Custódia da chave mestra — AWS KMS (Bloco 2.2/7.1)
+
 Ainda não scaffolded. Decisão já tomada: AWS KMS gerenciado, não Vault self-hosted.
+
 - [ ] Criar a chave no console AWS KMS
 - [ ] Criar `src/core/crypto/kms.ts` com `encrypt()`/`decrypt()` chamando a API do KMS
       (credencial IAM via `AWS_KMS_KEY_ID`/`AWS_REGION`, já no `.env.example`)
@@ -59,6 +66,7 @@ Ainda não scaffolded. Decisão já tomada: AWS KMS gerenciado, não Vault self-
       funcionando é suficiente pra esta sprint
 
 ### 5. Provisionamento de tenant (Bloco 1.1.5)
+
 - [ ] Endpoint administrativo que cria tenant + usuário admin inicial + vínculo de
       módulos contratados como transação atômica (usar `getAdminClient()`, não
       `getTenantClient()` — é operação sem tenant ainda existente)
@@ -66,6 +74,7 @@ Ainda não scaffolded. Decisão já tomada: AWS KMS gerenciado, não Vault self-
       criar 2 tenants, confirmar que um não vê dado do outro via `curl`)
 
 ### 6. CI (GitHub Actions)
+
 - [ ] Workflow rodando em todo PR: `npm run lint && npm run test:rls-coverage && npm run test:tenant-isolation`
 - [ ] PR não pode ser mergeado se qualquer um desses falhar (branch protection rule)
 

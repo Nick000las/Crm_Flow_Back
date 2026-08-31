@@ -24,6 +24,7 @@ CREATE TABLE modulo_kanban_universal.cards (
   titulo VARCHAR NOT NULL,
   responsavel_id UUID,
   dados_extras JSONB DEFAULT '{}',
+  "order" INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -55,3 +56,159 @@ CREATE POLICY tenant_isolation ON modulo_kanban_universal.card_comments
 
 CREATE INDEX idx_cards_tenant_board ON modulo_kanban_universal.cards(tenant_id, board_id);
 CREATE INDEX idx_card_comments_tenant_card ON modulo_kanban_universal.card_comments(tenant_id, card_id);
+
+-- Participantes explícitos de cada quadro; todas as referências são tenant-scoped.
+CREATE TABLE modulo_kanban_universal.board_members (
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  board_id UUID NOT NULL,
+  usuario_id UUID NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, board_id, usuario_id),
+  CONSTRAINT board_members_board_fk FOREIGN KEY (tenant_id, board_id)
+    REFERENCES modulo_kanban_universal.boards(tenant_id, id) ON DELETE CASCADE,
+  CONSTRAINT board_members_usuario_fk FOREIGN KEY (tenant_id, usuario_id)
+    REFERENCES public.usuarios(tenant_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE modulo_kanban_universal.board_members ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_kanban_universal.board_members
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+CREATE INDEX idx_board_members_usuario
+  ON modulo_kanban_universal.board_members(tenant_id, usuario_id, board_id);
+GRANT SELECT, INSERT, UPDATE, DELETE ON modulo_kanban_universal.board_members TO app_tenant;
+
+ALTER TABLE modulo_kanban_universal.cards ADD COLUMN archived_at TIMESTAMP;
+ALTER TABLE modulo_kanban_universal.colunas ADD COLUMN wip_limit INTEGER CHECK (wip_limit > 0);
+ALTER TABLE modulo_kanban_universal.board_members ADD COLUMN permissao TEXT NOT NULL DEFAULT 'editor'
+  CHECK (permissao IN ('editor', 'leitor'));
+
+CREATE TABLE modulo_kanban_universal.activities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  board_id UUID NOT NULL,
+  card_id UUID NOT NULL,
+  actor_id UUID,
+  action TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id, board_id) REFERENCES modulo_kanban_universal.boards(tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX kanban_activity_card ON modulo_kanban_universal.activities(tenant_id, card_id, created_at DESC, id);
+
+CREATE TABLE modulo_kanban_universal.email_preferences (
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  usuario_id UUID NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  PRIMARY KEY (tenant_id, usuario_id),
+  FOREIGN KEY (tenant_id, usuario_id) REFERENCES public.usuarios(tenant_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE modulo_kanban_universal.email_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  board_id UUID NOT NULL,
+  card_id UUID NOT NULL,
+  usuario_id UUID NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('assignment', 'mention', 'due')),
+  dedupe_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'cancelled', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  locked_until TIMESTAMP,
+  lease_id UUID,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (tenant_id, dedupe_key),
+  FOREIGN KEY (tenant_id, board_id) REFERENCES modulo_kanban_universal.boards(tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id, card_id) REFERENCES modulo_kanban_universal.cards(tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id, usuario_id) REFERENCES public.usuarios(tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX kanban_email_pending ON modulo_kanban_universal.email_outbox(tenant_id, next_attempt_at) WHERE status = 'pending';
+
+ALTER TABLE modulo_kanban_universal.activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE modulo_kanban_universal.email_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE modulo_kanban_universal.email_outbox ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_kanban_universal.activities
+ USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+ WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+CREATE POLICY tenant_isolation ON modulo_kanban_universal.email_preferences
+ USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+ WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+CREATE POLICY tenant_isolation ON modulo_kanban_universal.email_outbox
+ USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+ WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+GRANT SELECT, INSERT, UPDATE, DELETE ON modulo_kanban_universal.activities,
+ modulo_kanban_universal.email_preferences, modulo_kanban_universal.email_outbox TO app_tenant;
+
+-- SECURITY INVOKER: conserva o contexto RLS do gateway, inclusive dentro dos triggers.
+CREATE FUNCTION modulo_kanban_universal.record_card_activity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+ actor UUID := nullif(current_setting('app.current_user_id', true), '')::uuid;
+ row_data modulo_kanban_universal.cards;
+ event_action TEXT;
+BEGIN
+ IF TG_OP = 'DELETE' THEN row_data := OLD; ELSE row_data := NEW; END IF;
+ IF NOT EXISTS (SELECT 1 FROM modulo_kanban_universal.boards WHERE tenant_id = row_data.tenant_id AND id = row_data.board_id) THEN RETURN NULL; END IF;
+ IF TG_OP = 'INSERT' THEN event_action := 'card.create';
+ ELSIF TG_OP = 'DELETE' THEN event_action := 'card.delete';
+ ELSIF NEW.archived_at IS DISTINCT FROM OLD.archived_at THEN
+   event_action := CASE WHEN NEW.archived_at IS NULL THEN 'card.restore' ELSE 'card.archive' END;
+ ELSIF NEW.coluna_id IS DISTINCT FROM OLD.coluna_id THEN event_action := 'card.move';
+ ELSIF (NEW.titulo, NEW.responsavel_id, NEW.dados_extras) IS DISTINCT FROM (OLD.titulo, OLD.responsavel_id, OLD.dados_extras) THEN event_action := 'card.update';
+ ELSE RETURN NULL;
+ END IF;
+ INSERT INTO modulo_kanban_universal.activities(tenant_id, board_id, card_id, actor_id, action, details)
+ VALUES (row_data.tenant_id, row_data.board_id, row_data.id, actor, event_action,
+   jsonb_build_object('titulo', row_data.titulo, 'colunaId', row_data.coluna_id));
+ IF TG_OP <> 'DELETE' AND NEW.responsavel_id IS NOT NULL AND NEW.responsavel_id IS DISTINCT FROM actor
+   AND NEW.archived_at IS NULL THEN
+   IF TG_OP = 'INSERT' OR NEW.responsavel_id IS DISTINCT FROM OLD.responsavel_id THEN
+     INSERT INTO modulo_kanban_universal.email_outbox(tenant_id,board_id,card_id,usuario_id,kind,dedupe_key)
+     VALUES(NEW.tenant_id,NEW.board_id,NEW.id,NEW.responsavel_id,'assignment',gen_random_uuid()::text);
+   END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER kanban_card_activity AFTER INSERT OR UPDATE OR DELETE ON modulo_kanban_universal.cards
+ FOR EACH ROW EXECUTE FUNCTION modulo_kanban_universal.record_card_activity();
+
+CREATE FUNCTION modulo_kanban_universal.record_comment_activity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+ card modulo_kanban_universal.cards;
+ mentioned TEXT[];
+BEGIN
+ SELECT * INTO card FROM modulo_kanban_universal.cards WHERE tenant_id = NEW.tenant_id AND id = NEW.card_id;
+ INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action)
+ VALUES(NEW.tenant_id,card.board_id,card.id,NEW.usuario_id,'comment.create');
+ -- Menções explícitas usam @{UUID}; os destinatários são validados dentro do tenant.
+ FOR mentioned IN SELECT regexp_matches(NEW.conteudo, '@\{([0-9a-fA-F-]{36})\}', 'g') LOOP
+   INSERT INTO modulo_kanban_universal.email_outbox(tenant_id,board_id,card_id,usuario_id,kind,dedupe_key)
+   SELECT NEW.tenant_id,card.board_id,card.id,u.id,'mention',NEW.id::text || ':' || u.id::text
+   FROM public.usuarios u
+   JOIN modulo_kanban_universal.board_members bm ON bm.tenant_id=u.tenant_id AND bm.usuario_id=u.id AND bm.board_id=card.board_id
+   WHERE u.tenant_id=NEW.tenant_id AND u.id::text=lower(mentioned[1]) AND u.ativo AND u.id<>NEW.usuario_id
+   ON CONFLICT (tenant_id,dedupe_key) DO NOTHING;
+ END LOOP;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER kanban_comment_activity AFTER INSERT ON modulo_kanban_universal.card_comments
+ FOR EACH ROW EXECUTE FUNCTION modulo_kanban_universal.record_comment_activity();
+ALTER TABLE modulo_kanban_universal.card_comments
+ ADD COLUMN mencionados UUID[] NOT NULL DEFAULT '{}';
+
+CREATE OR REPLACE FUNCTION modulo_kanban_universal.record_comment_activity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+ card modulo_kanban_universal.cards;
+BEGIN
+ SELECT * INTO card FROM modulo_kanban_universal.cards WHERE tenant_id = NEW.tenant_id AND id = NEW.card_id;
+ INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action)
+ VALUES(NEW.tenant_id,card.board_id,card.id,NEW.usuario_id,'comment.create');
+ INSERT INTO modulo_kanban_universal.email_outbox(tenant_id,board_id,card_id,usuario_id,kind,dedupe_key)
+ SELECT NEW.tenant_id,card.board_id,card.id,u.id,'mention',NEW.id::text || ':' || u.id::text
+ FROM public.usuarios u
+ JOIN modulo_kanban_universal.board_members bm ON bm.tenant_id=u.tenant_id AND bm.usuario_id=u.id AND bm.board_id=card.board_id
+ WHERE u.tenant_id=NEW.tenant_id AND u.ativo AND u.id<>NEW.usuario_id
+   AND (u.id=ANY(NEW.mencionados) OR NEW.conteudo ILIKE '%@{' || u.id::text || '}%')
+ ON CONFLICT (tenant_id,dedupe_key) DO NOTHING;
+ RETURN NULL;
+END $$;

@@ -3,6 +3,7 @@ import { getTenantClient } from '#core/db/tenantClient.js';
 import { CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, TIPOS_EVENTO_LEAD } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
+import { fonteLeads } from './crm-lead-read-model.js';
 
 const FIRST_RESULT_INDEX = 0;
 
@@ -18,11 +19,11 @@ const COLUNAS_BASE = Prisma.sql`
   l.campanha_utm, l.data_conversao, l.probabilidade_fechamento,
   l.data_prevista_fechamento, l.motivo_perda, l.lead_score, l.proximo_followup,
   l.legal_basis, l.legal_basis_at, l.origem_registro, l.marketing_opt_out_at, l.anonimizado_em,
-  l.custom_fields, l.usuario_responsavel_id, f.nome AS estagio_nome,
+  l.custom_fields, l.usuario_responsavel_id,
   l.created_at, l.updated_at, l.archived_at, l.deleted_at, l.mesclado_em_id,
-  (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id) AS mesclado_em_nome,
+  (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id AND m.tenant_id = l.tenant_id) AS mesclado_em_nome,
   l.assigned_by_rule_id AS atribuido_por_regra_id,
-  (SELECT r.nome FROM modulo_crm.crm_assignment_rule r WHERE r.id = l.assigned_by_rule_id) AS atribuido_por_regra_nome
+  (SELECT r.nome FROM modulo_crm.crm_assignment_rule r WHERE r.id = l.assigned_by_rule_id AND r.tenant_id = l.tenant_id) AS atribuido_por_regra_nome
 `;
 
 /**
@@ -31,8 +32,9 @@ const COLUNAS_BASE = Prisma.sql`
  *
  * @param {Date | null} [inatividade]
  */
-function colunasLeitura(inatividade = null) {
-  return Prisma.sql`${COLUNAS_BASE}, ${colunaEsfriandoDesde(inatividade)}`;
+function colunasLeitura(inatividade = null, estagioNaFonte = false) {
+  const estagio = estagioNaFonte ? Prisma.sql`l.estagio_nome` : Prisma.sql`f.nome AS estagio_nome`;
+  return Prisma.sql`${COLUNAS_BASE}, ${estagio}, ${colunaEsfriandoDesde(inatividade)}`;
 }
 
 const COLUNAS_LEITURA = colunasLeitura();
@@ -71,12 +73,10 @@ const COLUNAS_UUID = new Set(['funilEstagioId', 'usuarioResponsavelId']);
  * @returns {Promise<Lead | undefined>}
  */
 export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade)}
-      FROM modulo_crm.leads l
-      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+  return getTenantClient(tenantId, async (tx) =>
+    tx.$queryRaw`
+      SELECT ${colunasLeitura(inatividade, true)}
+      FROM ${await fonteLeads(tx)} l
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
@@ -100,17 +100,17 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
   const where = Prisma.join([Prisma.sql`l.tenant_id = ${tenantId}::uuid`, ...condicoes], ' AND ');
 
   return getTenantClient(tenantId, async (tx) => {
+    const fonte = await fonteLeads(tx);
     const [contagem] = await tx.$queryRaw`
       SELECT COUNT(*)::int AS total
-      FROM modulo_crm.leads l
+      FROM ${fonte} l
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade)}
-      FROM modulo_crm.leads l
-      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+      SELECT ${colunasLeitura(inatividade, true)}
+      FROM ${fonte} l
       WHERE ${where}
-      ORDER BY f."order", l.created_at DESC
+      ORDER BY l.estagio_ordem, l.created_at DESC, l.id
       LIMIT ${limite} OFFSET ${offset}
     `;
     return { itens, total: contagem.total };
@@ -305,7 +305,10 @@ export function moverParaLixeira(tenantId, leadId, historico) {
       RETURNING id, deleted_at
     `;
     if (excluido && historico) {
-      await inserirEvento(tx, tenantId, leadId, { tipo: TIPOS_EVENTO_LEAD.EXCLUIDO, autorId: historico.autorId });
+      await inserirEvento(tx, tenantId, leadId, {
+        tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
+        autorId: historico.autorId,
+      });
     }
     return excluido;
   });
@@ -376,7 +379,10 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
       return mesclado ? { mescladoEmId: mesclado.mesclado_em_id } : undefined;
     }
     if (historico) {
-      await inserirEvento(tx, tenantId, leadId, { tipo: TIPOS_EVENTO_LEAD.RESTAURADO, autorId: historico.autorId });
+      await inserirEvento(tx, tenantId, leadId, {
+        tipo: TIPOS_EVENTO_LEAD.RESTAURADO,
+        autorId: historico.autorId,
+      });
     }
     return restaurado;
   });
@@ -402,7 +408,11 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
  * }} opcoes
  * @returns {Promise<Lead | undefined>} o principal depois da mesclagem
  */
-export function mesclarLeads(tenantId, { principalId, secundarioId }, { autorId = null, montar, montarDiff }) {
+export function mesclarLeads(
+  tenantId,
+  { principalId, secundarioId },
+  { autorId = null, montar, montarDiff },
+) {
   return getTenantClient(tenantId, async (tx) => {
     const travados = await tx.$queryRaw`
       SELECT ${COLUNAS_LEITURA}

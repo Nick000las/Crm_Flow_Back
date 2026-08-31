@@ -8,9 +8,7 @@ import { z } from 'zod';
 import { LOGIN_MFA, PASSWORD_ACTIVATION, PASSWORD_POLICY } from '#core/auth/constants.js';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
 
-const activationCodePattern = new RegExp(
-  `^\\d{${PASSWORD_ACTIVATION.CODE_LENGTH}}$`
-);
+const activationCodePattern = new RegExp(`^\\d{${PASSWORD_ACTIVATION.CODE_LENGTH}}$`);
 
 const mfaCodePattern = new RegExp(`^\\d{${LOGIN_MFA.CODE_LENGTH}}$`);
 
@@ -28,23 +26,22 @@ export const loginBodySchema = z.object({
 });
 
 export const passwordLoginBodySchema = loginBodySchema.extend({
-  senha: requiredString('Informe a senha').min(
-    TEXT_LIMITS.NON_EMPTY_MIN_LENGTH,
-    'Informe a senha'
-  ),
+  scope: z.enum(['tenant', 'admin']).optional(),
+  senha: requiredString('Informe a senha').min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe a senha'),
 });
 
 export const verifyCodeBodySchema = loginBodySchema.extend({
   verificationCode: requiredString('Informe o código').regex(
     activationCodePattern,
-    `O código deve conter ${PASSWORD_ACTIVATION.CODE_LENGTH} dígitos`
+    `O código deve conter ${PASSWORD_ACTIVATION.CODE_LENGTH} dígitos`,
   ),
 });
 
 export const activatePasswordBodySchema = z.object({
+  scope: z.enum(['tenant', 'admin']).optional(),
   senha: requiredString('Informe a senha').min(
     PASSWORD_POLICY.MIN_LENGTH,
-    `A senha deve ter pelo menos ${PASSWORD_POLICY.MIN_LENGTH} caracteres`
+    `A senha deve ter pelo menos ${PASSWORD_POLICY.MIN_LENGTH} caracteres`,
   ),
 });
 
@@ -52,6 +49,7 @@ export const activatePasswordBodySchema = z.object({
 // só a sessão master (memória) ainda o envia no corpo.
 export const refreshBodySchema = z
   .object({
+    scope: z.enum(['tenant', 'admin']).default('tenant'),
     refreshToken: z
       .string({ invalid_type_error: 'Refresh token inválido' })
       .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Refresh token não informado')
@@ -59,20 +57,22 @@ export const refreshBodySchema = z
   })
   .default({});
 
+export const sessionQuerySchema = z.object({
+  scope: z.enum(['tenant', 'admin']).default('tenant'),
+});
+
 // Sem `email` — quem está verificando já provou identidade na etapa de
 // senha; o token pendente no cookie mfa_token já carrega userId/mfaCodeId.
 export const mfaVerifyBodySchema = z.object({
+  scope: z.enum(['tenant', 'admin']).optional(),
   verificationCode: requiredString('Informe o código').regex(
     mfaCodePattern,
-    `O código deve conter ${LOGIN_MFA.CODE_LENGTH} dígitos`
+    `O código deve conter ${LOGIN_MFA.CODE_LENGTH} dígitos`,
   ),
 });
 
 // Desligar MFA exige confirmação de senha — ligar não (ver enableMfa no
 // service). userId vem de request.tenantContext, não do body.
 export const mfaDisableBodySchema = z.object({
-  senha: requiredString('Informe a senha').min(
-    TEXT_LIMITS.NON_EMPTY_MIN_LENGTH,
-    'Informe a senha'
-  ),
+  senha: requiredString('Informe a senha').min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe a senha'),
 });

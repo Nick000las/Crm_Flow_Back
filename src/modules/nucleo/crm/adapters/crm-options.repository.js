@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { COLUNA_DA_LISTA, TIPOS_LISTA } from '../constants.js';
+import { usaOportunidades } from './crm-lead-read-model.js';
 
 const FIRST_RESULT_INDEX = 0;
 
@@ -16,7 +17,9 @@ const FIRST_RESULT_INDEX = 0;
  */
 
 /** Colunas no formato da API. Texto fixo deste arquivo — único motivo pra `Prisma.raw`. */
-const RETORNO_OPCAO_SQL = Prisma.raw('id, kind, key, label, color, position, category, is_active AS ativo');
+const RETORNO_OPCAO_SQL = Prisma.raw(
+  'id, kind, key, label, color, position, category, is_active AS ativo',
+);
 
 /**
  * Coluna do lead de uma lista com valor escalar. Só sai do mapa fechado
@@ -56,9 +59,8 @@ export function buscarOpcoesDoTenant(tenantId) {
  * @returns {Promise<boolean>}
  */
 export function tenantTemLeads(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT EXISTS (SELECT 1 FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid) AS existe
     `.then((rows) => Boolean(rows[FIRST_RESULT_INDEX]?.existe)),
   );
@@ -72,9 +74,8 @@ export function tenantTemLeads(tenantId) {
  * @returns {Promise<string[]>}
  */
 export function buscarTagsDosLeads(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT DISTINCT tag
       FROM modulo_crm.leads l, unnest(l.tags) AS tag
       WHERE l.tenant_id = ${tenantId}::uuid AND tag IS NOT NULL AND tag <> ''
@@ -120,9 +121,8 @@ export function inserirOpcoes(tenantId, kind, opcoes) {
  * @returns {Promise<number>} posição depois da última opção da lista
  */
 export function proximaPosicao(tenantId, kind) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT COALESCE(max(position) + 1, 0)::int AS posicao
       FROM modulo_crm.crm_option
       WHERE tenant_id = ${tenantId}::uuid AND kind = ${kind}
@@ -142,9 +142,8 @@ export function proximaPosicao(tenantId, kind) {
  */
 export function atualizarOpcao(tenantId, opcaoId, { label, color, category, ativo }) {
   const mudaCor = color !== undefined;
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE modulo_crm.crm_option
       SET label = COALESCE(${label ?? null}, label),
           color = CASE WHEN ${mudaCor} THEN ${color ?? null} ELSE color END,
@@ -184,9 +183,8 @@ export function reordenarOpcoes(tenantId, kind, idsEmOrdem) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function excluirOpcao(tenantId, opcaoId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       DELETE FROM modulo_crm.crm_option
       WHERE id = ${opcaoId}::uuid AND tenant_id = ${tenantId}::uuid
       RETURNING id
@@ -204,6 +202,27 @@ export function excluirOpcao(tenantId, opcaoId) {
  * @returns {Promise<Map<string, number>>}
  */
 export async function contarUsos(tenantId, kind) {
+  if (kind === TIPOS_LISTA.STATUS || kind === TIPOS_LISTA.MOTIVO_PERDA) {
+    const usos = await getTenantClient(tenantId, async (tx) => {
+      if (await usaOportunidades(tx)) {
+        const coluna =
+          kind === TIPOS_LISTA.STATUS ? Prisma.sql`d.status` : Prisma.sql`d.lost_reason`;
+        return tx.$queryRaw`
+          SELECT ${coluna} AS key, count(*)::int AS usos
+          FROM modulo_crm.crm_deal d
+          WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL
+          GROUP BY 1
+        `;
+      }
+      return tx.$queryRaw`
+        SELECT ${colunaDoLead(kind)} AS key, count(*)::int AS usos
+        FROM modulo_crm.leads l
+        WHERE l.tenant_id = ${tenantId}::uuid AND ${colunaDoLead(kind)} IS NOT NULL
+        GROUP BY 1
+      `;
+    });
+    return new Map(usos.map((linha) => [linha.key, linha.usos]));
+  }
   if (kind === TIPOS_LISTA.TIPO_ATIVIDADE) {
     const porTipo = await getTenantClient(
       tenantId,

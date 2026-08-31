@@ -1,0 +1,7 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": ["src/**/*.test.js", "src/**/testing/**"],
+  "delay": "750ms",
+  "exec": "node src/api/server.js"
+}

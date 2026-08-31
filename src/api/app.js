@@ -6,6 +6,7 @@ import { registerHealthRoutes } from '#api/routes/health.routes.js';
 import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { registerNotificacoesRoutes } from '#api/routes/notificacoes.routes.js';
 import { MODULES } from '#api/modules.js';
+import { registerRealtime } from '#core/realtime/socket-server.js';
 import { registerJwt } from '#core/auth/plugin.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { authenticateHook } from '#core/auth/rbac.js';
@@ -25,7 +26,12 @@ import { assertModule } from '#core/types/module.js';
 export async function buildApp(options = {}) {
   const config = options.config ?? loadEnv();
   const logger = options.logger ?? false;
-  const app = Fastify({ logger });
+  const app = Fastify({
+    logger,
+    // O watcher deve reiniciar sem ficar preso em conexões HTTP do navegador.
+    // Produção preserva o encerramento gracioso de requisições em andamento.
+    ...(config.NODE_ENV === 'development' && { forceCloseConnections: true }),
+  });
 
   app.decorate('config', config);
   app.decorateRequest('tenantContext', null);
@@ -41,6 +47,7 @@ export async function buildApp(options = {}) {
   });
   registerJwt(app, config);
   registerErrorHandlers(app);
+  await registerRealtime(app);
 
   const modules = MODULES.map(assertModule);
   assertUniqueModuleKeys(modules);
@@ -84,7 +91,9 @@ export async function buildApp(options = {}) {
 function assertUniqueModuleKeys(modules) {
   const keys = new Set();
   for (const module of modules) {
-    if (keys.has(module.key)) throw new Error(`Módulo duplicado: "${module.key}".`);
+    if (keys.has(module.key)) {
+      throw new Error(`Módulo duplicado: "${module.key}".`);
+    }
     keys.add(module.key);
   }
 }

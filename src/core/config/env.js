@@ -19,6 +19,8 @@ const envSchema = z.object({
     .min(MIN_NETWORK_PORT)
     .max(MAX_NETWORK_PORT)
     .default(DEFAULT_APP_PORT),
+  REDIS_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
+  SOCKET_REDIS_PREFIX: z.string().min(1).default('flow-crm:socket.io'),
   CORS_ORIGIN: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).default('*'),
   JWT_SECRET: z
     .string()
@@ -36,6 +38,22 @@ const envSchema = z.object({
   // Role `app_tenant` (migration 0004) — sem privilégio de dono, é por
   // onde getTenantClient() conecta pra RLS ser garantia real do Postgres.
   TENANT_DATABASE_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
+  FRONTEND_URL: z.string().url().optional(),
+  KANBAN_EMAIL_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+  KANBAN_EMAIL_TIMEZONE: z
+    .string()
+    .default('America/Sao_Paulo')
+    .refine((value) => {
+      try {
+        new Intl.DateTimeFormat('pt-BR', { timeZone: value });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Fuso horário inválido.'),
   SMTP_HOST: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
   SMTP_PORT: z.coerce
     .number()
@@ -56,7 +74,6 @@ const envSchema = z.object({
     .default(DEFAULT_SMTP_TIMEOUT_MS),
   // Fila de importação do CRM (BullMQ). Opcional no bootstrap: sem ela o
   // servidor sobe normal e só POST /crm/import/:jobId/confirm responde 503.
-  REDIS_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
   // Rate limit do worker na consulta de CNPJ (CRM, M11b): no máximo
   // CNPJ_LIMITE_MAX consultas a cada CNPJ_LIMITE_JANELA_MS. Sem elas, o
   // padrão do módulo.

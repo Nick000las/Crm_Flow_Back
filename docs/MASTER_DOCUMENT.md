@@ -153,7 +153,7 @@ Fluxo de pagamento distinto do consumo de Wallet (1.3.2) — trata da cobrança 
 - **Débito atômico obrigatório:** toda operação de débito de wallet é feita via `UPDATE` atômico no Postgres (`SET balance = balance - X WHERE balance >= X`), nunca via leitura-e-escrita na aplicação — elimina condição de corrida entre workers/instâncias concorrentes debitando o mesmo saldo.
 - **Reconciliação Real vs. Estimado:** job periódico que compara o ledger interno de débitos com o relatório de billing real da Meta/provedores de IA, disparando alerta interno se a divergência ultrapassar um threshold (ex: 2-3%).
 - **Bring Your Own Key (BYOK):** Para contas que fornecem as próprias chaves (Meta, OpenAI, Groq), a empresa fatura exclusivamente sobre licenciamento de software elevado, sem risco de infraestrutura de IA.
-- **Cláusula de Uso Razoável para BYOK:** mesmo sem cobrança por token/mensagem, o volume processado pela plataforma (fila, workers, socket, storage) tem custo de infraestrutura próprio. O consumo de *plataforma* é registrado separadamente do consumo de *IA/Meta* desde o desenho do schema (mesmo para tenants BYOK, que não são debitados na segunda métrica), com um volume de referência por contrato e fee de infraestrutura sobre excedente.
+- **Cláusula de Uso Razoável para BYOK:** mesmo sem cobrança por token/mensagem, o volume processado pela plataforma (fila, workers, socket, storage) tem custo de infraestrutura próprio. O consumo de _plataforma_ é registrado separadamente do consumo de _IA/Meta_ desde o desenho do schema (mesmo para tenants BYOK, que não são debitados na segunda métrica), com um volume de referência por contrato e fee de infraestrutura sobre excedente.
 
 ## 1.4. SLA, Presença e Dashboard de Retenção
 
@@ -178,19 +178,21 @@ Utilizaremos o PostgreSQL (Neon DB). O vazamento de dados entre clientes é prev
 - **Regra do Tenant:** Todas as tabelas de negócio — do núcleo e de qualquer módulo vertical (ver Bloco 1.1.1) — exigem a coluna `tenant_id`, com Row-Level Security habilitado e policy correspondente. Sem exceção.
 
 - **Camada de Acesso Dedicada (Tenant-Scoped Query Gateway):** o Backend (Fastify) não expõe o Prisma Client diretamente para código de negócio que toca dado de tenant. Em vez disso, toda query multi-tenant passa por um wrapper dedicado, construído sobre um client raw (`postgres.js` ou `pg`), que garante determinística e explicitamente:
+
   ```
   BEGIN
   SET LOCAL app.current_tenant = '<tenant_id>'
   <query de negócio>
   COMMIT
   ```
+
   executado na mesma conexão física, do início ao fim. Essa garantia é o que impede requisições assíncronas concorrentes de misturarem contexto de tenant em instâncias de banco com alta concorrência.
 
-  *Por que não usar `prisma.$transaction` interativo diretamente:* cada transação interativa do Prisma reserva uma conexão dedicada do pool pela duração inteira da request. Sob volume real de usuários simultâneos, isso esgota o pool rapidamente — um problema que não aparece em desenvolvimento e só se manifesta sob carga de produção. O Prisma Client continua sendo usado normalmente para operações administrativas internas, migrations e qualquer dado sem `tenant_id`; apenas o caminho de dado multi-tenant passa pelo gateway dedicado.
+  _Por que não usar `prisma.$transaction` interativo diretamente:_ cada transação interativa do Prisma reserva uma conexão dedicada do pool pela duração inteira da request. Sob volume real de usuários simultâneos, isso esgota o pool rapidamente — um problema que não aparece em desenvolvimento e só se manifesta sob carga de produção. O Prisma Client continua sendo usado normalmente para operações administrativas internas, migrations e qualquer dado sem `tenant_id`; apenas o caminho de dado multi-tenant passa pelo gateway dedicado.
 
   **Decisão de MVP:** para o time atual (dois desenvolvedores, prazo curto), o MVP inicia com `prisma.$transaction` interativo para o caminho multi-tenant — mais simples de implementar e suficiente para o volume inicial de usuários. O gateway dedicado é debt técnico documentado, não esquecido, com gatilho de migração explícito e mensurável: monitoramento de utilização do pool de conexões (exposto nativamente pelo Neon), migrando para o gateway dedicado quando a utilização ultrapassar 70-80% em uso normal (fora de pico) — antes que vire incidente em produção. Desde o MVP, o `connection_limit` do Prisma e o tamanho do pool do Neon são dimensionados com folga consciente (não o default), com alerta caso a aplicação comece a enfileirar/esperar por conexão — o primeiro sinal de alerta, anterior ao próprio threshold de migração.
 
-- **Teste de Isolamento Automatizado (CI Gate):** um teste de integração roda a cada Pull Request tentando *ativamente* vazar dados entre dois tenants de teste (não apenas validar que "funciona", mas provar que não é possível burlar). Um segundo teste varre o schema do banco inteiro e falha o build se encontrar qualquer tabela com coluna `tenant_id` sem RLS habilitado e sem policy correspondente. Ambos são bloqueadores de merge — a segurança de isolamento não depende de disciplina humana de lembrar de aplicar RLS em cada tabela nova, especialmente considerando o volume de tabelas projetado pelos Módulos Verticais (Bloco 1.1.1).
+- **Teste de Isolamento Automatizado (CI Gate):** um teste de integração roda a cada Pull Request tentando _ativamente_ vazar dados entre dois tenants de teste (não apenas validar que "funciona", mas provar que não é possível burlar). Um segundo teste varre o schema do banco inteiro e falha o build se encontrar qualquer tabela com coluna `tenant_id` sem RLS habilitado e sem policy correspondente. Ambos são bloqueadores de merge — a segurança de isolamento não depende de disciplina humana de lembrar de aplicar RLS em cada tabela nova, especialmente considerando o volume de tabelas projetado pelos Módulos Verticais (Bloco 1.1.1).
 
 ## 2.2. Gestão de Segredos e Versionamento Criptográfico
 
@@ -323,7 +325,7 @@ Nesse escopo, o n8n é reservado para automações pontuais e específicas por s
 
 ## 5.2. Ponto Único de Falha (SPOF) — Risco Aceito e Documentado
 
-Rodando como instância única em Docker, uma queda do n8n interrompe as automações que dependem dele — incluindo o próprio Reverse Callback que normalmente alertaria sobre falhas de integração. Dado o escopo limitado a automações não-críticas (5.1), esse risco é conscientemente aceito nesta fase, sem investimento em *queue mode* (Redis + múltiplos workers) ou alta disponibilidade. Caso o n8n se prove uma oferta permanente e cresça em criticidade, essa decisão de infraestrutura é revisitada nesse momento — não antes.
+Rodando como instância única em Docker, uma queda do n8n interrompe as automações que dependem dele — incluindo o próprio Reverse Callback que normalmente alertaria sobre falhas de integração. Dado o escopo limitado a automações não-críticas (5.1), esse risco é conscientemente aceito nesta fase, sem investimento em _queue mode_ (Redis + múltiplos workers) ou alta disponibilidade. Caso o n8n se prove uma oferta permanente e cresça em criticidade, essa decisão de infraestrutura é revisitada nesse momento — não antes.
 
 ## 5.3. Roteamento (Master vs. Isolated Workflows)
 

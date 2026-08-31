@@ -1,14 +1,15 @@
 import { pathToFileURL } from 'node:url';
-import { buildApp } from '#api/app.js';
 import { loadEnv } from '#core/config/env.js';
+import { listenOptions } from './listen-options.js';
 
 const ENTRY_SCRIPT_ARGUMENT_INDEX = 1;
 const FAILURE_EXIT_CODE = 1;
 
-export { buildApp } from '#api/app.js';
-
 async function main() {
   const config = loadEnv();
+  // Import only after dotenv has been loaded and configuration validated.
+  // The app imports Prisma clients at module evaluation time.
+  const { buildApp } = await import('#api/app.js');
   const app = await buildApp({ config, logger: true });
 
   const shutdown = async () => {
@@ -18,7 +19,7 @@ async function main() {
   process.once('SIGINT', () => void shutdown());
   process.once('SIGTERM', () => void shutdown());
 
-  await app.listen({ port: config.PORT, host: config.HOST });
+  await app.listen(listenOptions(config));
 }
 
 if (
