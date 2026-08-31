@@ -27,6 +27,7 @@ const ESFRIA_EM = Prisma.sql`(
   ) + make_interval(days => o.stale_days)
   FROM modulo_crm.crm_option o
   WHERE o.tenant_id = l.tenant_id AND o.kind = 'status' AND o.key = l.status
+    AND (to_jsonb(o)->>'pipeline_id') IS NOT DISTINCT FROM (to_jsonb(l)->>'pipeline_id')
 )`;
 
 const LEAD_NA_LISTA = Prisma.sql`l.archived_at IS NULL AND l.deleted_at IS NULL`;

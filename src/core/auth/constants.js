@@ -25,8 +25,7 @@ export const PASSWORD_ACTIVATION = Object.freeze({
   RESEND_COOLDOWN_SECONDS: MILLISECONDS_PER_MINUTE / 1_000,
   EXPIRATION_MINUTES: ACTIVATION_CODE_EXPIRATION_MINUTES,
   EXPIRATION_MS: ACTIVATION_CODE_EXPIRATION_MINUTES * MILLISECONDS_PER_MINUTE,
-  TOKEN_EXPIRATION_SECONDS:
-    ACTIVATION_TOKEN_EXPIRATION_MINUTES * SECONDS_PER_MINUTE,
+  TOKEN_EXPIRATION_SECONDS: ACTIVATION_TOKEN_EXPIRATION_MINUTES * SECONDS_PER_MINUTE,
 });
 
 export const LOGIN_MFA = Object.freeze({
@@ -45,13 +44,14 @@ export const LOGIN_MFA = Object.freeze({
 });
 
 /**
- * Sessão de tenant persistida em cookie httpOnly (sobrevive ao F5). O cookie
+ * Sessões de tenant e admin persistidas em cookies httpOnly distintos. O cookie
  * vive o mesmo tanto que o refresh token que carrega.
  */
 export const REFRESH_SESSION = Object.freeze({
   COOKIE_NAME: 'refresh_token',
-  // Cobre /auth/refresh e /auth/logout — e nenhuma rota de módulo.
-  COOKIE_PATH: '/auth',
+  ADMIN_COOKIE_NAME: 'admin_refresh_token',
+  COOKIE_PATH: '/',
+  LEGACY_COOKIE_PATH: '/auth',
   TOKEN_EXPIRATION_SECONDS: REFRESH_TOKEN_EXPIRATION_DAYS * SECONDS_PER_DAY,
 });
 

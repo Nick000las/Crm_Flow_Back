@@ -1,38 +1,8 @@
-import { getTenantClient } from '#core/db/tenantClient.js';
-
-/**
- * ADAPTER: único lugar deste módulo que chama getTenantClient.
- * @typedef {import('../types/index.js').Card} Card
- */
-
-/**
- * @param {string} tenantId
- * @param {string} cardId
- * @param {string} novaColunaId
- * @returns {Promise<void>}
- */
-export function moverCard(tenantId, cardId, novaColunaId) {
-  return getTenantClient(tenantId, async (tx) => {
-    await tx.$executeRaw`
-      UPDATE modulo_kanban_universal.cards
-      SET coluna_id = ${novaColunaId}::uuid, updated_at = now()
-      WHERE id = ${cardId}::uuid AND tenant_id = ${tenantId}::uuid
-    `;
-  });
+import { executar } from './kanban.repository.js';
+// Compatibilidade para consumidores antigos, usando a mesma transação validada.
+export function moverCard(context, cardId, novaColunaId) {
+  return executar(context.tenantId, 'card.move', cardId, { novaColunaId, novaOrdem: 0 }, context);
 }
-
-/**
- * @param {string} tenantId
- * @param {string} boardId
- * @returns {Promise<Card[]>}
- */
-export function buscarCardsPorBoard(tenantId, boardId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
-      SELECT id, board_id, coluna_id, titulo, responsavel_id, dados_extras
-      FROM modulo_kanban_universal.cards
-      WHERE tenant_id = ${tenantId}::uuid AND board_id = ${boardId}::uuid
-    `,
-  );
+export function buscarCardsPorBoard(context, boardId) {
+  return executar(context.tenantId, 'card.list', boardId, {}, context);
 }

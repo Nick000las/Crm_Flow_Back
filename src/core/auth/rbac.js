@@ -14,7 +14,9 @@ import { sendError } from '#shared/http/response.js';
 export async function authenticateHook(req, reply) {
   try {
     const payload = await req.accessJwtVerify();
-    if (!isTenantContext(payload)) throw new Error('Payload JWT inválido');
+    if (!isTenantContext(payload)) {
+      throw new Error('Payload JWT inválido');
+    }
     req.tenantContext = {
       tenantId: payload.tenantId,
       userId: payload.userId,
@@ -31,10 +33,12 @@ export async function authenticateHook(req, reply) {
 
 /** @param {unknown} payload */
 function isTenantContext(payload) {
-  if (!payload || typeof payload !== 'object') return false;
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
   const value = /** @type {Partial<TenantContext>} */ (payload);
   return (
-    typeof value.tenantId === 'string' &&
+    (typeof value.tenantId === 'string' || (value.tenantId === null && value.role === 'MASTER')) &&
     typeof value.userId === 'string' &&
     ['MASTER', 'DONO', 'OPERADOR'].includes(value.role ?? '')
   );

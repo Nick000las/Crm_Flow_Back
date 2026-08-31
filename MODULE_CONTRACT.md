@@ -26,7 +26,7 @@ O que **não** é módulo — mesmo sendo backend, mesmo tendo rota HTTP:
 - **Infraestrutura compartilhada** que mais de um módulo usa (auth, gateway de
   banco, config, error handling). Isso mora em `src/core/`.
 
-Se está em dúvida se algo é módulo: pergunte "isso faz sentido *desligado*
+Se está em dúvida se algo é módulo: pergunte "isso faz sentido _desligado_
 para um tenant específico, enquanto outro tenant continua usando?". Se sim,
 é módulo. Se não, é `core/` ou `api/`.
 
@@ -55,12 +55,9 @@ src/modules/<categoria>/<nome-do-modulo>/
 não usa — mas nunca pode inventar uma pasta nova fora deste conjunto sem
 atualizar este documento.
 
-`schemas/` é opcional. Use pasta própria quando o módulo tiver **mais de ~2
-schemas Zod**; com 1 ou 2, mantenha inline no arquivo do `controller` que o
-usa — é o que CRM (`leads.controller.js`) e kanban (`board.controller.js`)
-fazem hoje, 1 schema cada. Nenhum módulo dentro de `src/modules/` precisa
-disso ainda — o critério fica documentado aqui pra quando um crescer o
-suficiente.
+`schemas/` concentra contratos Zod complexos, reutilizáveis ou com testes
+próprios. Validações pequenas e locais podem continuar inline no controller.
+O Kanban já utiliza essa pasta para contratos de cards e eventos em tempo real.
 
 Exemplo real: `src/modules/nucleo/crm/` segue essa estrutura à risca — vale
 usar como referência sempre que tiver dúvida de onde algo vai.
@@ -102,11 +99,14 @@ Toda query de negócio que toca uma tabela com `tenant_id` passa por
 import { getTenantClient } from '#core/db/tenantClient.js';
 
 export function buscarLeadsPorTenant(tenantId) {
-  return getTenantClient(tenantId, (tx) => tx.$queryRaw`
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
     SELECT id, nome, telefone FROM modulo_crm.leads
     WHERE tenant_id = ${tenantId}::uuid
     ORDER BY created_at DESC
-  `);
+  `,
+  );
 }
 ```
 
@@ -124,8 +124,10 @@ Tabelas de módulo (`modulo_crm.*`, `modulo_kanban_universal.*`, etc.) não são
 `model` do Prisma — são SQL cru, acessado via `$queryRaw`/`$executeRaw`
 dentro do `adapter`. Isso é proposital: RLS, triggers e alguns `CHECK` não
 são representáveis em Prisma Schema Language (ver comentário no topo de
-`prisma/schema.prisma`). `getAdminClient()` é uso restrito, só para
-operações administrativas sem tenant ainda existente (ex: provisionamento).
+`prisma/schema.prisma`). `getAdminClient()` é uso restrito para operações de plataforma sem contexto de
+tenant (ex: provisionamento). O worker de e-mails do Kanban pode usá-lo somente
+para descobrir IDs de tenants elegíveis; fila e conteúdo de módulos continuam
+obrigatoriamente em `getTenantClient()` com RLS.
 
 ## 5. Toda tabela nova precisa de `tenant_id` + RLS + policy
 

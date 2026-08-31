@@ -5,6 +5,7 @@
  * apenas com base nestes códigos e no status HTTP.
  */
 export const ERROR_CODES = Object.freeze({
+  CRM_SCHEMA_INCOMPATIBLE: 'CRM_SCHEMA_INCOMPATIBLE',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INVALID_JSON: 'INVALID_JSON',
   ROUTE_NOT_FOUND: 'ROUTE_NOT_FOUND',

@@ -14,15 +14,24 @@ jobs:
   validate-foundation:
     name: Validação de Segurança e Isolamento
     runs-on: ubuntu-latest
-    
+
     # Prática de segurança: Princípio do Menor Privilégio
     permissions:
       contents: read
-      
+
     # Configuração do banco de dados efêmero para rodar os testes
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
       postgres:
-        image: postgres:15  # PostgreSQL 14+ suporta as extensões necessárias
+        image: postgres:15 # PostgreSQL 14+ suporta as extensões necessárias
         env:
           POSTGRES_USER: tester
           POSTGRES_PASSWORD: tester_password
@@ -37,36 +46,48 @@ jobs:
 
     # Variáveis de ambiente injetadas no runner
     env:
+      KANBAN_TEST_REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgresql://tester:tester_password@localhost:5432/swas_test?schema=public
       # Role `app_tenant`, criado pela migration 0004 (o Postgres efêmero do
       # CI roda como superusuário, então o bloco CREATE ROLE da migration
       # não é no-op aqui — cria o role de verdade). Faz o gate de isolamento
       # validar o fix de RLS de ponta a ponta, não só em produção.
       TENANT_DATABASE_URL: postgresql://app_tenant:ci_local_dev_only_change_me@localhost:5432/swas_test?schema=public
-      JWT_SECRET: "chave-mock-para-testes-123"
-      JWT_REFRESH_SECRET: "chave-mock-para-testes-456"
+      JWT_SECRET: 'chave-mock-para-testes-123'
+      JWT_REFRESH_SECRET: 'chave-mock-para-testes-456'
 
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
-        
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
       - name: Configurar Node.js (>= 20.11)
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Instalar dependências
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Validação de Fronteiras de Módulo (Lint)
         run: npm run lint
 
+      - name: Verificar formatação
+        run: pnpm format:check
+
       - name: Aplicar Migrations no Banco de Teste
         run: npm run db:migrate
-        
+
       - name: CI Gate (Bloqueador) - Cobertura de RLS
         run: npm run test:rls-coverage
 
       - name: CI Gate (Bloqueador) - Teste de Isolamento de Tenant
         run: npm run test:tenant-isolation
+
+      - name: Integração de quadros e equipes
+        run: pnpm test:kanban:integration

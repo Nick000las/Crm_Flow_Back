@@ -7,7 +7,7 @@ const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * A fronteira entre módulos NÃO é física (não há workspaces) — é garantida aqui.
- * Ver `.claude/rules/multi-tenant.md` e MODULE_CONTRACT.md.
+ * Ver `.agents/references/multi-tenant.md` e MODULE_CONTRACT.md.
  */
 
 const MSG_ALIAS =

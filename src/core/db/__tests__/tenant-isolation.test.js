@@ -27,10 +27,14 @@ describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vaza
       ],
     });
     await getTenantClient(tenantA, (tx) =>
-      tx.usuario.create({ data: { tenantId: tenantA, nome: 'A', email: 'a@teste.com', senhaHash: 'x' } }),
+      tx.usuario.create({
+        data: { tenantId: tenantA, nome: 'A', email: 'a@teste.com', senhaHash: 'x' },
+      }),
     );
     await getTenantClient(tenantB, (tx) =>
-      tx.usuario.create({ data: { tenantId: tenantB, nome: 'B', email: 'b@teste.com', senhaHash: 'x' } }),
+      tx.usuario.create({
+        data: { tenantId: tenantB, nome: 'B', email: 'b@teste.com', senhaHash: 'x' },
+      }),
     );
   });
 

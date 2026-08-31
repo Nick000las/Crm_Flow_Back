@@ -18,9 +18,23 @@ const adminPrisma = new PrismaClient();
 // de dono. É isso que faz o RLS ser garantia do Postgres e não só
 // convenção de código: dono de tabela ignora RLS por padrão, um role
 // comum não tem escolha.
-const tenantPrisma = new PrismaClient({
-  datasources: { db: { url: process.env.TENANT_DATABASE_URL } },
-});
+let tenantPrisma;
+
+function getTenantPrisma() {
+  if (tenantPrisma) {
+    return tenantPrisma;
+  }
+
+  const url = process.env.TENANT_DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      'TENANT_DATABASE_URL não configurada — o acesso multi-tenant exige uma conexão com role restrito.',
+    );
+  }
+
+  tenantPrisma = new PrismaClient({ datasources: { db: { url } } });
+  return tenantPrisma;
+}
 
 /**
  * @template T
@@ -32,7 +46,7 @@ export async function getTenantClient(tenantId, callback) {
   if (!isValidUuid(tenantId)) {
     throw new Error(`tenantId inválido recebido pelo gateway multi-tenant: "${tenantId}"`);
   }
-  return tenantPrisma.$transaction(async (tx) => {
+  return getTenantPrisma().$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
     return callback(tx);
   });
@@ -48,7 +62,10 @@ export function getAdminClient() {
 
 /** Encerra os pools durante o shutdown gracioso e ao finalizar testes. */
 export async function disconnectDatabase() {
-  await Promise.all([adminPrisma.$disconnect(), tenantPrisma.$disconnect()]);
+  await Promise.all([
+    adminPrisma.$disconnect(),
+    tenantPrisma?.$disconnect() ?? Promise.resolve(),
+  ]);
 }
 
 /**

@@ -53,11 +53,7 @@ export async function getLatestCodigoVerificacao({ usuarioId, proposito }) {
  *
  * @param {{ codigoId: string, usuarioId: string, usadoEm: Date }} input
  */
-export async function invalidateCodigoVerificacao({
-  codigoId,
-  usuarioId,
-  usadoEm,
-}) {
+export async function invalidateCodigoVerificacao({ codigoId, usuarioId, usadoEm }) {
   return getAdminClient().codigoVerificacao.updateMany({
     where: {
       id: codigoId,

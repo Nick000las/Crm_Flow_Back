@@ -55,10 +55,7 @@ const argsSchema = z.object({
     .min(1, 'Informe --email')
     .email('E-mail inválido')
     .transform((email) => email.toLowerCase()),
-  nome: z
-    .string({ required_error: 'Informe --nome' })
-    .trim()
-    .min(1, 'Informe --nome'),
+  nome: z.string({ required_error: 'Informe --nome' }).trim().min(1, 'Informe --nome'),
 });
 
 async function main() {

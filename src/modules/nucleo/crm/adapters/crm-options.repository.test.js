@@ -26,6 +26,9 @@ function registrar(strings, values) {
 const tx = {
   $queryRaw: vi.fn(async (strings, ...values) => {
     registrar(strings, values);
+    if (strings.join('').includes('to_regclass')) {
+      return [{ oportunidades: false, funil_legado: true, status_legado: true }];
+    }
     return resposta;
   }),
 };
@@ -40,7 +43,7 @@ describe('contarUsos', () => {
   it('lista escalar agrupa pela coluna fixa do mapa (nunca texto do cliente)', async () => {
     resposta = [{ key: 'ganho', usos: USOS }];
     const usos = await contarUsos(TENANT, TIPOS_LISTA.STATUS);
-    expect(chamadas[0].sql).toContain('SELECT l.status AS key');
+    expect(chamadas.at(-1).sql).toContain('SELECT l.status AS key');
     expect(usos.get('ganho')).toBe(USOS);
   });
 

@@ -15,6 +15,7 @@ import {
   disableMfa as disableMfaService,
   enableMfa as enableMfaService,
   getSessionUser,
+  getUserSettings,
   getUserContext,
   verifyActivationCode,
   verifyLoginMfaCode,
@@ -30,6 +31,7 @@ vi.mock('../services/login.service.js', () => ({
   disableMfa: vi.fn(),
   getUserContext: vi.fn(),
   getSessionUser: vi.fn(),
+  getUserSettings: vi.fn(),
 }));
 
 const FRONTEND_ORIGIN = 'http://localhost:5173';
@@ -39,7 +41,8 @@ const MFA_COOKIE_NAME = 'mfa_token';
 const MFA_COOKIE_PATH = '/auth/mfa';
 const PREFLIGHT_STATUS_CODE = 204;
 const REFRESH_COOKIE_NAME = 'refresh_token';
-const REFRESH_COOKIE_PATH = '/auth';
+const REFRESH_COOKIE_PATH = '/';
+const ADMIN_REFRESH_COOKIE_NAME = 'admin_refresh_token';
 const COOKIE_EXPIRADO = 'Expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
 /** `set-cookie` vira array quando a resposta grava mais de um cookie. */
@@ -97,9 +100,7 @@ describe('cookies do fluxo de ativação', () => {
       });
 
       expect(response.statusCode).toBe(PREFLIGHT_STATUS_CODE);
-      expect(response.headers['access-control-allow-origin']).toBe(
-        FRONTEND_ORIGIN
-      );
+      expect(response.headers['access-control-allow-origin']).toBe(FRONTEND_ORIGIN);
       expect(response.headers['access-control-allow-credentials']).toBe('true');
     } finally {
       await app.close();
@@ -151,10 +152,7 @@ describe('cookies do fluxo de ativação', () => {
       userId: activationContext.userId,
       role: 'DONO',
     };
-    const activationToken = signPasswordActivationToken(
-      app,
-      activationContext
-    );
+    const activationToken = signPasswordActivationToken(app, activationContext);
     vi.mocked(activatePassword).mockResolvedValue(tenantContext);
 
     try {
@@ -426,7 +424,7 @@ describe('MFA por e-mail no login', () => {
 });
 
 describe('sessão persistida em cookie (refresh_token)', () => {
-  it('MASTER recebe o refresh no corpo e nenhum cookie — a sessão admin é só memória', async () => {
+  it('MASTER recebe cookie próprio sem sobrescrever o tenant nem expor refresh no corpo', async () => {
     vi.mocked(authenticateWithPassword).mockResolvedValue({
       tenantId: null,
       userId: 'master-id',
@@ -443,9 +441,9 @@ describe('sessão persistida em cookie (refresh_token)', () => {
 
       expect(response.json().data).toEqual({
         accessToken: expect.any(String),
-        refreshToken: expect.any(String),
       });
       expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toBeUndefined();
+      expect(cookieChamado(response, ADMIN_REFRESH_COOKIE_NAME)).toContain('HttpOnly');
     } finally {
       await app.close();
     }
@@ -453,7 +451,11 @@ describe('sessão persistida em cookie (refresh_token)', () => {
 
   it('renova o access token lendo o refresh do cookie', async () => {
     const app = await createTestApp();
-    vi.mocked(getUserContext).mockResolvedValue({ tenantId: 'tenant-id', userId: 'user-id', role: 'DONO' });
+    vi.mocked(getUserContext).mockResolvedValue({
+      tenantId: 'tenant-id',
+      userId: 'user-id',
+      role: 'DONO',
+    });
 
     try {
       const response = await app.inject({
@@ -472,7 +474,11 @@ describe('sessão persistida em cookie (refresh_token)', () => {
 
   it('o refresh do corpo tem prioridade sobre o cookie (sessão master no mesmo navegador)', async () => {
     const app = await createTestApp();
-    vi.mocked(getUserContext).mockResolvedValue({ tenantId: null, userId: 'master-id', role: 'MASTER' });
+    vi.mocked(getUserContext).mockResolvedValue({
+      tenantId: null,
+      userId: 'master-id',
+      role: 'MASTER',
+    });
 
     try {
       await app.inject({
@@ -495,7 +501,9 @@ describe('sessão persistida em cookie (refresh_token)', () => {
       const response = await app.inject({ method: 'POST', url: '/auth/refresh' });
 
       expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
-      expect(response.json()).toMatchObject({ error: { code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN } });
+      expect(response.json()).toMatchObject({
+        error: { code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN },
+      });
     } finally {
       await app.close();
     }
@@ -537,6 +545,340 @@ describe('sessão persistida em cookie (refresh_token)', () => {
       expect(cookieChamado(tenant, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
       expect(master.statusCode).toBe(HTTP_STATUS.OK);
       expect(cookieChamado(master, REFRESH_COOKIE_NAME)).toBeUndefined();
+      expect(cookieChamado(master, ADMIN_REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('GET /me restaura sessões independentes', () => {
+  const tenant = { tenantId: 'tenant-id', userId: 'user-id', role: 'DONO' };
+  const master = { tenantId: null, userId: 'master-id', role: 'MASTER' };
+
+  it('bootstrap sem login ou com cookie vencido é estado anônimo sem 401', async () => {
+    const app = await createTestApp();
+    try {
+      for (const url of ['/auth/session', '/auth/session?scope=admin']) {
+        const response = await app.inject({ method: 'GET', url });
+        expect(response.statusCode).toBe(HTTP_STATUS.OK);
+        expect(response.json().data).toEqual({ accessToken: null, user: null });
+        expect(response.headers['cache-control']).toBe('no-store');
+      }
+      const expired = await app.inject({
+        method: 'GET',
+        url: '/auth/session',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=invalido` },
+      });
+      expect(expired.statusCode).toBe(HTTP_STATUS.OK);
+      expect(expired.json().data.user).toBeNull();
+      expect(cookieChamado(expired, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+      const protectedRoute = await app.inject({ method: 'GET', url: '/admin/tenants' });
+      expect(protectedRoute.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('bootstrap migra cookie legado e restaura permissões sem chamar refresh', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue(tenant);
+    vi.mocked(getSessionUser).mockResolvedValue({
+      ...tenant,
+      modulosAtivos: ['crm'],
+      featuresAtivas: [],
+    });
+    vi.mocked(getUserSettings).mockResolvedValue({ role: 'DONO', mfaAtivo: true });
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/session',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}` },
+      });
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(response.json().data.user).toMatchObject({
+        ...tenant,
+        modulosAtivos: ['crm'],
+        mfaAtivo: true,
+      });
+      expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toContain('Path=/;');
+      expect(
+        cookiesDaResposta(response).some(
+          (cookie) => cookie.includes('Path=/auth;') && cookie.includes(COOKIE_EXPIRADO),
+        ),
+      ).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('MASTER com tenant preserva CRM e flags no login, no F5 e na área administrativa', async () => {
+    const app = await createTestApp();
+    const context = { ...tenant, role: 'MASTER' };
+    const permissions = {
+      modulosAtivos: ['crm', 'kanban_universal'],
+      featuresAtivas: ['crm.timeline', 'crm.layout', 'crm.lgpd'],
+    };
+    vi.mocked(authenticateWithPassword).mockResolvedValue(context);
+    vi.mocked(getUserContext).mockResolvedValue(context);
+    vi.mocked(getSessionUser).mockResolvedValue({ ...context, ...permissions });
+    vi.mocked(getUserSettings).mockResolvedValue({
+      nome: 'Master',
+      role: 'MASTER',
+      mfaAtivo: false,
+    });
+    try {
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login/password',
+        payload: {
+          email: 'master@example.com',
+          senha: 'senha-segura',
+          scope: 'tenant',
+        },
+      });
+      expect(login.statusCode).toBe(HTTP_STATUS.OK);
+      const cookie = cookieChamado(login, REFRESH_COOKIE_NAME).split(';')[0];
+      expect(cookieChamado(login, ADMIN_REFRESH_COOKIE_NAME)).toBeUndefined();
+      for (const headers of [
+        { authorization: `Bearer ${login.json().data.accessToken}` },
+        { cookie },
+      ]) {
+        const me = await app.inject({ method: 'GET', url: '/me', headers });
+        expect(me.statusCode).toBe(HTTP_STATUS.OK);
+        expect(me.json().data.user).toMatchObject({ ...context, ...permissions });
+      }
+      const admin = await app.inject({
+        method: 'GET',
+        url: '/me?scope=admin',
+        headers: {
+          authorization: `Bearer ${login.json().data.accessToken}`,
+        },
+      });
+      expect(admin.json().data.user).toMatchObject(permissions);
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          authorization: `Bearer ${login.json().data.accessToken}`,
+        },
+        payload: { scope: 'tenant' },
+      });
+      expect(cookieChamado(logout, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+      expect(cookieChamado(logout, ADMIN_REFRESH_COOKIE_NAME)).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('login, F5, refresh e logout mantêm o cookie da outra área', async () => {
+    const app = await createTestApp();
+    vi.mocked(authenticateWithPassword).mockResolvedValue(master);
+    vi.mocked(getUserContext).mockResolvedValue(master);
+    vi.mocked(getUserSettings).mockResolvedValue({ role: 'MASTER', mfaAtivo: true });
+    try {
+      const login = await app.inject({
+        method: 'POST',
+        url: '/auth/login/password',
+        payload: {
+          email: 'master@example.com',
+          senha: 'senha-segura',
+        },
+      });
+      const cookie = cookieChamado(login, ADMIN_REFRESH_COOKIE_NAME).split(';')[0];
+      const headers = { cookie: `${cookie}; ${REFRESH_COOKIE_NAME}=outra-sessao` };
+      const me = await app.inject({ method: 'GET', url: '/me?scope=admin', headers });
+      expect(me.statusCode).toBe(HTTP_STATUS.OK);
+      const refresh = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers,
+        payload: { scope: 'admin' },
+      });
+      expect(refresh.statusCode).toBe(HTTP_STATUS.OK);
+      expect(cookieChamado(refresh, REFRESH_COOKIE_NAME)).toBeUndefined();
+      const logout = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          ...headers,
+          authorization: `Bearer ${me.json().data.accessToken}`,
+        },
+      });
+      expect(logout.statusCode).toBe(HTTP_STATUS.OK);
+      expect(cookieChamado(logout, ADMIN_REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+      expect(cookieChamado(logout, REFRESH_COOKIE_NAME)).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refresh migra cookie antigo para / e remove o path legado', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue(tenant);
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: {
+          cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}`,
+        },
+      });
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toContain('Path=/;');
+      expect(
+        cookiesDaResposta(response).some(
+          (cookie) => cookie.includes('Path=/auth;') && cookie.includes(COOKIE_EXPIRADO),
+        ),
+      ).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refresh expirado não restaura a sessão', async () => {
+    const app = await createTestApp();
+    const expired = app.jwt.refresh.sign(
+      { userId: tenant.userId, purpose: 'refresh' },
+      { expiresIn: -1 },
+    );
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: {
+          cookie: `${REFRESH_COOKIE_NAME}=${expired}`,
+        },
+      });
+      expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('restaura usuário, flags e MFA usando apenas o cookie após F5', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue(tenant);
+    vi.mocked(getSessionUser).mockResolvedValue({
+      ...tenant,
+      modulosAtivos: ['crm'],
+      featuresAtivas: ['crm.layout'],
+    });
+    vi.mocked(getUserSettings).mockResolvedValue({ nome: 'Usuário', mfaAtivo: true, role: 'DONO' });
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: {
+          cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}`,
+        },
+      });
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.json().data).toMatchObject({
+        accessToken: expect.any(String),
+        user: {
+          ...tenant,
+          nome: 'Usuário',
+          mfaAtivo: true,
+          modulosAtivos: ['crm'],
+          featuresAtivas: ['crm.layout'],
+        },
+      });
+      expect(response.json().data.refreshToken).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('admin usa apenas seu cookie mesmo com tenant aberto no navegador', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue(master);
+    vi.mocked(getUserSettings).mockResolvedValue({
+      nome: 'Master',
+      role: 'MASTER',
+      mfaAtivo: false,
+    });
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/me?scope=admin',
+        headers: {
+          cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}; ${ADMIN_REFRESH_COOKIE_NAME}=${signRefreshToken(app, master.userId)}`,
+        },
+      });
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(getUserContext).toHaveBeenLastCalledWith({ userId: master.userId });
+      expect(response.json().data.user).toMatchObject(master);
+      const check = await app.inject({
+        method: 'GET',
+        url: '/me?scope=admin',
+        headers: {
+          authorization: `Bearer ${response.json().data.accessToken}`,
+        },
+      });
+      expect(check.statusCode).toBe(HTTP_STATUS.OK);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('não restaura admin pelo cookie de tenant nem aceita cookie de escopo trocado', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue(tenant);
+    try {
+      for (const cookie of [
+        `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}`,
+        `${ADMIN_REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}`,
+      ]) {
+        const response = await app.inject({
+          method: 'GET',
+          url: '/me?scope=admin',
+          headers: { cookie },
+        });
+        expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('sem cookie não apaga o cookie legado antes de sua migração', async () => {
+    const app = await createTestApp();
+    try {
+      const response = await app.inject({ method: 'GET', url: '/me' });
+      expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('cookie adulterado é apagado e usuário inativo não é restaurado', async () => {
+    const app = await createTestApp();
+    try {
+      const invalid = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=adulterado` },
+      });
+      expect(invalid.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      expect(cookieChamado(invalid, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+      const { AppError } = await import('#core/errors/app-error.js');
+      vi.mocked(getUserContext).mockRejectedValue(
+        new AppError({
+          statusCode: HTTP_STATUS.UNAUTHORIZED,
+          code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN,
+          message: 'Inativo',
+        }),
+      );
+      const inactive = await app.inject({
+        method: 'GET',
+        url: '/me',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, tenant.userId)}` },
+      });
+      expect(inactive.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
     } finally {
       await app.close();
     }
