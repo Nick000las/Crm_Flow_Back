@@ -71,11 +71,12 @@ export function verifyRefreshToken(app, token) {
  * @param {string} token
  */
 export function verifyPasswordActivationToken(app, token) {
-  const payload = /** @type {{
-   *   userId?: string,
-   *   activationCodeId?: string,
-   *   purpose?: string,
-   * }} */ (app.jwt.access.verify(token));
+  const payload =
+    /** @type {{
+     *   userId?: string,
+     *   activationCodeId?: string,
+     *   purpose?: string,
+     * }} */ (app.jwt.access.verify(token));
 
   if (
     payload.purpose !== 'password-activation' ||
@@ -96,11 +97,12 @@ export function verifyPasswordActivationToken(app, token) {
  * @param {string} token
  */
 export function verifyLoginMfaToken(app, token) {
-  const payload = /** @type {{
-   *   userId?: string,
-   *   mfaCodeId?: string,
-   *   purpose?: string,
-   * }} */ (app.jwt.access.verify(token));
+  const payload =
+    /** @type {{
+     *   userId?: string,
+     *   mfaCodeId?: string,
+     *   purpose?: string,
+     * }} */ (app.jwt.access.verify(token));
 
   if (
     payload.purpose !== 'login-mfa' ||

@@ -1,6 +1,4 @@
-import {
-  HTTP_ERROR_STATUS_RANGE,
-} from '#shared/constants/index.js';
+import { HTTP_ERROR_STATUS_RANGE } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 
 const KNOWN_ERROR_CODES = new Set(Object.values(ERROR_CODES));
@@ -84,9 +82,7 @@ function isPublicFieldMap(value) {
       (messages) =>
         Array.isArray(messages) &&
         messages.length > 0 &&
-        messages.every(
-          (message) => typeof message === 'string' && message.trim().length > 0,
-        ),
+        messages.every((message) => typeof message === 'string' && message.trim().length > 0),
     )
   );
 }
@@ -106,8 +102,7 @@ function areAllowedPublicHeaders(value) {
     isRecord(value) &&
     Object.entries(value).every(
       ([name, headerValue]) =>
-        ALLOWED_PUBLIC_HEADERS.has(name.toLowerCase()) &&
-        typeof headerValue === 'string',
+        ALLOWED_PUBLIC_HEADERS.has(name.toLowerCase()) && typeof headerValue === 'string',
     )
   );
 }

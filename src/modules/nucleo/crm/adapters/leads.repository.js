@@ -31,9 +31,8 @@ export function buscarLeadsPorTenant(tenantId) {
  * @returns {Promise<{ id: string }>}
  */
 export function criarLead(tenantId, dados) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       INSERT INTO modulo_crm.leads (tenant_id, nome, telefone, funil_estagio_id)
       VALUES (${tenantId}::uuid, ${dados.nome}, ${dados.telefone}, ${dados.funilEstagioId}::uuid)
       RETURNING id

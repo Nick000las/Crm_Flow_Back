@@ -1,10 +1,7 @@
----
-paths:
-  - "src/core/db/**"
-  - "prisma/**"
-  - "src/modules/nucleo/*/**"
-  - "src/modules/verticais/*/**"
----
+# Aplicação
+
+Consulte estas regras ao alterar `src/core/db/`, `prisma/` ou módulos em
+`src/modules/nucleo/` e `src/modules/verticais/`.
 
 # Regra: Acesso a Dado Multi-tenant e Fronteira de Módulo
 
@@ -34,10 +31,11 @@ Antes de escrever ou revisar:
    Tabela nova dentro de um schema `modulo_*` já existente é coberta
    automaticamente (default privileges). **Schema `modulo_*` novo** (módulo
    vertical novo) precisa de `GRANT USAGE ON SCHEMA` + `ALTER DEFAULT
-   PRIVILEGES` pro `app_tenant`, copiando o padrão da migration 0004 —
+PRIVILEGES` pro `app_tenant`, copiando o padrão da migration 0004 —
    senão as tabelas desse módulo ficam com RLS habilitado mas
    inacessíveis (falha visível na hora, não vazamento silencioso).
-7. Depois de mudança de schema, rodar `npm run test:rls-coverage`.
+7. Depois de mudança de schema, rodar `npm run test:rls-coverage` em banco
+   isolado de teste, conforme a skill do backend.
 8. Antes de considerar qualquer tarefa concluída, rodar `npm run lint` —
    é o que pega import indevido entre módulos, já que nada impede fisicamente.
 

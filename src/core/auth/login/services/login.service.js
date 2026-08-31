@@ -25,7 +25,7 @@ export async function identifyEmail({ email, emailConfig }) {
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVITE_NOT_FOUND,
-      'Convite não encontrado para este e-mail'
+      'Convite não encontrado para este e-mail',
     );
   }
 
@@ -35,34 +35,26 @@ export async function identifyEmail({ email, emailConfig }) {
 
   const now = new Date();
   const code = String(
-    randomInt(
-      PASSWORD_ACTIVATION.CODE_MIN_VALUE,
-      PASSWORD_ACTIVATION.CODE_MAX_VALUE_EXCLUSIVE
-    )
+    randomInt(PASSWORD_ACTIVATION.CODE_MIN_VALUE, PASSWORD_ACTIVATION.CODE_MAX_VALUE_EXCLUSIVE),
   );
 
-  const codigoHash = await bcrypt.hash(
-    code,
-    PASSWORD_ACTIVATION.CODE_HASH_ROUNDS
-  );
+  const codigoHash = await bcrypt.hash(code, PASSWORD_ACTIVATION.CODE_HASH_ROUNDS);
 
-  const codigoCriado = await runInTransaction(
-    async (repository) => {
-      await repository.invalidateUnusedCodigosVerificacao({
-        usuarioId: usuario.id,
-        proposito: 'ativacao_senha',
-        usadoEm: now,
-      });
+  const codigoCriado = await runInTransaction(async (repository) => {
+    await repository.invalidateUnusedCodigosVerificacao({
+      usuarioId: usuario.id,
+      proposito: 'ativacao_senha',
+      usadoEm: now,
+    });
 
-      return repository.createCodigoVerificacao({
-        usuarioId: usuario.id,
-        tenantId: usuario.tenantId,
-        proposito: 'ativacao_senha',
-        codigoHash,
-        expiraEm: new Date(now.getTime() + PASSWORD_ACTIVATION.EXPIRATION_MS),
-      });
-    }
-  );
+    return repository.createCodigoVerificacao({
+      usuarioId: usuario.id,
+      tenantId: usuario.tenantId,
+      proposito: 'ativacao_senha',
+      codigoHash,
+      expiraEm: new Date(now.getTime() + PASSWORD_ACTIVATION.EXPIRATION_MS),
+    });
+  });
 
   void sendPasswordActivationCode(emailConfig, {
     to: usuario.email,
@@ -78,8 +70,8 @@ export async function identifyEmail({ email, emailConfig }) {
       console.error(
         new AggregateError(
           [emailError, cleanupError],
-          'Falha no envio do e-mail e na invalidação do código'
-        )
+          'Falha no envio do e-mail e na invalidação do código',
+        ),
       );
       return;
     }
@@ -96,20 +88,10 @@ export async function identifyEmail({ email, emailConfig }) {
  */
 export async function authenticateWithPassword({ email, senha, emailConfig }) {
   const usuario = await getUserEmailAndPassword({ email });
-  const senhaValida = usuario?.senhaHash
-    ? await bcrypt.compare(senha, usuario.senhaHash)
-    : false;
+  const senhaValida = usuario?.senhaHash ? await bcrypt.compare(senha, usuario.senhaHash) : false;
 
-  if (
-    !usuario ||
-    !usuario.ativo ||
-    !senhaValida ||
-    !ROLES_VALIDOS.includes(usuario.role)
-  ) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_INVALID_CREDENTIALS,
-      'E-mail ou senha inválidos'
-    );
+  if (!usuario || !usuario.ativo || !senhaValida || !ROLES_VALIDOS.includes(usuario.role)) {
+    throw unauthorizedError(ERROR_CODES.AUTH_INVALID_CREDENTIALS, 'E-mail ou senha inválidos');
   }
 
   if (usuario.mfaAtivo) {
@@ -128,9 +110,7 @@ export async function authenticateWithPassword({ email, senha, emailConfig }) {
  */
 async function requestLoginMfaCode(usuario, emailConfig) {
   const now = new Date();
-  const code = String(
-    randomInt(LOGIN_MFA.CODE_MIN_VALUE, LOGIN_MFA.CODE_MAX_VALUE_EXCLUSIVE)
-  );
+  const code = String(randomInt(LOGIN_MFA.CODE_MIN_VALUE, LOGIN_MFA.CODE_MAX_VALUE_EXCLUSIVE));
   const codigoHash = await bcrypt.hash(code, LOGIN_MFA.CODE_HASH_ROUNDS);
 
   const codigoCriado = await runInTransaction(async (repository) => {
@@ -161,11 +141,12 @@ async function requestLoginMfaCode(usuario, emailConfig) {
 /** @param {{ email: string, verificationCode: string }} input */
 export async function verifyActivationCode({ email, verificationCode }) {
   const usuario = await getUserEmailAndPassword({ email });
-  if (!usuario || usuario.senhaHash)
+  if (!usuario || usuario.senhaHash) {
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_ACTIVATION_CODE,
-      'Código inválido ou expirado'
+      'Código inválido ou expirado',
     );
+  }
 
   const registro = await getLatestCodigoVerificacao({
     usuarioId: usuario.id,
@@ -176,14 +157,11 @@ export async function verifyActivationCode({ email, verificationCode }) {
   if (!isCodigoVerificacaoUsable(registro, now, PASSWORD_ACTIVATION.MAX_ATTEMPTS)) {
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_ACTIVATION_CODE,
-      'Código inválido ou expirado'
+      'Código inválido ou expirado',
     );
   }
 
-  const codigoValido = await bcrypt.compare(
-    verificationCode,
-    registro.codigoHash
-  );
+  const codigoValido = await bcrypt.compare(verificationCode, registro.codigoHash);
 
   if (!codigoValido) {
     await incrementCodigoVerificacaoAttempts({
@@ -194,7 +172,7 @@ export async function verifyActivationCode({ email, verificationCode }) {
     });
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_ACTIVATION_CODE,
-      'Código inválido ou expirado'
+      'Código inválido ou expirado',
     );
   }
 
@@ -209,17 +187,14 @@ export async function verifyLoginMfaCode({ userId, mfaCodeId, verificationCode }
   });
   const now = new Date();
 
-  if (!isCodigoVerificacaoUsable(registro, now, LOGIN_MFA.MAX_ATTEMPTS) || registro.id !== mfaCodeId) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_INVALID_MFA_CODE,
-      'Código inválido ou expirado'
-    );
+  if (
+    !isCodigoVerificacaoUsable(registro, now, LOGIN_MFA.MAX_ATTEMPTS) ||
+    registro.id !== mfaCodeId
+  ) {
+    throw unauthorizedError(ERROR_CODES.AUTH_INVALID_MFA_CODE, 'Código inválido ou expirado');
   }
 
-  const codigoValido = await bcrypt.compare(
-    verificationCode,
-    registro.codigoHash
-  );
+  const codigoValido = await bcrypt.compare(verificationCode, registro.codigoHash);
 
   if (!codigoValido) {
     await incrementCodigoVerificacaoAttempts({
@@ -228,18 +203,12 @@ export async function verifyLoginMfaCode({ userId, mfaCodeId, verificationCode }
       maxAttempts: LOGIN_MFA.MAX_ATTEMPTS,
       incrementBy: LOGIN_MFA.ATTEMPT_INCREMENT,
     });
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_INVALID_MFA_CODE,
-      'Código inválido ou expirado'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_INVALID_MFA_CODE, 'Código inválido ou expirado');
   }
 
   const usuario = await getUserById({ userId });
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_USER_INACTIVE,
-      'Usuário inativo'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
   }
 
   return toTenantContext(usuario);
@@ -249,48 +218,36 @@ export async function verifyLoginMfaCode({ userId, mfaCodeId, verificationCode }
 export async function activatePassword({ userId, activationCodeId, senha }) {
   const senhaHash = await bcrypt.hash(senha, PASSWORD_POLICY.HASH_ROUNDS);
   const now = new Date();
-  const usuario = await runInTransaction(
-    async (repository) => {
-      const codigoAtualizado = await repository.consumeCodigoVerificacao({
-        userId,
-        codigoId: activationCodeId,
-        usadoEm: now,
-        validAfter: now,
-      });
+  const usuario = await runInTransaction(async (repository) => {
+    const codigoAtualizado = await repository.consumeCodigoVerificacao({
+      userId,
+      codigoId: activationCodeId,
+      usadoEm: now,
+      validAfter: now,
+    });
 
-      if (
-        codigoAtualizado.count !== PASSWORD_ACTIVATION.EXPECTED_UPDATE_COUNT
-      ) {
-        throw unauthorizedError(
-          ERROR_CODES.AUTH_INVALID_ACTIVATION_TOKEN,
-          'Token de ativação inválido ou expirado'
-        );
-      }
-
-      const usuarioAtualizado = await repository.setUserPasswordIfMissing({
-        userId,
-        senhaHash,
-      });
-
-      if (
-        usuarioAtualizado.count !== PASSWORD_ACTIVATION.EXPECTED_UPDATE_COUNT
-      ) {
-        throw conflictError(
-          ERROR_CODES.AUTH_PASSWORD_ALREADY_SET,
-          'Este usuário já possui senha'
-        );
-      }
-
-      const usuarioAtual = await repository.getUserById({ userId });
-      if (!usuarioAtual.ativo || !ROLES_VALIDOS.includes(usuarioAtual.role)) {
-        throw unauthorizedError(
-          ERROR_CODES.AUTH_USER_INACTIVE,
-          'Usuário inativo'
-        );
-      }
-      return usuarioAtual;
+    if (codigoAtualizado.count !== PASSWORD_ACTIVATION.EXPECTED_UPDATE_COUNT) {
+      throw unauthorizedError(
+        ERROR_CODES.AUTH_INVALID_ACTIVATION_TOKEN,
+        'Token de ativação inválido ou expirado',
+      );
     }
-  );
+
+    const usuarioAtualizado = await repository.setUserPasswordIfMissing({
+      userId,
+      senhaHash,
+    });
+
+    if (usuarioAtualizado.count !== PASSWORD_ACTIVATION.EXPECTED_UPDATE_COUNT) {
+      throw conflictError(ERROR_CODES.AUTH_PASSWORD_ALREADY_SET, 'Este usuário já possui senha');
+    }
+
+    const usuarioAtual = await repository.getUserById({ userId });
+    if (!usuarioAtual.ativo || !ROLES_VALIDOS.includes(usuarioAtual.role)) {
+      throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
+    }
+    return usuarioAtual;
+  });
 
   return toTenantContext(usuario);
 }
@@ -305,7 +262,7 @@ export async function getUserContext({ userId }) {
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN,
-      'Refresh token inválido ou expirado'
+      'Refresh token inválido ou expirado',
     );
   }
 
@@ -327,10 +284,7 @@ export async function getUserSettings({ userId }) {
   const usuario = await getUserById({ userId });
 
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_USER_INACTIVE,
-      'Usuário inativo'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
   }
 
   return {
@@ -346,10 +300,7 @@ export async function enableMfa({ userId }) {
   const usuario = await getUserById({ userId });
 
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_USER_INACTIVE,
-      'Usuário inativo'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
   }
 
   // Ligar não exige senha de novo — aumentar segurança não precisa de
@@ -362,21 +313,13 @@ export async function disableMfa({ userId, senha }) {
   const usuario = await getUserById({ userId });
 
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_USER_INACTIVE,
-      'Usuário inativo'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
   }
 
-  const senhaValida = usuario.senhaHash
-    ? await bcrypt.compare(senha, usuario.senhaHash)
-    : false;
+  const senhaValida = usuario.senhaHash ? await bcrypt.compare(senha, usuario.senhaHash) : false;
 
   if (!senhaValida) {
-    throw unauthorizedError(
-      ERROR_CODES.AUTH_INVALID_CREDENTIALS,
-      'Senha inválida'
-    );
+    throw unauthorizedError(ERROR_CODES.AUTH_INVALID_CREDENTIALS, 'Senha inválida');
   }
 
   return setMfaAtivo({ userId, ativo: false });
@@ -419,6 +362,6 @@ function isCodigoVerificacaoUsable(registro, now, maxAttempts) {
     registro &&
     registro.usadoEm === null &&
     registro.expiraEm > now &&
-    registro.tentativas < maxAttempts
+    registro.tentativas < maxAttempts,
   );
 }

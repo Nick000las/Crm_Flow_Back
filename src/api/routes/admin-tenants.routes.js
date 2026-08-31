@@ -7,13 +7,19 @@ import { TenantManagement } from '#core/tenant/management.js';
 
 const criarTenantBodySchema = z.object({
   nome: z.string().min(1),
-  subdomain: z.string().min(1).regex(/^[a-z0-9-]+$/),
+  subdomain: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/),
   owner: z.object({
     nome: z.string().min(1),
     // e-mail é único globalmente via índice case-insensitive (migration
     // 0003) — normaliza na escrita pra bater com a busca do login (mode:
     // 'insensitive'), mesmo padrão de login.schema.js.
-    email: z.string().email().transform((email) => email.toLowerCase()),
+    email: z
+      .string()
+      .email()
+      .transform((email) => email.toLowerCase()),
   }),
   modulosContratados: z.array(z.string()).min(1),
 });

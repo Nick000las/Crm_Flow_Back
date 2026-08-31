@@ -1,9 +1,11 @@
 import js from '@eslint/js';
+import prettier from 'eslint-config-prettier';
+import shared from './eslint.rules.js';
 import boundaries from 'eslint-plugin-boundaries';
 
 /**
  * A fronteira entre módulos NÃO é física (não há workspaces) — é garantida aqui.
- * Ver `.claude/rules/multi-tenant.md` e MODULE_CONTRACT.md.
+ * Ver `.agents/references/multi-tenant.md` e MODULE_CONTRACT.md.
  */
 
 const MSG_ALIAS =
@@ -25,7 +27,8 @@ const TENANT_CLIENT_PROIBIDO = {
 
 const FASTIFY_PROIBIDO = {
   name: 'fastify',
-  message: 'Só `controllers/` e `#api/` conhecem Fastify. services/ e adapters/ são HTTP-agnósticos.',
+  message:
+    'Só `controllers/` e `#api/` conhecem Fastify. services/ e adapters/ são HTTP-agnósticos.',
 };
 
 /**
@@ -195,4 +198,6 @@ export default [
       globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
     },
   },
+  prettier,
+  shared,
 ];

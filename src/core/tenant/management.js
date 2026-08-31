@@ -7,7 +7,11 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
 /** @param {string[]} moduleKeys */
 function validarModuleKeys(moduleKeys) {
   for (const moduleKey of moduleKeys) {
-    if (!moduleKey || typeof moduleKey !== 'string' || !MODULES.some((mod) => mod.key === moduleKey)) {
+    if (
+      !moduleKey ||
+      typeof moduleKey !== 'string' ||
+      !MODULES.some((mod) => mod.key === moduleKey)
+    ) {
       throw new AppError({
         statusCode: HTTP_STATUS.BAD_REQUEST,
         code: ERROR_CODES.VALIDATION_ERROR,
@@ -33,7 +37,9 @@ function erroTenantNaoEncontrado(tenantId) {
  */
 async function buscarTenantOuFalhar(prisma, tenantId) {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  if (!tenant) throw erroTenantNaoEncontrado(tenantId);
+  if (!tenant) {
+    throw erroTenantNaoEncontrado(tenantId);
+  }
   return tenant;
 }
 
@@ -58,7 +64,9 @@ export class TenantManagement {
         modulosAtivos: { select: { moduleKey: true, enabledAt: true, disabledAt: true } },
       },
     });
-    if (!tenant) throw erroTenantNaoEncontrado(tenantId);
+    if (!tenant) {
+      throw erroTenantNaoEncontrado(tenantId);
+    }
     return tenant;
   }
 

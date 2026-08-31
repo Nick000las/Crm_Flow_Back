@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "node --watch src/api/server.js",
     "start": "node src/api/server.js",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0 && prettier --check .",
     "check": "pnpm lint && pnpm test",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,25 +24,35 @@
     "create:master": "node scripts/create-master.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "lint:fix": "prettier --write . && eslint . --fix && prettier --write .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:kanban:integration": "RUN_KANBAN_INTEGRATION=1 vitest run src/modules/nucleo/kanban-universal/adapters/*.integration.test.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.3.0",
     "@fastify/jwt": "^10.2.2",
     "@prisma/client": "^6.5.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.1",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.5",
     "nodemon": "^3.1.14",
+    "socket.io": "^4.8.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "eslint": "^9.20.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-boundaries": "^5.0.1",
+    "prettier": "^3.9.10",
     "prisma": "^6.5.0",
+    "socket.io-client": "^4.8.4",
     "vitest": "^3.0.5"
   }
 }

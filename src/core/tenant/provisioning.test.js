@@ -44,7 +44,9 @@ describe('provisionarTenant', () => {
   it('rejeita module key vazio/inválido, com statusCode 400', async () => {
     const input = { ...inputValido, modulosContratados: [''] };
 
-    await expect(provisionarTenant(input)).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+    await expect(provisionarTenant(input)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+    });
   });
 
   it('cria tenant + usuário DONO ativo e sem senha + módulos, e devolve os IDs', async () => {

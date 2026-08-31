@@ -29,33 +29,13 @@ export function registerAuthRoutes(app) {
 
   app.post('/auth/refresh', refreshAccessToken);
 
-  app.put(
-    '/auth/mfa',
-    { preHandler: authenticateHook },
-    enableMfa
-  );
+  app.put('/auth/mfa', { preHandler: authenticateHook }, enableMfa);
 
-  app.delete(
-    '/auth/mfa',
-    { preHandler: authenticateHook },
-    disableMfa
-  );
+  app.delete('/auth/mfa', { preHandler: authenticateHook }, disableMfa);
 
-  app.get(
-    '/auth/me',
-    { preHandler: authenticateHook },
-    getAuthenticatedUser
-  );
+  app.get('/auth/me', { preHandler: authenticateHook }, getAuthenticatedUser);
 
-  app.get(
-    '/auth/settings',
-    { preHandler: authenticateHook },
-    getUserSettings
-  );
+  app.get('/auth/settings', { preHandler: authenticateHook }, getUserSettings);
 
-  app.post(
-    '/auth/logout',
-    { preHandler: authenticateHook },
-    logout
-  );
+  app.post('/auth/logout', { preHandler: authenticateHook }, logout);
 }

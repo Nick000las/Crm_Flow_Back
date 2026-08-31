@@ -67,8 +67,11 @@ export async function loginWithPassword(request, response) {
   if (resultado.mfaRequired) {
     const mfaToken = signLoginMfaToken(request.server, resultado);
     response.setCookie(MFA_COOKIE_NAME, mfaToken, {
-      httpOnly: true, secure: request.server.config.NODE_ENV === 'production', sameSite: 'lax',
-      path: MFA_COOKIE_PATH, maxAge: LOGIN_MFA.TOKEN_EXPIRATION_SECONDS,
+      httpOnly: true,
+      secure: request.server.config.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: MFA_COOKIE_PATH,
+      maxAge: LOGIN_MFA.TOKEN_EXPIRATION_SECONDS,
     });
     return sendSuccess(response, { nextStep: 'mfaCode' });
   }
@@ -81,18 +84,13 @@ export async function loginWithPassword(request, response) {
  * @param {import('fastify').FastifyReply} response
  */
 export async function verifyActivationCode(request, response) {
-  const { email, verificationCode } = verifyCodeBodySchema.parse(
-    request.body
-  );
+  const { email, verificationCode } = verifyCodeBodySchema.parse(request.body);
 
   const activationContext = await verifyActivationCodeService({
     email,
     verificationCode,
   });
-  const activationToken = signPasswordActivationToken(
-    request.server,
-    activationContext
-  );
+  const activationToken = signPasswordActivationToken(request.server, activationContext);
 
   response.setCookie(ACTIVATION_COOKIE_NAME, activationToken, {
     httpOnly: true,
@@ -167,7 +165,10 @@ export async function enableMfa(request, response) {
  */
 export async function disableMfa(request, response) {
   const { senha } = mfaDisableBodySchema.parse(request.body);
-  const data = await disableMfaService({ userId: request.tenantContext.userId, senha });
+  const data = await disableMfaService({
+    userId: request.tenantContext.userId,
+    senha,
+  });
   return sendSuccess(response, data);
 }
 
@@ -189,10 +190,7 @@ export async function activatePassword(request, response) {
 
   let payload;
   try {
-    payload = verifyPasswordActivationToken(
-      request.server,
-      activationToken
-    );
+    payload = verifyPasswordActivationToken(request.server, activationToken);
   } catch {
     throw new AppError({
       statusCode: HTTP_STATUS.UNAUTHORIZED,
@@ -256,7 +254,9 @@ export async function getAuthenticatedUser(request, response) {
  * @param {import('fastify').FastifyReply} response
  */
 export async function getUserSettings(request, response) {
-  const data = await getUserSettingsService({ userId: request.tenantContext.userId });
+  const data = await getUserSettingsService({
+    userId: request.tenantContext.userId,
+  });
   return sendSuccess(response, data);
 }
 

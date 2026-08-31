@@ -38,11 +38,16 @@ describe('TenantManagement.getTenantById', () => {
   it('rejeita com 404 quando o tenant não existe', async () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
-    await expect(TenantManagement.getTenantById(tenantId)).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
+    await expect(TenantManagement.getTenantById(tenantId)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.NOT_FOUND,
+    });
   });
 
   it('devolve o tenant, incluindo os módulos ativos', async () => {
-    mockPrisma.tenant.findUnique.mockResolvedValue({ id: tenantId, modulosAtivos: [{ moduleKey: 'crm' }] });
+    mockPrisma.tenant.findUnique.mockResolvedValue({
+      id: tenantId,
+      modulosAtivos: [{ moduleKey: 'crm' }],
+    });
 
     const resultado = await TenantManagement.getTenantById(tenantId);
 
@@ -56,7 +61,9 @@ describe('TenantManagement.atualizarTenant', () => {
   it('rejeita com 404 quando o tenant não existe', async () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
-    await expect(TenantManagement.atualizarTenant(tenantId, { nome: 'Novo' })).rejects.toMatchObject({
+    await expect(
+      TenantManagement.atualizarTenant(tenantId, { nome: 'Novo' }),
+    ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
     expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
@@ -111,7 +118,9 @@ describe('TenantManagement.atualizarModulosTenant', () => {
   });
 
   it('rejeita module key inválido com 400, sem abrir transação', async () => {
-    await expect(TenantManagement.atualizarModulosTenant(tenantId, ['modulo-inventado'])).rejects.toMatchObject({
+    await expect(
+      TenantManagement.atualizarModulosTenant(tenantId, ['modulo-inventado']),
+    ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
@@ -126,10 +135,19 @@ describe('TenantManagement.atualizarModulosTenant', () => {
   });
 
   it('remove módulos que saíram da lista e adiciona os que entraram', async () => {
-    mockTx.tenantModule.findMany.mockResolvedValue([{ moduleKey: 'crm' }, { moduleKey: 'agendamento' }]);
-    mockTx.tenant.findUnique.mockResolvedValue({ id: tenantId, modulosAtivos: [{ moduleKey: 'kanban_universal' }] });
+    mockTx.tenantModule.findMany.mockResolvedValue([
+      { moduleKey: 'crm' },
+      { moduleKey: 'agendamento' },
+    ]);
+    mockTx.tenant.findUnique.mockResolvedValue({
+      id: tenantId,
+      modulosAtivos: [{ moduleKey: 'kanban_universal' }],
+    });
 
-    const resultado = await TenantManagement.atualizarModulosTenant(tenantId, ['kanban_universal', 'agendamento']);
+    const resultado = await TenantManagement.atualizarModulosTenant(tenantId, [
+      'kanban_universal',
+      'agendamento',
+    ]);
 
     // 'crm' saiu da lista -> remove. 'agendamento' já estava -> não mexe.
     expect(mockTx.tenantModule.deleteMany).toHaveBeenCalledWith({
@@ -182,7 +200,9 @@ describe('TenantManagement.deleteTenant', () => {
   it('rejeita com 404 quando o tenant não existe', async () => {
     mockPrisma.tenant.findUnique.mockResolvedValue(null);
 
-    await expect(TenantManagement.deleteTenant(tenantId)).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
+    await expect(TenantManagement.deleteTenant(tenantId)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.NOT_FOUND,
+    });
     expect(mockPrisma.tenant.delete).not.toHaveBeenCalled();
   });
 

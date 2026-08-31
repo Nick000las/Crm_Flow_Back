@@ -5,6 +5,7 @@ import { registerAuthRoutes } from '#api/routes/auth.routes.js';
 import { registerHealthRoutes } from '#api/routes/health.routes.js';
 import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { MODULES } from '#api/modules.js';
+import { registerRealtime } from '#core/realtime/socket-server.js';
 import { registerJwt } from '#core/auth/plugin.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
@@ -36,6 +37,7 @@ export async function buildApp(options = {}) {
   });
   registerJwt(app, config);
   registerErrorHandlers(app);
+  await registerRealtime(app);
 
   const modules = MODULES.map(assertModule);
   assertUniqueModuleKeys(modules);
@@ -67,7 +69,9 @@ export async function buildApp(options = {}) {
 function assertUniqueModuleKeys(modules) {
   const keys = new Set();
   for (const module of modules) {
-    if (keys.has(module.key)) throw new Error(`Módulo duplicado: "${module.key}".`);
+    if (keys.has(module.key)) {
+      throw new Error(`Módulo duplicado: "${module.key}".`);
+    }
     keys.add(module.key);
   }
 }

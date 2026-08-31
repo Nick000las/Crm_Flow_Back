@@ -56,10 +56,7 @@ export function registerErrorHandlers(app) {
       });
     }
 
-    if (
-      error.name === PRISMA_KNOWN_ERROR_NAME &&
-      error.code === PRISMA_UNIQUE_CONSTRAINT_CODE
-    ) {
+    if (error.name === PRISMA_KNOWN_ERROR_NAME && error.code === PRISMA_UNIQUE_CONSTRAINT_CODE) {
       return sendError(reply, {
         statusCode: HTTP_STATUS.CONFLICT,
         code: ERROR_CODES.RESOURCE_CONFLICT,
@@ -68,10 +65,7 @@ export function registerErrorHandlers(app) {
     }
 
     const statusCode = Number(error.statusCode);
-    if (
-      statusCode >= HTTP_STATUS.BAD_REQUEST &&
-      statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR
-    ) {
+    if (statusCode >= HTTP_STATUS.BAD_REQUEST && statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR) {
       return sendError(reply, {
         statusCode,
         code: ERROR_CODES.REQUEST_ERROR,
@@ -93,9 +87,7 @@ function groupIssuesByField(issues) {
   return issues.reduce((fields, issue) => {
     const field = issue.path.join('.') || '_form';
     fields[field] ??= [];
-    fields[field].push(
-      field === '_form' ? 'Corpo da requisição inválido' : issue.message,
-    );
+    fields[field].push(field === '_form' ? 'Corpo da requisição inválido' : issue.message);
     return fields;
   }, /** @type {Record<string, string[]>} */ ({}));
 }
@@ -110,7 +102,9 @@ function getRequestPath(url) {
  * @param {Record<string, string> | undefined} headers
  */
 function applyErrorHeaders(reply, headers) {
-  if (!headers) return;
+  if (!headers) {
+    return;
+  }
 
   for (const [name, value] of Object.entries(headers)) {
     reply.header(name, value);

@@ -24,12 +24,18 @@ function encontrarSchemaParts(dir) {
   /** @type {string[]} */
   const partes = [];
   for (const categoria of readdirSync(dir, { withFileTypes: true })) {
-    if (!categoria.isDirectory()) continue;
+    if (!categoria.isDirectory()) {
+      continue;
+    }
     const categoriaPath = join(dir, categoria.name);
     for (const modulo of readdirSync(categoriaPath, { withFileTypes: true })) {
-      if (!modulo.isDirectory()) continue;
+      if (!modulo.isDirectory()) {
+        continue;
+      }
       const partPath = join(categoriaPath, modulo.name, 'prisma', 'schema.prisma.part');
-      if (existsSync(partPath)) partes.push(partPath);
+      if (existsSync(partPath)) {
+        partes.push(partPath);
+      }
     }
   }
   return partes;

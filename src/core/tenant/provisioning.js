@@ -57,8 +57,8 @@ export async function provisionarTenant(input) {
 
     // createMany em vez de várias tx.tenantModule.create() em paralelo:
     // dentro de uma transação interativa (tx), todas as queries correm na MESMA
-    // conexão — rodar em paralelo (Promise.all) arrisca erro de conexão. createMany
-    // é uma query só, sem esse risco.
+    // conexão e continuam sequenciais mesmo com Promise.all. createMany reduz
+    // os round trips usando uma única query.
     await tx.tenantModule.createMany({
       data: modulosContratados.map((moduleKey) => ({
         tenantId: tenant.id,
@@ -73,7 +73,11 @@ export async function provisionarTenant(input) {
 /** @param {string[]} moduleKeys */
 function validarModuleKeys(moduleKeys) {
   for (const moduleKey of moduleKeys) {
-    if (!moduleKey || typeof moduleKey !== 'string' || !MODULES.some((mod) => mod.key === moduleKey)) {
+    if (
+      !moduleKey ||
+      typeof moduleKey !== 'string' ||
+      !MODULES.some((mod) => mod.key === moduleKey)
+    ) {
       throw new AppError({
         statusCode: HTTP_STATUS.BAD_REQUEST,
         code: ERROR_CODES.VALIDATION_ERROR,
