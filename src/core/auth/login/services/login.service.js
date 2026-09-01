@@ -153,7 +153,7 @@ async function requestLoginMfaCode(usuario, emailConfig) {
   // portão obrigatório sem caminho alternativo — se o e-mail falhar, o
   // usuário fica esperando um código que nunca chega. Propaga o erro
   // (sendLoginMfaCode já lança EMAIL_UNAVAILABLE) em vez de mascarar.
-  await sendLoginMfaCode(emailConfig, { to: usuario.email, code });
+  sendLoginMfaCode(emailConfig, { to: usuario.email, code });
 
   return { mfaRequired: true, userId: usuario.id, mfaCodeId: codigoCriado.id };
 }

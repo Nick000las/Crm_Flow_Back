@@ -1,5 +1,6 @@
 import { authenticateHook } from '#core/auth/rbac.js';
 import { registrarRotasLeads } from './controllers/leads.controller.js';
+import { registrarRotasDefinicoes } from './controllers/field-definitions.controller.js';
 
 /** @type {import('#core/types/module.js').Module} */
 export const crmModule = {
@@ -8,5 +9,6 @@ export const crmModule = {
   async registerRoutes(app) {
     app.addHook('preHandler', authenticateHook);
     registrarRotasLeads(app);
+    registrarRotasDefinicoes(app);
   },
 };
