@@ -17,4 +17,38 @@
  * @property {string} funilEstagioId
  */
 
+/**
+ * @typedef {'texto' | 'numero' | 'data' | 'booleano' | 'selecao' | 'selecao_multipla'} FieldDefinitionTipo
+ */
+
+/**
+ * @typedef {object} FieldDefinition
+ * @property {string} id
+ * @property {string} chave
+ * @property {string} label
+ * @property {FieldDefinitionTipo} tipo
+ * @property {string[] | null} opcoes
+ * @property {boolean} obrigatorio
+ * @property {number} ordem
+ * @property {string} created_at
+ */
+
+/**
+ * @typedef {object} CriarFieldDefinitionInput
+ * @property {string} chave
+ * @property {string} label
+ * @property {FieldDefinitionTipo} tipo
+ * @property {string[] | null} opcoes
+ * @property {boolean} obrigatorio
+ * @property {number} ordem
+ */
+
+/**
+ * @typedef {object} AtualizarFieldDefinitionInput
+ * @property {string} label
+ * @property {FieldDefinitionTipo} tipo
+ * @property {string[] | null} opcoes
+ * @property {boolean} obrigatorio
+ */
+
 export {};
