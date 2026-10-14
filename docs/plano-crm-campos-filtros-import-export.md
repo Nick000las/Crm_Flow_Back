@@ -1,5 +1,12 @@
 # Plano de implementação — CRM: Campos Customizados, Filtros e Import/Export
 
+> **Status (2026-10-12): implementado.** O estado final, as decisões tomadas e as
+> divergências em relação a este plano estão em
+> [plano-crm-campos-hibridos.md](./plano-crm-campos-hibridos.md). Principais
+> diferenças: export síncrono com download direto na rota (sem `data_jobs` nem
+> storage); a tabela de jobs virou `import_jobs`, só para import; e `origem`
+> passou a se chamar `fonte_lead`.
+
 Baseado no roteiro fornecido (Sprint 6 estendido / 6-B). Este documento traduz
 o roteiro pra decisões concretas de arquitetura **dentro das convenções já
 estabelecidas neste repositório** (`MODULE_CONTRACT.md`, `.claude/rules/multi-tenant.md`),
@@ -420,24 +427,26 @@ quebrar em "import" e "export" como PRs separados dado o tamanho.
 
 ## 6. Critério de pronto (mapeado do roteiro pros artefatos reais)
 
-- [ ] `tenant_lead_field_definitions` com RLS, CRUD completo, `chave`
+- [x] `tenant_lead_field_definitions` com RLS, CRUD completo, `chave`
   slugificada e validada antes do insert.
-- [ ] `leads.custom_fields` + GIN, formulário de lead 100% dinâmico
+- [x] `leads.custom_fields` + GIN, formulário de lead 100% dinâmico
   (nenhum campo customizado hardcoded no componente).
-- [ ] `test:rls-coverage` + `test:tenant-isolation` passando depois de
+- [x] `test:rls-coverage` + `test:tenant-isolation` passando depois de
   cada mudança de schema (Partes 1, 2 e 3 mexem em schema).
-- [ ] `POST /crm/leads/search` combinando fixo + customizado, com
+- [x] `POST /crm/leads/search` combinando fixo + customizado, com
   `EXPLAIN ANALYZE` separado por tipo de filtro (2.4) — GIN confirmado
   pros containment/igualdade, sequential scan aceito e documentado pra
-  texto/número/data em campo customizado.
-- [ ] Views salvas reaplicando filtro exato.
-- [ ] Import assíncrono via BullMQ desde o primeiro commit — nunca
+  texto/número/data em campo customizado. *(Endpoint pronto; o `EXPLAIN
+  ANALYZE` com volume real continua pendente, porque hoje não há leads em
+  produção.)*
+- [x] Views salvas reaplicando filtro exato.
+- [x] Import assíncrono via BullMQ desde o primeiro commit — nunca
   processado no request, mesmo planilha pequena. Relatório de erro por
   linha, sem commit parcial silencioso.
-- [ ] 3 estratégias de duplicata testadas (pular/atualizar/criar).
-- [ ] Export configurável por coluna, assíncrono, decisão de storage
+- [x] 3 estratégias de duplicata testadas (pular/atualizar/criar).
+- [x] Export configurável por coluna, ~~assíncrono~~ síncrono (decisão: download direto na rota, sem storage), decisão de storage
   resolvida (seção 5) antes de começar essa fatia.
-- [ ] `npm run lint` passando com o novo tipo `worker` reconhecido pelo
+- [x] `npm run lint` passando com o novo tipo `worker` reconhecido pelo
   `eslint-plugin-boundaries`.
 - [ ] Fora de escopo, igual o roteiro já registrou: Data Warehouse, grupos
   AND/OR complexos, promoção de campo customizado pra coluna nativa

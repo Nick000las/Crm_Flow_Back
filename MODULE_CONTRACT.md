@@ -196,18 +196,26 @@ produção. `registerRoutes(app)` é chamado dentro de um `app.register(...)`
 próprio (escopo isolado do Fastify), então hooks (`app.addHook('preHandler', ...)`)
 registrados dentro dele não vazam para outros módulos.
 
+**Autenticação e módulo contratado são aplicados por `#api/app.js`**, no
+escopo de cada módulo, antes de `registerRoutes`: todo módulo de `MODULES`
+recebe `authenticateHook` + `exigirModuloAtivo(module.key)`
+(`#core/tenant/module-access.js`, confere `tenant_modules` do tenant do
+token — MASTER_DOCUMENT §1.1.2). Um tenant sem o módulo contratado (ou com
+`disabled_at` preenchido) recebe 403 `MODULE_NOT_ENABLED` em qualquer rota
+do módulo. O módulo não registra nenhum dos dois por conta própria;
+restrição por papel continua sendo por rota, com `requireRole`
+(`#core/auth/rbac.js`).
+
 Exemplo real:
 
 ```js
 // modules/nucleo/crm/index.js
-import { authenticateHook } from '#core/auth/rbac.js';
 import { registrarRotasLeads } from './controllers/leads.controller.js';
 
 export const crmModule = {
   key: 'crm',
   name: 'CRM de Vendas',
   async registerRoutes(app) {
-    app.addHook('preHandler', authenticateHook);
     registrarRotasLeads(app);
   },
 };

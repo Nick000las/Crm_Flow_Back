@@ -54,6 +54,9 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(DEFAULT_SMTP_TIMEOUT_MS),
+  // Fila de importação do CRM (BullMQ). Opcional no bootstrap: sem ela o
+  // servidor sobe normal e só POST /crm/import/:jobId/confirm responde 503.
+  REDIS_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
 }).superRefine((data, ctx) => {
   // Falha rápido em vez de deixar getTenantClient() conectar com URL vazia
   // e reintroduzir o bypass de RLS por acidente de configuração.

@@ -63,6 +63,9 @@ export default [
         { type: 'shared', pattern: 'src/shared/**' },
         { type: 'module', pattern: 'src/modules/*/*/**', capture: ['categoria', 'modulo'] },
         { type: 'api', pattern: 'src/api/**' },
+        // Entrypoints de fila (processo separado do HTTP) — mesmo papel de
+        // `api`: ponto de entrada fino que delega pro service do módulo.
+        { type: 'worker', pattern: 'src/workers/**' },
       ],
     },
     rules: {
@@ -94,6 +97,7 @@ export default [
               ],
             },
             { from: 'api', allow: ['core', 'shared', 'module'] },
+            { from: 'worker', allow: ['core', 'shared', 'module'] },
           ],
         },
       ],
