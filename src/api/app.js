@@ -6,9 +6,11 @@ import { registerHealthRoutes } from '#api/routes/health.routes.js';
 import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { MODULES } from '#api/modules.js';
 import { registerJwt } from '#core/auth/plugin.js';
+import { authenticateHook } from '#core/auth/rbac.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
+import { exigirModuloAtivo } from '#core/tenant/module-access.js';
 import { assertModule } from '#core/types/module.js';
 
 /**
@@ -52,6 +54,11 @@ export async function buildApp(options = {}) {
     app.log.info?.({ module: module.key }, `Registrando módulo: ${module.name}`);
     app.register(
       async (moduleScope) => {
+        // Autenticação + módulo contratado valem pra TODA rota de módulo,
+        // registrados aqui (antes das rotas) pra nenhum módulo depender de
+        // lembrar disso (MASTER_DOCUMENT §1.1.2).
+        moduleScope.addHook('preHandler', authenticateHook);
+        moduleScope.addHook('preHandler', exigirModuloAtivo(module.key));
         await module.registerRoutes(moduleScope);
       },
       { name: `module-${module.key}` },

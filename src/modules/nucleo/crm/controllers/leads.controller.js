@@ -1,29 +1,19 @@
-import { z } from 'zod';
-import { BRAZIL_PHONE, HTTP_STATUS, TEXT_LIMITS } from '#shared/constants/index.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
-import { listarLeadsFormatados, registrarNovoLead } from '../services/leads.service.js';
-
-const criarLeadBodySchema = z.object({
-  nome: z
-    .string({
-      required_error: 'Informe o nome do lead',
-      invalid_type_error: 'Informe um nome válido',
-    })
-    .trim()
-    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o nome do lead'),
-  telefone: z
-    .string({
-      required_error: 'Informe o telefone',
-      invalid_type_error: 'Informe um telefone válido',
-    })
-    .min(BRAZIL_PHONE.LANDLINE_LENGTH, 'Informe um telefone válido'),
-  funilEstagioId: z
-    .string({
-      required_error: 'Informe o estágio do funil',
-      invalid_type_error: 'Informe um estágio de funil válido',
-    })
-    .uuid('Informe um estágio de funil válido'),
-});
+import {
+  buscarLeadFormatado,
+  registrarNovoLead,
+  atualizarLeadExistente,
+  excluirLead,
+  listarCamposDoTenant,
+  pesquisarLeads,
+} from '../services/leads.service.js';
+import {
+  criarLeadBodySchema,
+  atualizarLeadBodySchema,
+  leadIdParamSchema,
+} from '../schemas/leads.schema.js';
+import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/leads-search.schema.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
@@ -32,13 +22,51 @@ const criarLeadBodySchema = z.object({
 export function registrarRotasLeads(app) {
   app.get('/crm/leads', async (req, reply) => {
     const { tenantId } = req.tenantContext;
-    return sendSuccess(reply, await listarLeadsFormatados(tenantId));
+    // Mesma implementação do /search (sem filtro), paginada.
+    const paginacao = listarLeadsQuerySchema.parse(req.query);
+    return sendSuccess(reply, await pesquisarLeads(tenantId, { filtros: [], paginacao }));
   });
 
   app.post('/crm/leads', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, userId } = req.tenantContext;
     const body = criarLeadBodySchema.parse(req.body);
-    const lead = await registrarNovoLead(tenantId, body);
+    const lead = await registrarNovoLead(tenantId, body, userId);
     return sendSuccess(reply, lead, HTTP_STATUS.CREATED);
+  });
+
+  // Campos ativos do tenant (Camada 1 + Camada 2 visível + Camada 3), fonte
+  // única pra formulário, filtro e mapeamento de import/export. Registrada
+  // antes de `/crm/leads/:id` só por legibilidade — rota estática já tem
+  // precedência no roteador do Fastify.
+  app.get('/crm/leads/fields', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    return sendSuccess(reply, await listarCamposDoTenant(tenantId));
+  });
+
+  // POST (não GET): filtro combinado com campos customizados não cabe bem
+  // em query string (docs/plano-crm-campos-filtros-import-export.md §2.2).
+  app.post('/crm/leads/search', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const body = pesquisarLeadsBodySchema.parse(req.body ?? {});
+    return sendSuccess(reply, await pesquisarLeads(tenantId, body));
+  });
+
+  app.get('/crm/leads/:id', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const { id: leadId } = leadIdParamSchema.parse(req.params);
+    return sendSuccess(reply, await buscarLeadFormatado(tenantId, leadId));
+  });
+
+  app.put('/crm/leads/:id', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const { id: leadId } = leadIdParamSchema.parse(req.params);
+    const body = atualizarLeadBodySchema.parse(req.body);
+    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body));
+  });
+
+  app.delete('/crm/leads/:id', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const { id: leadId } = leadIdParamSchema.parse(req.params);
+    return sendSuccess(reply, await excluirLead(tenantId, leadId));
   });
 }

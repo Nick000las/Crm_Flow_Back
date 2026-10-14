@@ -3,6 +3,7 @@ import { MODULES } from '#api/modules.js';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
 
 /** @param {string[]} moduleKeys */
 function validarModuleKeys(moduleKeys) {
@@ -95,7 +96,7 @@ export class TenantManagement {
     validarModuleKeys(modulosContratados);
     const prisma = getAdminClient();
 
-    return prisma.$transaction(async (tx) => {
+    const resultado = await prisma.$transaction(async (tx) => {
       await buscarTenantOuFalhar(tx, tenantId);
 
       const atuais = await tx.tenantModule.findMany({
@@ -120,6 +121,9 @@ export class TenantManagement {
         include: { modulosAtivos: true },
       });
     });
+
+    invalidarAcessoModulo(tenantId);
+    return resultado;
   }
 
   /** Soft-disable — mantém a linha (histórico de billing), só marca `disabledAt`. */
@@ -136,6 +140,7 @@ export class TenantManagement {
         message: `Tenant "${tenantId}" não tem o módulo "${moduleKey}" ativo`,
       });
     }
+    invalidarAcessoModulo(tenantId);
     return { tenantId, moduleKey, disabled: true };
   }
 

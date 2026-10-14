@@ -54,13 +54,18 @@ export function buscarDefinicaoPorChave(tenantId, chave) {
  */
 export function criarDefinicao(tenantId, definicao) {
   const { chave, label, tipo, opcoes, obrigatorio, ordem } = definicao;
+  // Prisma manda array JS pro Postgres como `text[]` nativo — precisa virar
+  // string JSON antes do `::jsonb`, senão o Postgres recusa o cast direto
+  // (`cannot cast type text[] to jsonb`). `null` fica `null` mesmo: vira
+  // SQL NULL de verdade na coluna, não o escalar JSON `null`.
+  const opcoesJson = opcoes === null || opcoes === undefined ? null : JSON.stringify(opcoes);
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
       INSERT INTO modulo_crm.tenant_lead_field_definitions
         (tenant_id, chave, label, tipo, opcoes, obrigatorio, ordem)
       VALUES
-        (${tenantId}::uuid, ${chave}, ${label}, ${tipo}, ${opcoes}::jsonb, ${obrigatorio}, ${ordem})
+        (${tenantId}::uuid, ${chave}, ${label}, ${tipo}, ${opcoesJson}::jsonb, ${obrigatorio}, ${ordem})
       RETURNING id, chave, label, tipo, opcoes, obrigatorio, ordem, created_at
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
@@ -80,11 +85,14 @@ export function criarDefinicao(tenantId, definicao) {
  */
 export function atualizarDefinicao(tenantId, definicaoId, atualizacoes) {
   const { label, tipo, opcoes, obrigatorio } = atualizacoes;
+  // Mesmo motivo de criarDefinicao — array JS precisa virar string JSON
+  // antes do `::jsonb`.
+  const opcoesJson = opcoes === null || opcoes === undefined ? null : JSON.stringify(opcoes);
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
       UPDATE modulo_crm.tenant_lead_field_definitions
-      SET label = ${label}, tipo = ${tipo}, opcoes = ${opcoes}::jsonb, obrigatorio = ${obrigatorio}
+      SET label = ${label}, tipo = ${tipo}, opcoes = ${opcoesJson}::jsonb, obrigatorio = ${obrigatorio}
       WHERE id = ${definicaoId}::uuid AND tenant_id = ${tenantId}::uuid
       RETURNING id, chave, label, tipo, opcoes, obrigatorio, ordem, created_at
     `.then((rows) => rows[FIRST_RESULT_INDEX]),

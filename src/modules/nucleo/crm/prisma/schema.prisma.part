@@ -14,12 +14,39 @@ CREATE TABLE modulo_crm.leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   nome VARCHAR NOT NULL,
-  telefone VARCHAR NOT NULL,
+  telefone VARCHAR,
   valor NUMERIC,
   funil_estagio_id UUID REFERENCES modulo_crm.funil_estagios(id),
-  usuario_responsavel_id UUID,
+  usuario_responsavel_id UUID REFERENCES usuarios(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  -- Camada 1 (docs/plano-crm-campos-hibridos.md) — sempre ativa.
+  email VARCHAR,
+  fonte_lead VARCHAR CHECK (fonte_lead IN ('whatsapp','formulario_site','indicacao','trafego_pago','evento','importacao_manual','outro')),
+  status VARCHAR CHECK (status IN ('novo','em_contato','qualificado','proposta','negociacao','ganho','perdido')),
+  tags VARCHAR[],
+  ultima_interacao_em TIMESTAMP,
+
+  -- Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar
+  -- (ver modulo_crm.tenant_lead_field_visibility).
+  empresa VARCHAR,
+  cargo VARCHAR,
+  cpf VARCHAR,
+  cnpj VARCHAR,
+  cidade VARCHAR,
+  uf VARCHAR,
+  cep VARCHAR,
+  endereco VARCHAR,
+  campanha_utm VARCHAR,
+  data_conversao TIMESTAMP,
+  probabilidade_fechamento NUMERIC,
+  data_prevista_fechamento TIMESTAMP,
+  motivo_perda VARCHAR CHECK (motivo_perda IN ('preco','concorrente','sem_orcamento','sem_resposta','fora_do_perfil','outro')),
+  lead_score NUMERIC,
+  proximo_followup TIMESTAMP,
+
+  CONSTRAINT chk_leads_email_ou_telefone CHECK (email IS NOT NULL OR telefone IS NOT NULL)
 );
 
 ALTER TABLE modulo_crm.funil_estagios ENABLE ROW LEVEL SECURITY;
@@ -63,3 +90,71 @@ CREATE INDEX idx_lead_field_definitions_tenant_ordem
 -- do plano. `leads.custom_fields` nunca é limpo automaticamente.
 ALTER TABLE modulo_crm.leads ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX idx_leads_custom_fields_gin ON modulo_crm.leads USING GIN (custom_fields);
+
+-- Campos híbridos (docs/plano-crm-campos-hibridos.md). Colunas de Camada
+-- 1/2 já foram incorporadas direto em `modulo_crm.leads` acima (fonte
+-- única do estado final); só a tabela de controle de visibilidade de
+-- Camada 2 precisa de DDL própria.
+CREATE TABLE modulo_crm.tenant_lead_field_visibility (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  coluna VARCHAR NOT NULL,
+  visivel BOOLEAN NOT NULL DEFAULT false,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  obrigatorio BOOLEAN NOT NULL DEFAULT false,
+
+  UNIQUE (tenant_id, coluna)
+);
+
+ALTER TABLE modulo_crm.tenant_lead_field_visibility ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.tenant_lead_field_visibility
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_lead_field_visibility_tenant ON modulo_crm.tenant_lead_field_visibility(tenant_id);
+
+-- Filtros salvos e importação assíncrona (migration 0010,
+-- docs/plano-crm-campos-hibridos.md passos 6 e 7). `filtros` é o mesmo
+-- body de POST /crm/leads/search; `payload` de import_jobs são as linhas
+-- já validadas que o worker consome.
+CREATE TABLE modulo_crm.crm_filter_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  nome VARCHAR NOT NULL,
+  filtros JSONB NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (tenant_id, usuario_id, nome)
+);
+
+ALTER TABLE modulo_crm.crm_filter_views ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_filter_views
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_crm_filter_views_tenant_usuario ON modulo_crm.crm_filter_views(tenant_id, usuario_id);
+
+CREATE TABLE modulo_crm.import_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  status VARCHAR NOT NULL DEFAULT 'pendente'
+    CHECK (status IN ('pendente','processando','concluido','falhou')),
+  estrategia_duplicata VARCHAR NOT NULL
+    CHECK (estrategia_duplicata IN ('pular','atualizar','criar')),
+  payload JSONB NOT NULL,
+  total_linhas INTEGER NOT NULL,
+  linhas_processadas INTEGER NOT NULL DEFAULT 0,
+  linhas_criadas INTEGER NOT NULL DEFAULT 0,
+  linhas_atualizadas INTEGER NOT NULL DEFAULT 0,
+  linhas_ignoradas INTEGER NOT NULL DEFAULT 0,
+  linhas_com_erro INTEGER NOT NULL DEFAULT 0,
+  relatorio_erro JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  concluido_em TIMESTAMP
+);
+
+ALTER TABLE modulo_crm.import_jobs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.import_jobs
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_import_jobs_tenant_status ON modulo_crm.import_jobs(tenant_id, status);
