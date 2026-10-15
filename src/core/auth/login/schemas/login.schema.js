@@ -48,12 +48,16 @@ export const activatePasswordBodySchema = z.object({
   ),
 });
 
-export const refreshBodySchema = z.object({
-  refreshToken: requiredString('Refresh token não informado').min(
-    TEXT_LIMITS.NON_EMPTY_MIN_LENGTH,
-    'Refresh token não informado'
-  ),
-});
+// Opcional: a sessão de tenant manda o refresh token no cookie httpOnly;
+// só a sessão master (memória) ainda o envia no corpo.
+export const refreshBodySchema = z
+  .object({
+    refreshToken: z
+      .string({ invalid_type_error: 'Refresh token inválido' })
+      .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Refresh token não informado')
+      .optional(),
+  })
+  .default({});
 
 // Sem `email` — quem está verificando já provou identidade na etapa de
 // senha; o token pendente no cookie mfa_token já carrega userId/mfaCodeId.

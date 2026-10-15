@@ -3,10 +3,12 @@ const SECONDS_PER_MINUTE = 60;
 const ACTIVATION_CODE_EXPIRATION_MINUTES = 10;
 const ACTIVATION_TOKEN_EXPIRATION_MINUTES = 10;
 const LOGIN_MFA_EXPIRATION_MINUTES = 5;
+const REFRESH_TOKEN_EXPIRATION_DAYS = 7;
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
 export const JWT_EXPIRATION = Object.freeze({
   ACCESS_TOKEN: '15m',
-  REFRESH_TOKEN: '7d',
+  REFRESH_TOKEN: `${REFRESH_TOKEN_EXPIRATION_DAYS}d`,
   PASSWORD_ACTIVATION_TOKEN: `${ACTIVATION_TOKEN_EXPIRATION_MINUTES}m`,
   LOGIN_MFA_TOKEN: `${LOGIN_MFA_EXPIRATION_MINUTES}m`,
 });
@@ -40,6 +42,17 @@ export const LOGIN_MFA = Object.freeze({
   EXPIRATION_MINUTES: LOGIN_MFA_EXPIRATION_MINUTES,
   EXPIRATION_MS: LOGIN_MFA_EXPIRATION_MINUTES * MILLISECONDS_PER_MINUTE,
   TOKEN_EXPIRATION_SECONDS: LOGIN_MFA_EXPIRATION_MINUTES * SECONDS_PER_MINUTE,
+});
+
+/**
+ * Sessão de tenant persistida em cookie httpOnly (sobrevive ao F5). O cookie
+ * vive o mesmo tanto que o refresh token que carrega.
+ */
+export const REFRESH_SESSION = Object.freeze({
+  COOKIE_NAME: 'refresh_token',
+  // Cobre /auth/refresh e /auth/logout — e nenhuma rota de módulo.
+  COOKIE_PATH: '/auth',
+  TOKEN_EXPIRATION_SECONDS: REFRESH_TOKEN_EXPIRATION_DAYS * SECONDS_PER_DAY,
 });
 
 export const PASSWORD_POLICY = Object.freeze({

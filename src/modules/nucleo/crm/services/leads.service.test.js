@@ -238,7 +238,14 @@ describe('listarCamposDoTenant', () => {
     const porChave = Object.fromEntries(campos.map((campo) => [campo.chave, campo]));
 
     expect(porChave.nome.camada).toBe(CAMADA.CAMADA_1);
-    expect(porChave.empresa).toMatchObject({ camada: CAMADA.CAMADA_2, obrigatorio: true, label: 'Empresa' });
+    expect(porChave.fonteLead.coluna).toBe('fonte_lead');
+    expect(porChave.empresa).toMatchObject({
+      camada: CAMADA.CAMADA_2,
+      coluna: 'empresa',
+      obrigatorio: true,
+      label: 'Empresa',
+    });
+    expect(porChave.origem).not.toHaveProperty('coluna');
     expect(porChave.cpf).toBeUndefined();
     expect(porChave.origem.camada).toBe(CAMADA.CAMADA_3);
   });

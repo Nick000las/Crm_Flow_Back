@@ -3,6 +3,7 @@ import { registrarRotasDefinicoes } from './controllers/field-definitions.contro
 import { registrarRotasVisibilidade } from './controllers/field-visibility.controller.js';
 import { registrarRotasViews } from './controllers/filter-views.controller.js';
 import { registrarRotasImportExport } from './controllers/import-export.controller.js';
+import { registrarRotasUsuarios } from './controllers/usuarios.controller.js';
 
 /** @type {import('#core/types/module.js').Module} */
 export const crmModule = {
@@ -15,6 +16,7 @@ export const crmModule = {
     registrarRotasDefinicoes(app);
     registrarRotasVisibilidade(app);
     registrarRotasViews(app);
+    registrarRotasUsuarios(app);
     await registrarRotasImportExport(app);
   },
 };

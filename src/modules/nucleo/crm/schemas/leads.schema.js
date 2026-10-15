@@ -63,12 +63,14 @@ export const criarLeadBodySchema = z
       })
       .trim()
       .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o nome do lead'),
+    // Opcional: estágios do funil ficam em aberto até a integração com o
+    // Kanban (nenhum tenant tem estágio hoje), então o lead pode nascer
+    // sem estágio — `funil_estagio_id` é nullable no banco.
     funilEstagioId: z
-      .string({
-        required_error: 'Informe o estágio do funil',
-        invalid_type_error: 'Informe um estágio de funil válido',
-      })
-      .uuid('Informe um estágio de funil válido'),
+      .string({ invalid_type_error: 'Informe um estágio de funil válido' })
+      .uuid('Informe um estágio de funil válido')
+      .optional(),
+    valor: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
     // Validação de forma só ("é um objeto") — obrigatoriedade/tipo por
     // chave depende de `tenant_lead_field_definitions`, que é dado de
     // banco por tenant, então só o service consegue validar isso de verdade.
