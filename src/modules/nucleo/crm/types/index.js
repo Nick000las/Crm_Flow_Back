@@ -52,8 +52,8 @@
  * @typedef {object} CriarLeadInput
  * @property {string} nome
  * @property {string} [telefone]
- * @property {string | null} funilEstagioId `null` só vindo do import, quando o tenant não tem estágio nenhum
- * @property {number} [valor] só preenchido pelo import (a rota POST /crm/leads não aceita `valor`)
+ * @property {string | null} [funilEstagioId] opcional — estágios ficam em aberto até o Kanban
+ * @property {number} [valor]
  * @property {string} [usuarioResponsavelId] omitido na rota → o service usa quem está criando
  * @property {Record<string, unknown>} [customFields]
  * @property {string} [email]

@@ -61,7 +61,8 @@ Toda rota exige token válido e o módulo `crm` contratado pelo tenant (seção 
 |---|---|---|
 | `GET /crm/leads?pagina=&tamanho=` | todos | Lista paginada, no mesmo formato do `/search`: `{ itens, total, pagina, tamanho }` |
 | `POST /crm/leads`, `GET/PUT/DELETE /crm/leads/:id` | todos | CRUD. O payload aceita as Camadas 1 e 2 no nível raiz, `customFields` para a Camada 3 e `usuarioResponsavelId` |
-| `GET /crm/leads/fields` | todos | Lista única de campos ativos (seção 5) |
+| `GET /crm/leads/fields` | todos | Lista única de campos ativos (seção 5). Nas Camadas 1 e 2, cada item traz `coluna`, o nome da propriedade no lead lido (snake_case) |
+| `GET /crm/usuarios` | todos | Usuários ativos do tenant, `{ id, nome }[]`, para escolher o responsável |
 | `POST /crm/leads/search` | todos | Filtro combinado com paginação (seção 6) |
 | `GET /crm/field-visibility` | todos | Estado da visibilidade da Camada 2 |
 | `PUT /crm/field-visibility` | DONO/MASTER | Liga, desliga e reordena os campos da Camada 2 |
@@ -83,12 +84,15 @@ Toda rota exige token válido e o módulo `crm` contratado pelo tenant (seção 
   - MASTER não tem bypass: ele acessa o CRM do próprio tenant como qualquer outro.
 - **Papéis:** `requireRole(PAPEIS_GESTAO)` (DONO e MASTER) por rota, conforme a tabela acima. OPERADOR enxerga todos os leads do tenant; o responsável é atribuição e filtro, não restrição de acesso.
 
+- **Menu do front:** `GET /auth/me` devolve `modulosAtivos: string[]` (módulos sem `disabled_at`), lidos do banco a cada chamada, porque não viajam no JWT. O front usa isso só para esconder do menu o que não foi contratado; quem bloqueia de verdade é o `exigirModuloAtivo`.
+
 ### 3.2. Responsável pelo lead
 
 - **Na criação:** sem `usuarioResponsavelId`, o responsável é quem criou o lead. No import, é quem importou.
 - **Validação:** um responsável informado é conferido em `usuarios` do **mesmo tenant** e precisa estar `ativo` ([usuarios.repository.js](../src/modules/nucleo/crm/adapters/usuarios.repository.js)). Isso é necessário porque a FK sozinha aceitaria um usuário de outro tenant.
 - **Na edição:** `usuarioResponsavelId: null` remove o responsável.
 - **Leitura:** `usuario_responsavel_id` volta em todas as leituras de lead.
+- **Valores NUMERIC:** `valor`, `probabilidade_fechamento` e `lead_score` chegam como **string** no JSON (é assim que o Prisma serializa `Decimal`). O cliente converte para número ao exibir e editar.
 
 ### 3.3. Edição: omitir mantém, `null` limpa
 
@@ -235,4 +239,4 @@ Desde o passo 8, `GET /crm/leads` devolve `{ itens, total, pagina, tamanho }` em
 - **Subir o worker em produção** como um segundo processo (`pnpm worker:crm`).
 - **Rodar `EXPLAIN ANALYZE` dos filtros com volume real**, para confirmar o GIN nos filtros de containment da Camada 3 (plano anterior, §2.4).
 - **Contratar os módulos dos tenants:** em 2026-10-13, nenhum tenant tinha linha em `tenant_modules`. Com a validação da seção 3.1, `/crm/*` e o Kanban respondem 403 até um MASTER contratar os módulos (`PUT /admin/tenants/:id/modules`).
-- **Estágios do funil (em aberto, dependem do Kanban):** não há CRUD de `funil_estagios`, e `system_stage` e `limite_vacuo_horas` não são usados. Como `POST /crm/leads` exige `funilEstagioId`, um tenant sem estágio só cria leads pelo import. A decisão sai junto com a integração com `modulo_kanban_universal` (`board_type: crm_leads`, MASTER_DOCUMENT §1.1/§4.2).
+- **Estágios do funil (em aberto, dependem do Kanban):** não há CRUD de `funil_estagios`, e `system_stage` e `limite_vacuo_horas` não são usados. Desde 2026-10-14, `funilEstagioId` é **opcional** em `POST /crm/leads`, e o lead pode nascer sem estágio. A criação também passou a aceitar `valor`. A decisão sai junto com a integração com `modulo_kanban_universal` (`board_type: crm_leads`, MASTER_DOCUMENT §1.1/§4.2).

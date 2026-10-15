@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '#api/app.js';
-import { signAccessToken, signLoginMfaToken, signPasswordActivationToken } from '#core/auth/jwt.js';
+import {
+  signAccessToken,
+  signLoginMfaToken,
+  signPasswordActivationToken,
+  signRefreshToken,
+} from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
@@ -9,6 +14,8 @@ import {
   authenticateWithPassword,
   disableMfa as disableMfaService,
   enableMfa as enableMfaService,
+  getSessionUser,
+  getUserContext,
   verifyActivationCode,
   verifyLoginMfaCode,
 } from '../services/login.service.js';
@@ -22,6 +29,7 @@ vi.mock('../services/login.service.js', () => ({
   enableMfa: vi.fn(),
   disableMfa: vi.fn(),
   getUserContext: vi.fn(),
+  getSessionUser: vi.fn(),
 }));
 
 const FRONTEND_ORIGIN = 'http://localhost:5173';
@@ -30,6 +38,28 @@ const ACTIVATION_COOKIE_PATH = '/auth/activation';
 const MFA_COOKIE_NAME = 'mfa_token';
 const MFA_COOKIE_PATH = '/auth/mfa';
 const PREFLIGHT_STATUS_CODE = 204;
+const REFRESH_COOKIE_NAME = 'refresh_token';
+const REFRESH_COOKIE_PATH = '/auth';
+const COOKIE_EXPIRADO = 'Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+/** `set-cookie` vira array quando a resposta grava mais de um cookie. */
+function cookiesDaResposta(response) {
+  return [response.headers['set-cookie'] ?? []].flat();
+}
+
+function cookieChamado(response, nome) {
+  return cookiesDaResposta(response).find((cookie) => cookie.startsWith(`${nome}=`));
+}
+
+/** Sessão de tenant: refresh só no cookie httpOnly, nunca no corpo. */
+function expectSessaoDeTenant(response) {
+  expect(response.json().data).toEqual({ accessToken: expect.any(String) });
+  const refresh = cookieChamado(response, REFRESH_COOKIE_NAME);
+  expect(refresh).toBeDefined();
+  expect(refresh).toContain('HttpOnly');
+  expect(refresh).toContain(`Path=${REFRESH_COOKIE_PATH}`);
+  expect(refresh).toContain('SameSite=Lax');
+}
 
 function createTestConfig() {
   return loadEnv({
@@ -142,18 +172,11 @@ describe('cookies do fluxo de ativação', () => {
         ...activationContext,
         senha: 'senha-segura',
       });
-      expect(response.json()).toMatchObject({
-        statusCode: HTTP_STATUS.OK,
-        data: {
-          accessToken: expect.any(String),
-          refreshToken: expect.any(String),
-        },
-      });
+      expectSessaoDeTenant(response);
 
-      const cookie = response.headers['set-cookie'];
-      expect(cookie).toContain(`${ACTIVATION_COOKIE_NAME}=`);
+      const cookie = cookieChamado(response, ACTIVATION_COOKIE_NAME);
       expect(cookie).toContain(`Path=${ACTIVATION_COOKIE_PATH}`);
-      expect(cookie).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+      expect(cookie).toContain(COOKIE_EXPIRADO);
     } finally {
       await app.close();
     }
@@ -229,11 +252,7 @@ describe('MFA por e-mail no login', () => {
       });
 
       expect(response.statusCode).toBe(HTTP_STATUS.OK);
-      expect(response.json()).toMatchObject({
-        statusCode: HTTP_STATUS.OK,
-        data: { accessToken: expect.any(String), refreshToken: expect.any(String) },
-      });
-      expect(response.headers['set-cookie']).toBeUndefined();
+      expectSessaoDeTenant(response);
     } finally {
       await app.close();
     }
@@ -259,15 +278,11 @@ describe('MFA por e-mail no login', () => {
         ...mfaContext,
         verificationCode: '123456',
       });
-      expect(response.json()).toMatchObject({
-        statusCode: HTTP_STATUS.OK,
-        data: { accessToken: expect.any(String), refreshToken: expect.any(String) },
-      });
+      expectSessaoDeTenant(response);
 
-      const cookie = response.headers['set-cookie'];
-      expect(cookie).toContain(`${MFA_COOKIE_NAME}=`);
+      const cookie = cookieChamado(response, MFA_COOKIE_NAME);
       expect(cookie).toContain(`Path=${MFA_COOKIE_PATH}`);
-      expect(cookie).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+      expect(cookie).toContain(COOKIE_EXPIRADO);
     } finally {
       await app.close();
     }
@@ -333,6 +348,27 @@ describe('MFA por e-mail no login', () => {
     }
   });
 
+  it('/auth/me devolve o contexto da sessão com os módulos contratados', async () => {
+    const app = await createTestApp();
+    const tenantContext = { tenantId: 'tenant-id', userId: 'user-id', role: 'OPERADOR' };
+    const accessToken = signAccessToken(app, tenantContext);
+    vi.mocked(getSessionUser).mockResolvedValue({ ...tenantContext, modulosAtivos: ['crm'] });
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(getSessionUser).toHaveBeenCalledWith(tenantContext);
+      expect(response.json().data.user).toEqual({ ...tenantContext, modulosAtivos: ['crm'] });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejeita ligar MFA sem autenticação', async () => {
     const app = await createTestApp();
 
@@ -382,6 +418,124 @@ describe('MFA por e-mail no login', () => {
 
       expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(disableMfaService).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('sessão persistida em cookie (refresh_token)', () => {
+  it('MASTER recebe o refresh no corpo e nenhum cookie — a sessão admin é só memória', async () => {
+    vi.mocked(authenticateWithPassword).mockResolvedValue({
+      tenantId: null,
+      userId: 'master-id',
+      role: 'MASTER',
+    });
+    const app = await createTestApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login/password',
+        payload: { email: 'master@example.com', senha: 'senha-segura' },
+      });
+
+      expect(response.json().data).toEqual({
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
+      });
+      expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('renova o access token lendo o refresh do cookie', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue({ tenantId: 'tenant-id', userId: 'user-id', role: 'DONO' });
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, 'user-id')}` },
+      });
+
+      expect(response.statusCode).toBe(HTTP_STATUS.OK);
+      expect(response.json().data).toEqual({ accessToken: expect.any(String) });
+      expect(getUserContext).toHaveBeenCalledWith({ userId: 'user-id' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('o refresh do corpo tem prioridade sobre o cookie (sessão master no mesmo navegador)', async () => {
+    const app = await createTestApp();
+    vi.mocked(getUserContext).mockResolvedValue({ tenantId: null, userId: 'master-id', role: 'MASTER' });
+
+    try {
+      await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=${signRefreshToken(app, 'tenant-user-id')}` },
+        payload: { refreshToken: signRefreshToken(app, 'master-id') },
+      });
+
+      expect(getUserContext).toHaveBeenCalledWith({ userId: 'master-id' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('sem refresh algum responde 401', async () => {
+    const app = await createTestApp();
+
+    try {
+      const response = await app.inject({ method: 'POST', url: '/auth/refresh' });
+
+      expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      expect(response.json()).toMatchObject({ error: { code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('cookie de refresh inválido responde 401 e é apagado', async () => {
+    const app = await createTestApp();
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: `${REFRESH_COOKIE_NAME}=adulterado` },
+      });
+
+      expect(response.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
+      expect(cookieChamado(response, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('logout de tenant apaga o cookie; logout de MASTER não mexe nele', async () => {
+    const app = await createTestApp();
+    const logoutComo = (role) =>
+      app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          authorization: `Bearer ${signAccessToken(app, { tenantId: 'tenant-id', userId: 'user-id', role })}`,
+        },
+      });
+
+    try {
+      const tenant = await logoutComo('DONO');
+      const master = await logoutComo('MASTER');
+
+      expect(tenant.statusCode).toBe(HTTP_STATUS.OK);
+      expect(cookieChamado(tenant, REFRESH_COOKIE_NAME)).toContain(COOKIE_EXPIRADO);
+      expect(master.statusCode).toBe(HTTP_STATUS.OK);
+      expect(cookieChamado(master, REFRESH_COOKIE_NAME)).toBeUndefined();
     } finally {
       await app.close();
     }

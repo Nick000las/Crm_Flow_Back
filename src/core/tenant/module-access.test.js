@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getAdminClient } from '#core/db/tenantClient.js';
-import { moduloAtivo, invalidarAcessoModulo, exigirModuloAtivo } from './module-access.js';
+import { moduloAtivo, invalidarAcessoModulo, exigirModuloAtivo, listarModulosAtivos } from './module-access.js';
 
 const findFirst = vi.fn();
+const findMany = vi.fn();
 
 vi.mock('#core/db/tenantClient.js', () => ({
-  getAdminClient: vi.fn(() => ({ tenantModule: { findFirst } })),
+  getAdminClient: vi.fn(() => ({ tenantModule: { findFirst, findMany } })),
 }));
 
 const TENANT_A = '00000000-0000-0000-0000-00000000000a';
@@ -70,5 +71,15 @@ describe('exigirModuloAtivo', () => {
   it('deixa passar quando o módulo está ativo', async () => {
     findFirst.mockResolvedValue({ id: 'm1' });
     await expect(exigirModuloAtivo('crm')({ tenantContext: { tenantId: TENANT_A } })).resolves.toBeUndefined();
+  });
+});
+
+describe('listarModulosAtivos', () => {
+  it('devolve só as chaves dos módulos não desligados', async () => {
+    findMany.mockResolvedValue([{ moduleKey: 'crm' }, { moduleKey: 'kanban_universal' }]);
+    await expect(listarModulosAtivos(TENANT_A)).resolves.toEqual(['crm', 'kanban_universal']);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT_A, disabledAt: null } }),
+    );
   });
 });

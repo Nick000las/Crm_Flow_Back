@@ -7,9 +7,10 @@ import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { EXPORTACAO } from '../constants.js';
-import { atualizarLeadExistente, pesquisarLeads } from '../services/leads.service.js';
+import { atualizarLeadExistente, pesquisarLeads, registrarNovoLead } from '../services/leads.service.js';
 import { exportarLeads } from '../services/export.service.js';
 import { previsualizarImportacao } from '../services/import.service.js';
+import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -56,10 +57,12 @@ vi.mock('../services/import.service.js', () => ({
   encerrarImportacao: vi.fn(),
 }));
 vi.mock('../services/export.service.js', () => ({ exportarLeads: vi.fn() }));
+vi.mock('../services/usuarios.service.js', () => ({ listarResponsaveisPossiveis: vi.fn() }));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const LEAD = '00000000-0000-0000-0000-000000000009';
 const TAMANHO_EXCESSIVO = 999;
+const VALOR_LEAD = 1500.5;
 const PAGINA = 2;
 const TAMANHO = 10;
 
@@ -143,6 +146,14 @@ describe('RBAC', () => {
     }
   });
 
+  it('OPERADOR lista os usuários do tenant (responsáveis possíveis)', async () => {
+    listarResponsaveisPossiveis.mockResolvedValue([{ id: 'u-1', nome: 'Ana' }]);
+    const resposta = await app.inject({ method: 'GET', url: '/crm/usuarios', headers: autorizado(tokenOperador) });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
+    expect(resposta.json().data).toEqual([{ id: 'u-1', nome: 'Ana' }]);
+    expect(listarResponsaveisPossiveis).toHaveBeenCalledWith(TENANT);
+  });
+
   it('DONO exporta e recebe o xlsx', async () => {
     exportarLeads.mockResolvedValue(Buffer.from('xlsx'));
     const resposta = await app.inject({
@@ -170,6 +181,22 @@ describe('validação na borda', () => {
       headers: autorizado(tokenOperador),
     });
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('POST /crm/leads aceita lead sem estágio e com valor', async () => {
+    registrarNovoLead.mockResolvedValue({ id: LEAD });
+    const resposta = await app.inject({
+      method: 'POST',
+      url: '/crm/leads',
+      headers: autorizado(tokenOperador),
+      payload: { nome: 'Ana', email: 'ana@x.com', valor: VALOR_LEAD },
+    });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.CREATED);
+    expect(registrarNovoLead).toHaveBeenCalledWith(
+      TENANT,
+      { nome: 'Ana', email: 'ana@x.com', valor: VALOR_LEAD },
+      'u-op',
+    );
   });
 
   it('PUT aceita null pra limpar campo, mas não em nome', async () => {

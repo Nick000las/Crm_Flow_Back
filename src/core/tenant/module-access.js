@@ -48,6 +48,23 @@ export async function moduloAtivo(tenantId, moduleKey) {
 }
 
 /**
+ * Módulos contratados e ativos do tenant (`module_key` sem `disabled_at`)
+ * — o que o frontend usa pra esconder do menu o que não foi contratado.
+ * Sem cache: é chamado uma vez por login (`/auth/me`), não por requisição.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<string[]>}
+ */
+export async function listarModulosAtivos(tenantId) {
+  const modulos = await getAdminClient().tenantModule.findMany({
+    where: { tenantId, disabledAt: null },
+    select: { moduleKey: true },
+    orderBy: { moduleKey: 'asc' },
+  });
+  return modulos.map((modulo) => modulo.moduleKey);
+}
+
+/**
  * Chamado sempre que os módulos de um tenant mudam (`TenantManagement`),
  * pra mudança valer na hora nesta instância.
  *

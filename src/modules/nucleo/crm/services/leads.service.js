@@ -13,7 +13,13 @@ import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
 import { listarDefinicoesPorTenant } from './field-definitions.service.js';
 import { listarVisibilidadeDoTenant } from './field-visibility.service.js';
 import { montarCondicoes } from './lead-filter.service.js';
-import { CAMADA, CAMADA_2_COLUNA_PARA_CAMPO, CAMADA_2_METADADOS, CAMPOS_CAMADA_1 } from '../constants.js';
+import {
+  CAMADA,
+  CAMADA_1_CAMPOS,
+  CAMADA_2_COLUNA_PARA_CAMPO,
+  CAMADA_2_METADADOS,
+  CAMPOS_CAMADA_1,
+} from '../constants.js';
 
 /**
  * SERVICE: lógica de negócio pura. Nunca importa Fastify.
@@ -209,12 +215,20 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
  * @param {import('../types/index.js').FieldDefinition[]} definicoes
  */
 function montarCampos(visibilidade, definicoes) {
-  const camposCamada1 = CAMPOS_CAMADA_1.map((campo) => ({ ...campo, camada: CAMADA.CAMADA_1 }));
+  // `coluna` (Camadas 1/2): nome da propriedade no lead lido (snake_case),
+  // enquanto `chave` (camelCase) é o que vai no payload e no filtro. A
+  // Camada 3 não tem `coluna` — o valor fica em `custom_fields[chave]`.
+  const camposCamada1 = CAMPOS_CAMADA_1.map((campo) => ({
+    ...campo,
+    coluna: CAMADA_1_CAMPOS[campo.chave],
+    camada: CAMADA.CAMADA_1,
+  }));
 
   const camposCamada2 = visibilidade
     .filter((item) => item.visivel)
     .map((item) => ({
       chave: CAMADA_2_COLUNA_PARA_CAMPO[item.coluna],
+      coluna: item.coluna,
       ...CAMADA_2_METADADOS[item.coluna],
       camada: CAMADA.CAMADA_2,
       obrigatorio: item.obrigatorio,

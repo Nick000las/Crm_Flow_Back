@@ -7,9 +7,9 @@ import {
   verifyPasswordActivationToken,
   verifyRefreshToken,
 } from '#core/auth/jwt.js';
-import { LOGIN_MFA, PASSWORD_ACTIVATION } from '#core/auth/constants.js';
+import { LOGIN_MFA, PASSWORD_ACTIVATION, REFRESH_SESSION } from '#core/auth/constants.js';
 import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
+import { HTTP_STATUS, ROLES } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendSuccess } from '#shared/http/response.js';
 import {
@@ -31,6 +31,7 @@ import {
   disableMfa as disableMfaService,
   getUserContext,
   getUserSettings as getUserSettingsService,
+  getSessionUser,
 } from '../services/login.service.js';
 
 const ACTIVATION_COOKIE_NAME = 'activation_token';
@@ -73,7 +74,7 @@ export async function loginWithPassword(request, response) {
     return sendSuccess(response, { nextStep: 'mfaCode' });
   }
 
-  return sendSuccess(response, createAuthTokens(request.server, resultado));
+  return sendAuthTokens(request, response, resultado);
 }
 
 /**
@@ -143,7 +144,7 @@ export async function verifyMfaCode(request, response) {
 
   response.clearCookie(MFA_COOKIE_NAME, { path: MFA_COOKIE_PATH });
 
-  return sendSuccess(response, createAuthTokens(request.server, tenantContext));
+  return sendAuthTokens(request, response, tenantContext);
 }
 
 /**
@@ -210,7 +211,7 @@ export async function activatePassword(request, response) {
     path: ACTIVATION_COOKIE_PATH,
   });
 
-  return sendSuccess(response, createAuthTokens(request.server, tenantContext));
+  return sendAuthTokens(request, response, tenantContext);
 }
 
 /**
@@ -218,12 +219,19 @@ export async function activatePassword(request, response) {
  * @param {import('fastify').FastifyReply} response
  */
 export async function refreshAccessToken(request, response) {
-  const { refreshToken } = refreshBodySchema.parse(request.body);
+  const { refreshToken: refreshDoCorpo } = refreshBodySchema.parse(request.body ?? {});
+  // Corpo antes do cookie: a sessão master manda o token no corpo e não pode
+  // herdar o cookie de uma sessão de tenant aberta no mesmo navegador.
+  const refreshToken = refreshDoCorpo ?? request.cookies[REFRESH_SESSION.COOKIE_NAME];
+  const veioDoCookie = refreshDoCorpo === undefined;
 
   let payload;
   try {
+    if (!refreshToken) throw new Error('Sem refresh token');
     payload = verifyRefreshToken(request.server, refreshToken);
   } catch {
+    // Cookie vencido ou adulterado não deve ficar sendo reenviado.
+    if (veioDoCookie) clearRefreshCookie(response);
     throw new AppError({
       statusCode: HTTP_STATUS.UNAUTHORIZED,
       code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN,
@@ -244,7 +252,7 @@ export async function refreshAccessToken(request, response) {
  * @param {import('fastify').FastifyReply} response
  */
 export async function getAuthenticatedUser(request, response) {
-  return sendSuccess(response, { user: request.tenantContext });
+  return sendSuccess(response, { user: await getSessionUser(request.tenantContext) });
 }
 
 /**
@@ -261,12 +269,50 @@ export async function getUserSettings(request, response) {
 }
 
 /**
- * Tokens de acesso são stateless; o cliente encerra a sessão descartando-os.
- * @param {import('fastify').FastifyRequest} _request
+ * Tokens são stateless; o cliente encerra a sessão descartando-os. A sessão
+ * de tenant também perde o cookie de refresh — a master não tem cookie, e
+ * sair dela não pode derrubar a de tenant aberta no mesmo navegador.
+ * @param {import('fastify').FastifyRequest} request
  * @param {import('fastify').FastifyReply} response
  */
-export async function logout(_request, response) {
+export async function logout(request, response) {
+  if (request.tenantContext.role !== ROLES.MASTER) clearRefreshCookie(response);
   return sendSuccess(response, {});
+}
+
+/**
+ * Entrega os tokens de uma sessão recém-aberta.
+ *
+ * - Tenant: o refresh token vai **só** no cookie httpOnly — o JavaScript da
+ *   página nunca o vê (resiste a XSS) e a sessão sobrevive ao F5.
+ * - MASTER: continua no corpo. A sessão admin é deliberadamente só em
+ *   memória, e usa os mesmos endpoints: gravar cookie aqui sobrescreveria a
+ *   sessão de tenant aberta no mesmo navegador.
+ *
+ * @param {import('fastify').FastifyRequest} request
+ * @param {import('fastify').FastifyReply} response
+ * @param {import('#core/types/module.js').TenantContext} tenantContext
+ */
+function sendAuthTokens(request, response, tenantContext) {
+  const { accessToken, refreshToken } = createAuthTokens(request.server, tenantContext);
+
+  if (tenantContext.role === ROLES.MASTER) {
+    return sendSuccess(response, { accessToken, refreshToken });
+  }
+
+  response.setCookie(REFRESH_SESSION.COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    secure: request.server.config.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: REFRESH_SESSION.COOKIE_PATH,
+    maxAge: REFRESH_SESSION.TOKEN_EXPIRATION_SECONDS,
+  });
+  return sendSuccess(response, { accessToken });
+}
+
+/** @param {import('fastify').FastifyReply} response */
+function clearRefreshCookie(response) {
+  response.clearCookie(REFRESH_SESSION.COOKIE_NAME, { path: REFRESH_SESSION.COOKIE_PATH });
 }
 
 /**

@@ -23,3 +23,21 @@ export function buscarUsuarioAtivoDoTenant(tenantId, usuarioId) {
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
+
+/**
+ * Usuários ativos do tenant, pra escolher o responsável de um lead. Só
+ * `id`/`nome` — nada de e-mail, papel ou dados de autenticação.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{ id: string, nome: string }[]>}
+ */
+export function listarUsuariosAtivosDoTenant(tenantId) {
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT id, nome FROM usuarios
+      WHERE tenant_id = ${tenantId}::uuid AND ativo = true
+      ORDER BY nome
+    `,
+  );
+}
