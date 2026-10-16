@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
-import { exportarLeads } from './export.service.js';
+import { exportarLeads, valorParaPlanilha } from './export.service.js';
 import { lerPlanilha } from './planilha.service.js';
 import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
 import { CAMADA } from '../constants.js';
@@ -67,5 +67,30 @@ describe('exportarLeads', () => {
   it('rejeita export acima do limite de linhas', async () => {
     buscarLeadsFiltrados.mockResolvedValue({ total: MUITOS_LEADS, itens: [] });
     await expect(exportarLeads(TENANT, { colunas: ['nome'] })).rejects.toThrow('Refine o filtro');
+  });
+});
+
+describe('valorParaPlanilha — tipos MVP do M2', () => {
+  const VALOR = 99.9;
+
+  it('telefone sai com máscara; monetário sai como número', () => {
+    const lead = { custom_fields: { celular: '11999990000', contrato: VALOR } };
+    expect(
+      valorParaPlanilha(lead, { chave: 'celular', label: 'Celular', tipo: 'telefone', camada: CAMADA.CAMADA_3 }),
+    ).toBe('(11) 99999-0000');
+    expect(
+      valorParaPlanilha(lead, { chave: 'contrato', label: 'Contrato', tipo: 'monetario', camada: CAMADA.CAMADA_3 }),
+    ).toBe(VALOR);
+  });
+});
+
+describe('valorParaPlanilha — campo de lista (M3)', () => {
+  it('sai o nome da opção, não a key (lista e tags)', () => {
+    const lead = { status: 'ganho', tags: ['vip', 'sumiu'] };
+    const status = { chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1, opcoesLista: [{ key: 'ganho', label: 'Fechou' }] };
+    const tags = { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', camada: CAMADA.CAMADA_1, opcoesLista: [{ key: 'vip', label: 'Cliente VIP' }] };
+
+    expect(valorParaPlanilha(lead, status)).toBe('Fechou');
+    expect(valorParaPlanilha(lead, tags)).toBe('Cliente VIP, sumiu');
   });
 });

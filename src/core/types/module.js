@@ -8,7 +8,12 @@
  * @property {string} key
  * @property {string} name
  * @property {(app: import('fastify').FastifyInstance) => void | Promise<void>} registerRoutes
- * @property {string[]} [requiredFeatureFlags]
+ * @property {string[]} [featureFlags]  catálogo das flags do módulo, cada uma
+ *   prefixada pela `key` (`crm.listas`) — o que o MASTER pode ligar por
+ *   tenant (`#core/tenant/feature-flags.js`)
+ * @property {(tenantId: string) => Promise<unknown>} [reconciliar]  ajustes
+ *   idempotentes do estado do módulo num tenant (ex: semear configuração
+ *   padrão). Pode rodar quantas vezes for preciso — `scripts/reconcile.js`
  */
 
 /**
@@ -46,8 +51,17 @@ export function assertModule(candidato) {
   if (typeof mod.registerRoutes !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`registerRoutes(app)\` obrigatório.`);
   }
-  if (mod.requiredFeatureFlags !== undefined && !Array.isArray(mod.requiredFeatureFlags)) {
-    throw new Error(`Módulo "${mod.key}" inválido: \`requiredFeatureFlags\` deve ser um array.`);
+  if (mod.featureFlags !== undefined) {
+    if (!Array.isArray(mod.featureFlags)) {
+      throw new Error(`Módulo "${mod.key}" inválido: \`featureFlags\` deve ser um array.`);
+    }
+    const semPrefixo = mod.featureFlags.find((flag) => typeof flag !== 'string' || !flag.startsWith(`${mod.key}.`));
+    if (semPrefixo !== undefined) {
+      throw new Error(`Módulo "${mod.key}" inválido: a flag "${semPrefixo}" deve começar com "${mod.key}.".`);
+    }
+  }
+  if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {
+    throw new Error(`Módulo "${mod.key}" inválido: \`reconciliar(tenantId)\` deve ser função.`);
   }
 
   return /** @type {Module} */ (mod);

@@ -6,7 +6,7 @@ const EDGE_UNDERSCORE = /^_+|_+$/g;
 
 /**
  * Gera um slug estável a partir de texto livre — usado hoje pra derivar
- * `chave` de `tenant_lead_field_definitions.label` (plano de campos
+ * `chave` de campo personalizado a partir do `label` (plano de campos
  * customizados, Parte 1.3). Fica em `shared/` porque é utilitário
  * genérico, não específico de CRM.
  *

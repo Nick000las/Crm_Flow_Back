@@ -34,7 +34,7 @@ export const criarDefinicaoBodySchema = z.object({
 });
 
 // Sem `ordem` (isso é só de `PUT .../reorder`) e sem `chave` (nunca editável
-// — ver comentário do adapter em field-definitions.repository.js).
+// — ver `editarCampoPersonalizado` em crm-fields.repository.js).
 export const editarDefinicaoBodySchema = z.object(camposDefinicao);
 
 // `id` vem da URL (`/crm/field-definitions/:id`), nunca do body — mesmo
@@ -42,14 +42,3 @@ export const editarDefinicaoBodySchema = z.object(camposDefinicao);
 export const definicaoIdParamSchema = z.object({
   id: z.string({ required_error: 'Informe o id do campo' }).uuid('Id de campo inválido'),
 });
-
-// Body de PUT .../reorder é o array na raiz, não um objeto embrulhando ele
-// — `reordenarDefinicoesDoTenant` espera receber o array direto.
-export const reordenarDefinicoesBodySchema = z
-  .array(
-    z.object({
-      id: z.string().uuid('Id de campo inválido'),
-      ordem: z.number().int('A ordem deve ser um número inteiro'),
-    }),
-  )
-  .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe ao menos um campo para reordenar');

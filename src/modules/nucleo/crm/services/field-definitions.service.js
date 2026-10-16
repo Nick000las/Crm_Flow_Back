@@ -1,16 +1,18 @@
-import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
-import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { erroDeValidacao, erroNaoEncontrado, erroDeConflito } from '#core/errors/app-error.js';
 import { slugify } from '#shared/text/slugify.js';
 import {
-  buscarDefinicoesPorTenant,
-  buscarDefinicaoPorChave,
-  criarDefinicao as criarDefinicaoRepository,
-  atualizarDefinicao as atualizarDefinicaoRepository,
-  reordenarDefinicoes as reordenarDefinicoesRepository,
-  removerDefinicao as removerDefinicaoRepository,
-} from '../adapters/field-definitions.repository.js';
-import { FIELD_DEFINITION_TIPOS, TIPOS_COM_OPCOES } from '../constants.js';
+  buscarPersonalizadoAtivoPorChave,
+  criarCampoPersonalizado,
+  desativarCampoPersonalizado,
+  editarCampoPersonalizado,
+  existeValorDoCampo,
+} from '../adapters/crm-fields.repository.js';
+import { CAMPOS_SISTEMA, CONTEXTOS_VISIBILIDADE, FIELD_DEFINITION_TIPOS, TIPOS_COM_OPCOES } from '../constants.js';
+import { garantirLabelDisponivel, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
+import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service.js';
+
+/** Chaves dos campos do sistema — personalizado não pode reusar nenhuma. */
+const CHAVES_SISTEMA = new Set(CAMPOS_SISTEMA.map((campo) => campo.systemKey));
 
 /**
  * SERVICE: lógica de negócio pura. Nunca importa Fastify.
@@ -29,7 +31,7 @@ import { FIELD_DEFINITION_TIPOS, TIPOS_COM_OPCOES } from '../constants.js';
  * @returns {Promise<FieldDefinition[]>}
  */
 export async function listarDefinicoesPorTenant(tenantId) {
-  return buscarDefinicoesPorTenant(tenantId);
+  return (await obterSchemaCampos(tenantId)).definicoes;
 }
 
 /**
@@ -41,28 +43,24 @@ export async function criarNovaDefinicao(tenantId, input) {
   const label = input?.label?.trim();
 
   if (!label) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Informe o nome do campo',
-      fields: { label: ['Informe o nome do campo'] },
-    });
+    throw erroDeValidacao('label', 'Informe o nome do campo');
   }
 
   const opcoes = validarTipoEOpcoes(input.tipo, input.opcoes);
+  // Nome igual ao de outro campo (inclusive um do sistema renomeado) daria
+  // duas colunas com o mesmo título no form e na tabela.
+  garantirLabelDisponivel(await listarConfiguracaoCampos(tenantId), label);
   const chave = slugify(label);
 
-  const definicaoExistente = await buscarDefinicaoPorChave(tenantId, chave);
+  // Chave igual à de um campo do sistema (ex: "Empresa" → `empresa`)
+  // deixaria duas entradas com a mesma `chave` no form, no filtro e no
+  // mapeamento de import.
+  const definicaoExistente = CHAVES_SISTEMA.has(chave) || (await buscarPersonalizadoAtivoPorChave(tenantId, chave));
   if (definicaoExistente) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.CONFLICT,
-      code: ERROR_CODES.RESOURCE_CONFLICT,
-      message: 'Já existe um campo com esse nome',
-      fields: { label: ['Já existe um campo com esse nome'] },
-    });
+    throw erroDeConflito('label', 'Já existe um campo com esse nome');
   }
 
-  return criarDefinicaoRepository(tenantId, {
+  const criada = await criarCampoPersonalizado(tenantId, {
     chave,
     label,
     tipo: input.tipo,
@@ -70,11 +68,16 @@ export async function criarNovaDefinicao(tenantId, input) {
     obrigatorio: Boolean(input.obrigatorio),
     ordem: input.ordem,
   });
+  await invalidarSchemaCampos(tenantId);
+  return criada;
 }
 
 /**
  * `chave` nunca é editável por aqui — ver comentário do adapter. Só
- * label/tipo/opcoes/obrigatorio.
+ * label/tipo/opcoes/obrigatorio, com as mesmas regras da área
+ * Configurações (M2): nome único, obrigatório só se o campo aparece no
+ * formulário de criação, e tipo fixo depois que algum lead tem valor (o
+ * dado gravado deixaria de bater com o tipo novo).
  *
  * @param {string} tenantId
  * @param {string} definicaoId
@@ -84,8 +87,27 @@ export async function criarNovaDefinicao(tenantId, input) {
 export async function editarDefinicao(tenantId, definicaoId, atualizacoes) {
   const opcoes = validarTipoEOpcoes(atualizacoes.tipo, atualizacoes.opcoes);
 
-  const definicaoAtualizada = await atualizarDefinicaoRepository(tenantId, definicaoId, {
-    label: atualizacoes.label,
+  const campos = await listarConfiguracaoCampos(tenantId);
+  const atual = campos.find((campo) => campo.id === definicaoId && campo.systemKey === null);
+  if (!atual) throw definicaoNaoEncontrada();
+
+  const label = garantirLabelDisponivel(campos, atualizacoes.label ?? '', definicaoId);
+
+  if (atualizacoes.obrigatorio && !atual.visibilidade[CONTEXTOS_VISIBILIDADE.CRIACAO]) {
+    throw erroDeValidacao(
+      'obrigatorio',
+      `"${label}" é obrigatório e precisa aparecer no formulário de criação`,
+    );
+  }
+  if (atualizacoes.tipo !== atual.tipo && (await existeValorDoCampo(tenantId, definicaoId))) {
+    throw erroDeValidacao(
+      'tipo',
+      'Já há leads com valor neste campo — o tipo não pode mudar. Crie um campo novo com o tipo desejado.',
+    );
+  }
+
+  const definicaoAtualizada = await editarCampoPersonalizado(tenantId, definicaoId, {
+    label,
     tipo: atualizacoes.tipo,
     opcoes,
     obrigatorio: Boolean(atualizacoes.obrigatorio),
@@ -97,16 +119,8 @@ export async function editarDefinicao(tenantId, definicaoId, atualizacoes) {
     throw definicaoNaoEncontrada();
   }
 
+  await invalidarSchemaCampos(tenantId);
   return definicaoAtualizada;
-}
-
-/**
- * @param {string} tenantId
- * @param {{ id: string, ordem: number }[]} definicoesOrdenadas
- * @returns {Promise<void>}
- */
-export async function reordenarDefinicoesDoTenant(tenantId, definicoesOrdenadas) {
-  return reordenarDefinicoesRepository(tenantId, definicoesOrdenadas);
 }
 
 /**
@@ -115,11 +129,14 @@ export async function reordenarDefinicoesDoTenant(tenantId, definicoesOrdenadas)
  * @returns {Promise<{ removido: true, aviso: string }>}
  */
 export async function removerDefinicao(tenantId, definicaoId) {
-  const definicaoRemovida = await removerDefinicaoRepository(tenantId, definicaoId);
+  // Excluir = desativar (`crm_field.is_active`): o valor gravado nos leads
+  // fica, só some da API. Lixeira de verdade é M5.
+  const definicaoRemovida = await desativarCampoPersonalizado(tenantId, definicaoId);
 
   if (!definicaoRemovida) {
     throw definicaoNaoEncontrada();
   }
+  await invalidarSchemaCampos(tenantId);
 
   // Dado órfão de propósito (plano, Parte 1.4) — leads.custom_fields não é
   // tocado. O aviso mora aqui, não no controller, pra não virar texto
@@ -140,23 +157,17 @@ export async function removerDefinicao(tenantId, definicaoId) {
  */
 function validarTipoEOpcoes(tipo, opcoes) {
   if (!FIELD_DEFINITION_TIPOS.includes(tipo)) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Tipo de campo inválido',
-      fields: { tipo: [`Tipo deve ser um de: ${FIELD_DEFINITION_TIPOS.join(', ')}`] },
-    });
+    throw erroDeValidacao(
+      'tipo',
+      'Tipo de campo inválido',
+      `Tipo deve ser um de: ${FIELD_DEFINITION_TIPOS.join(', ')}`,
+    );
   }
 
   const precisaDeOpcoes = TIPOS_COM_OPCOES.includes(tipo);
 
   if (precisaDeOpcoes && (!opcoes || opcoes.length === 0)) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Informe as opções do campo',
-      fields: { opcoes: ['Informe ao menos uma opção'] },
-    });
+    throw erroDeValidacao('opcoes', 'Informe as opções do campo', 'Informe ao menos uma opção');
   }
 
   // Tipo que não usa opções nunca guarda lixo em `opcoes`, mesmo que o
@@ -165,9 +176,5 @@ function validarTipoEOpcoes(tipo, opcoes) {
 }
 
 function definicaoNaoEncontrada() {
-  return new AppError({
-    statusCode: HTTP_STATUS.NOT_FOUND,
-    code: ERROR_CODES.RESOURCE_NOT_FOUND,
-    message: 'Definição de campo não encontrada',
-  });
+  return erroNaoEncontrado('Definição de campo não encontrada');
 }

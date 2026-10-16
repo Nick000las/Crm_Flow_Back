@@ -1,6 +1,7 @@
+import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS, TIME_UNITS } from '#shared/constants/index.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 
 /**
@@ -16,17 +17,32 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
  * acesso a dado de negócio.
  */
 
-const SEGUNDOS_CACHE = 30;
-const TTL_CACHE_MS = SEGUNDOS_CACHE * TIME_UNITS.MILLISECONDS_PER_SECOND;
+const TTL_CACHE_SEGUNDOS = 30;
+
+/** @param {string} tenantId */
+const chaveCache = (tenantId) => `modulos:${tenantId}`;
 
 /**
- * Cache por processo — evita uma query extra em toda requisição. Com mais
- * de uma instância, a invalidação explícita só vale pra própria instância;
- * as demais convergem em no máximo `TTL_CACHE_MS`.
+ * Módulos contratados e ativos do tenant (`module_key` sem `disabled_at`),
+ * em ordem alfabética — o que o frontend usa pra esconder do menu o que não
+ * foi contratado e o que `exigirModuloAtivo` confere a cada requisição.
  *
- * @type {Map<string, { ativo: boolean, expiraEm: number }>}
+ * Mesmo cache das feature flags (`#core/cache`): com Redis, desligar um
+ * módulo vale na hora em todas as instâncias.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<string[]>}
  */
-const cache = new Map();
+export function listarModulosAtivos(tenantId) {
+  return lerComCache(chaveCache(tenantId), TTL_CACHE_SEGUNDOS, async () => {
+    const modulos = await getAdminClient().tenantModule.findMany({
+      where: { tenantId, disabledAt: null },
+      select: { moduleKey: true },
+      orderBy: { moduleKey: 'asc' },
+    });
+    return modulos.map((modulo) => modulo.moduleKey);
+  });
+}
 
 /**
  * @param {string} tenantId
@@ -34,46 +50,16 @@ const cache = new Map();
  * @returns {Promise<boolean>}
  */
 export async function moduloAtivo(tenantId, moduleKey) {
-  const chave = `${tenantId}:${moduleKey}`;
-  const emCache = cache.get(chave);
-  if (emCache && emCache.expiraEm > Date.now()) return emCache.ativo;
-
-  const contratado = await getAdminClient().tenantModule.findFirst({
-    where: { tenantId, moduleKey, disabledAt: null },
-    select: { id: true },
-  });
-  const ativo = Boolean(contratado);
-  cache.set(chave, { ativo, expiraEm: Date.now() + TTL_CACHE_MS });
-  return ativo;
+  return (await listarModulosAtivos(tenantId)).includes(moduleKey);
 }
 
 /**
- * Módulos contratados e ativos do tenant (`module_key` sem `disabled_at`)
- * — o que o frontend usa pra esconder do menu o que não foi contratado.
- * Sem cache: é chamado uma vez por login (`/auth/me`), não por requisição.
- *
- * @param {string} tenantId
- * @returns {Promise<string[]>}
- */
-export async function listarModulosAtivos(tenantId) {
-  const modulos = await getAdminClient().tenantModule.findMany({
-    where: { tenantId, disabledAt: null },
-    select: { moduleKey: true },
-    orderBy: { moduleKey: 'asc' },
-  });
-  return modulos.map((modulo) => modulo.moduleKey);
-}
-
-/**
- * Chamado sempre que os módulos de um tenant mudam (`TenantManagement`),
- * pra mudança valer na hora nesta instância.
+ * Chamado sempre que os módulos de um tenant mudam (`TenantManagement`).
  *
  * @param {string} tenantId
  */
 export function invalidarAcessoModulo(tenantId) {
-  for (const chave of cache.keys()) {
-    if (chave.startsWith(`${tenantId}:`)) cache.delete(chave);
-  }
+  return cacheDel(chaveCache(tenantId));
 }
 
 /**

@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { MODULES } from '#api/modules.js';
 import { getAdminClient, disconnectDatabase } from '#core/db/tenantClient.js';
+import { registrarModulos } from '#core/registry/modules.js';
 import { provisionarTenant } from '#core/tenant/provisioning.js';
+
+registrarModulos(MODULES);
 
 /**
  * Cria um tenant de cliente com o dono (DONO) e os módulos contratados —

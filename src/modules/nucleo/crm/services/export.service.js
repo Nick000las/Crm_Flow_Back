@@ -1,7 +1,8 @@
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+import { formatarTelefoneBR } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, CAMPOS_EXTRAS_PLANILHA, EXPORTACAO } from '../constants.js';
+import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, CAMPOS_EXTRAS_PLANILHA, EXPORTACAO, TIPOS_CAMPO } from '../constants.js';
 import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
 import { gerarPlanilha } from './planilha.service.js';
 
@@ -10,7 +11,7 @@ import { gerarPlanilha } from './planilha.service.js';
  * controller devolve o binário (decisão: sem storage de arquivo). O
  * limite de linhas protege a memória do processo HTTP.
  *
- * @typedef {{ chave: string, label: string, tipo: string, camada?: number }} CampoExportavel
+ * @typedef {{ chave: string, label: string, tipo: string, camada?: number, opcoesLista?: { key: string, label: string }[] }} CampoExportavel
  */
 
 const SEPARADOR_LISTA = ', ';
@@ -66,10 +67,18 @@ export function valorParaPlanilha(lead, campo) {
   else valor = lead[CAMADA_1_CAMPOS[campo.chave] ?? CAMADA_2_CAMPOS[campo.chave]];
 
   if (valor === null || valor === undefined) return null;
+  // Campo de lista (M3): a planilha mostra o nome da opção, não a key.
+  if (campo.opcoesLista) {
+    const nomes = new Map(campo.opcoesLista.map((opcao) => [opcao.key, opcao.label]));
+    if (Array.isArray(valor)) return valor.map((key) => nomes.get(key) ?? key).join(SEPARADOR_LISTA);
+    return nomes.get(valor) ?? valor;
+  }
   if (Array.isArray(valor)) return valor.join(SEPARADOR_LISTA);
   if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
   // NUMERIC chega como Prisma.Decimal.
   if (typeof valor === 'object' && typeof valor.toNumber === 'function') return valor.toNumber();
+  // Telefone personalizado é gravado só com dígitos; na planilha sai com máscara.
+  if (campo.tipo === TIPOS_CAMPO.TELEFONE && typeof valor === 'string') return formatarTelefoneBR(valor);
   if (campo.tipo === 'data' && typeof valor === 'string') {
     const data = new Date(valor);
     return Number.isNaN(data.getTime()) ? valor : data;

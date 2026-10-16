@@ -1,5 +1,6 @@
 import {
   HTTP_ERROR_STATUS_RANGE,
+  HTTP_STATUS,
 } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 
@@ -34,6 +35,42 @@ export class AppError extends Error {
     this.details = details;
     this.headers = headers;
   }
+}
+
+/**
+ * 400 `VALIDATION_ERROR` de um campo — o caso mais comum de service.
+ *
+ * @param {string} campo  chave em `fields` (ex: `label`, `customFields`)
+ * @param {string} mensagem  mensagem geral do erro
+ * @param {string} [mensagemDoCampo]  texto em `fields[campo]` (padrão: a mesma)
+ */
+export function erroDeValidacao(campo, mensagem, mensagemDoCampo = mensagem) {
+  return new AppError({
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+    code: ERROR_CODES.VALIDATION_ERROR,
+    message: mensagem,
+    fields: { [campo]: [mensagemDoCampo] },
+  });
+}
+
+/** 404 `RESOURCE_NOT_FOUND`. @param {string} mensagem */
+export function erroNaoEncontrado(mensagem) {
+  return new AppError({ statusCode: HTTP_STATUS.NOT_FOUND, code: ERROR_CODES.RESOURCE_NOT_FOUND, message: mensagem });
+}
+
+/**
+ * 409 `RESOURCE_CONFLICT` de um campo (ex: nome repetido).
+ *
+ * @param {string} campo
+ * @param {string} mensagem
+ */
+export function erroDeConflito(campo, mensagem) {
+  return new AppError({
+    statusCode: HTTP_STATUS.CONFLICT,
+    code: ERROR_CODES.RESOURCE_CONFLICT,
+    message: mensagem,
+    fields: { [campo]: [mensagem] },
+  });
 }
 
 /**

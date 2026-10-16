@@ -21,12 +21,15 @@ import {
   IMPORT_JOB_STATUS,
   IMPORTACAO,
 } from '../constants.js';
+import { customFieldsParaArmazenamento, exigidoNaCriacao, obterSchemaCampos } from './field-schema.service.js';
 import { listarCamposDoTenant } from './leads.service.js';
+import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { lerPlanilha } from './planilha.service.js';
+import { converterCelula, somenteDigitos, valorAusente } from './tipos-campo.service.js';
 
 /**
  * SERVICE: importação de leads por planilha
- * (docs/plano-crm-campos-filtros-import-export.md §3.3). Fluxo:
+ * (docs/crm/plano-campos-filtros-import-export.md §3.3). Fluxo:
  * preview (não grava) → validate (valida tudo, grava job `pendente` com as
  * linhas válidas) → confirm (enfileira) → worker chama `processarImportacao`.
  * Nada é gravado em `leads` dentro de um request HTTP.
@@ -38,10 +41,6 @@ import { lerPlanilha } from './planilha.service.js';
  */
 
 const CHAVE_ESTAGIO = 'funilEstagio';
-const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PADRAO_DATA_BR = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-const VALORES_VERDADEIROS = new Set(['sim', 's', 'true', 'verdadeiro', '1', 'x', 'yes']);
-const VALORES_FALSOS = new Set(['não', 'nao', 'n', 'false', 'falso', '0', 'no']);
 
 /**
  * Campos nativos (Camadas 1/2) do tipo data — no payload JSONB viram
@@ -193,13 +192,22 @@ export async function processarImportacao(tenantId, jobId) {
   };
 
   try {
-    const [estagioPadrao] = await buscarEstagiosPorTenant(tenantId);
+    // O payload guarda `customFields` por `chave` (validado no request);
+    // as definições de AGORA dão o `id` com que ele é gravado.
+    const [[estagioPadrao], { definicoes }] = await Promise.all([
+      buscarEstagiosPorTenant(tenantId),
+      obterSchemaCampos(tenantId),
+    ]);
 
     for (const item of job.payload) {
       try {
+        const dados = reviverDatas(item.dados);
+        if (dados.customFields !== undefined) {
+          dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
+        }
         const resultado = await importarLinha(
           tenantId,
-          reviverDatas(item.dados),
+          dados,
           job.estrategia_duplicata,
           { estagioPadraoId: estagioPadrao?.id ?? null, responsavelPadraoId: job.usuario_id },
         );
@@ -235,7 +243,8 @@ export function encerrarImportacao() {
  *   aplicados só em lead novo — quem importou vira o responsável
  * @returns {Promise<'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas'>}
  */
-async function importarLinha(tenantId, dados, estrategia, { estagioPadraoId, responsavelPadraoId }) {
+async function importarLinha(tenantId, dadosDaPlanilha, estrategia, { estagioPadraoId, responsavelPadraoId }) {
+  const dados = await comTagsResolvidas(tenantId, dadosDaPlanilha);
   if (estrategia !== 'criar') {
     const existente = await buscarLeadDuplicado(tenantId, {
       email: /** @type {string | undefined} */ (dados.email),
@@ -257,6 +266,21 @@ async function importarLinha(tenantId, dados, estrategia, { estagioPadraoId, res
     usuarioResponsavelId: responsavelPadraoId,
   });
   return 'linhasCriadas';
+}
+
+/**
+ * Tags da planilha → keys da lista central; tag nova entra na lista (M3.4).
+ * Status/origem/motivo já saíram como key na validação (`converterCelula`).
+ *
+ * @param {string} tenantId
+ * @param {Record<string, unknown>} dados
+ */
+async function comTagsResolvidas(tenantId, dados) {
+  if (!Array.isArray(dados.tags)) return dados;
+  const { listas } = await obterSchemaCampos(tenantId);
+  const { input, tagsNovas } = await resolverOpcoesDoLead(listas, { tags: dados.tags });
+  await gravarTagsNovas(tenantId, tagsNovas);
+  return { ...dados, tags: input.tags };
 }
 
 /**
@@ -290,7 +314,7 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave) {
   if (repetida) problemas.push(`O campo "${campoPorChave.get(repetida)?.label ?? repetida}" foi mapeado mais de uma vez`);
 
   for (const campo of campos) {
-    if (campo.obrigatorio && !chavesMapeadas.includes(campo.chave)) {
+    if (exigidoNaCriacao(campo) && !chavesMapeadas.includes(campo.chave)) {
       problemas.push(`O campo obrigatório "${campo.label}" não foi mapeado`);
     }
   }
@@ -340,7 +364,7 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
     }
 
     const campo = /** @type {CampoPlanilha} */ (campoPorChave.get(chave));
-    const resultado = converterValor(campo, bruto);
+    const resultado = converterCelula(campo, bruto);
     if ('erro' in resultado) {
       erros.push({ linha: linha.numero, coluna, motivo: resultado.erro });
     } else if (campo.camada === CAMADA.CAMADA_3) {
@@ -351,7 +375,7 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
   }
 
   for (const campo of campos) {
-    if (!campo.obrigatorio) continue;
+    if (!exigidoNaCriacao(campo)) continue;
     const valor = campo.camada === CAMADA.CAMADA_3 ? dados.customFields[campo.chave] : dados[campo.chave];
     if (valorAusente(valor)) {
       erros.push({ linha: linha.numero, motivo: `"${campo.label}" é obrigatório` });
@@ -364,91 +388,6 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
   return { dados, erros };
 }
 
-/**
- * @param {CampoPlanilha} campo
- * @param {ValorCelula} bruto (nunca `null` aqui)
- * @returns {{ valor: unknown } | { erro: string }}
- */
-function converterValor(campo, bruto) {
-  const texto = bruto instanceof Date ? bruto.toISOString() : String(bruto).trim();
-
-  if (campo.chave === 'email') {
-    return PADRAO_EMAIL.test(texto) ? { valor: texto.toLowerCase() } : { erro: `E-mail inválido: "${texto}"` };
-  }
-  if (campo.chave === 'telefone') {
-    return somenteDigitos(texto).length >= IMPORTACAO.MIN_DIGITOS_TELEFONE
-      ? { valor: texto }
-      : { erro: `Telefone inválido: "${texto}"` };
-  }
-
-  switch (campo.tipo) {
-    case 'texto':
-      return { valor: texto };
-    case 'numero': {
-      const numero = typeof bruto === 'number' ? bruto : converterNumero(texto);
-      return Number.isFinite(numero) ? { valor: numero } : { erro: `"${campo.label}" espera um número` };
-    }
-    case 'data': {
-      const data = bruto instanceof Date ? bruto : converterData(texto);
-      return data && !Number.isNaN(data.getTime())
-        ? { valor: data.toISOString() }
-        : { erro: `"${campo.label}" espera uma data (dd/mm/aaaa)` };
-    }
-    case 'booleano': {
-      const normalizado = String(bruto).trim().toLowerCase();
-      if (bruto === true || VALORES_VERDADEIROS.has(normalizado)) return { valor: true };
-      if (bruto === false || VALORES_FALSOS.has(normalizado)) return { valor: false };
-      return { erro: `"${campo.label}" espera sim ou não` };
-    }
-    case 'selecao': {
-      const opcao = casarOpcao(campo, texto);
-      return opcao !== undefined ? { valor: opcao } : { erro: `"${texto}" não é uma opção de "${campo.label}"` };
-    }
-    case 'selecao_multipla': {
-      const itens = texto.split(/[,;]/).map((item) => item.trim()).filter(Boolean);
-      const valores = itens.map((item) => casarOpcao(campo, item));
-      const invalido = itens.find((_, i) => valores[i] === undefined);
-      return invalido === undefined
-        ? { valor: valores }
-        : { erro: `"${invalido}" não é uma opção de "${campo.label}"` };
-    }
-    default:
-      return { erro: `Tipo de campo "${campo.tipo}" não suportado` };
-  }
-}
-
-/**
- * Casa sem diferenciar maiúscula/minúscula e devolve a opção canônica.
- * Sem `opcoes` (ex: `tags`), qualquer valor é aceito.
- *
- * @param {CampoPlanilha} campo
- * @param {string} valor
- */
-function casarOpcao(campo, valor) {
-  if (!campo.opcoes) return valor;
-  return campo.opcoes.find((opcao) => opcao.toLowerCase() === valor.toLowerCase());
-}
-
-/** Aceita `1234.5`, `1234,5` e `1.234,50`. @param {string} texto */
-function converterNumero(texto) {
-  const limpo = texto.replace(/\s/g, '');
-  const normalizado = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
-  return normalizado.length > 0 ? Number(normalizado) : Number.NaN;
-}
-
-/** Aceita `dd/mm/aaaa` e ISO. @param {string} texto */
-function converterData(texto) {
-  const br = PADRAO_DATA_BR.exec(texto);
-  if (br) {
-    const [, dia, mes, ano] = br.map(Number);
-    const data = new Date(Date.UTC(ano, mes - 1, dia));
-    // `Date.UTC` datas impossíveis (31/02 → 03/03) em vez de falhar.
-    const valida = data.getUTCDate() === dia && data.getUTCMonth() === mes - 1;
-    return valida ? data : null;
-  }
-  return new Date(texto);
-}
-
 /** @param {Record<string, unknown>} dados */
 function reviverDatas(dados) {
   const revivido = { ...dados };
@@ -456,16 +395,6 @@ function reviverDatas(dados) {
     if (typeof revivido[chave] === 'string') revivido[chave] = new Date(revivido[chave]);
   }
   return revivido;
-}
-
-/** @param {string} texto */
-function somenteDigitos(texto) {
-  return texto.replace(/\D/g, '');
-}
-
-/** @param {unknown} valor */
-function valorAusente(valor) {
-  return valor === undefined || valor === null || valor === '' || (Array.isArray(valor) && valor.length === 0);
 }
 
 /**

@@ -17,19 +17,19 @@ CREATE TABLE modulo_crm.leads (
   telefone VARCHAR,
   valor NUMERIC,
   funil_estagio_id UUID REFERENCES modulo_crm.funil_estagios(id),
-  usuario_responsavel_id UUID REFERENCES usuarios(id),
+  usuario_responsavel_id UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  -- Camada 1 (docs/plano-crm-campos-hibridos.md) — sempre ativa.
+  -- Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa.
   email VARCHAR,
-  fonte_lead VARCHAR CHECK (fonte_lead IN ('whatsapp','formulario_site','indicacao','trafego_pago','evento','importacao_manual','outro')),
-  status VARCHAR CHECK (status IN ('novo','em_contato','qualificado','proposta','negociacao','ganho','perdido')),
+  fonte_lead VARCHAR,       -- key de crm_option (kind fonte_lead), M3
+  status VARCHAR,           -- key de crm_option (kind status), M3
   tags VARCHAR[],
   ultima_interacao_em TIMESTAMP,
 
   -- Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar
-  -- (ver modulo_crm.tenant_lead_field_visibility).
+  -- (configuração em modulo_crm.crm_field + crm_field_visibility).
   empresa VARCHAR,
   cargo VARCHAR,
   cpf VARCHAR,
@@ -42,7 +42,7 @@ CREATE TABLE modulo_crm.leads (
   data_conversao TIMESTAMP,
   probabilidade_fechamento NUMERIC,
   data_prevista_fechamento TIMESTAMP,
-  motivo_perda VARCHAR CHECK (motivo_perda IN ('preco','concorrente','sem_orcamento','sem_resposta','fora_do_perfil','outro')),
+  motivo_perda VARCHAR,     -- key de crm_option (kind motivo_perda), M3
   lead_score NUMERIC,
   proximo_followup TIMESTAMP,
 
@@ -61,59 +61,15 @@ CREATE INDEX idx_leads_tenant_id ON modulo_crm.leads(tenant_id);
 CREATE INDEX idx_leads_tenant_estagio ON modulo_crm.leads(tenant_id, funil_estagio_id);
 CREATE INDEX idx_funil_estagios_tenant_order ON modulo_crm.funil_estagios(tenant_id, "order");
 
--- Campos customizados (docs/plano-crm-campos-filtros-import-export.md, Parte 1).
--- `chave` é o slug gerado a partir do `label` (feito no service, nunca no
--- banco) — UNIQUE (tenant_id, chave) é a garantia real, o backend só checa
--- antes pra devolver erro amigável em vez de deixar o P2002 cru vazar.
-CREATE TABLE modulo_crm.tenant_lead_field_definitions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  chave VARCHAR NOT NULL,
-  label VARCHAR NOT NULL,
-  tipo VARCHAR NOT NULL CHECK (tipo IN ('texto','numero','data','booleano','selecao','selecao_multipla')),
-  opcoes JSONB,             -- só usado quando tipo IN ('selecao','selecao_multipla')
-  obrigatorio BOOLEAN NOT NULL DEFAULT false,
-  ordem INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE (tenant_id, chave)
-);
-
-ALTER TABLE modulo_crm.tenant_lead_field_definitions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON modulo_crm.tenant_lead_field_definitions
-  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
-
-CREATE INDEX idx_lead_field_definitions_tenant_ordem
-  ON modulo_crm.tenant_lead_field_definitions(tenant_id, ordem);
-
--- Dado órfão de propósito quando uma definição é removida — ver Parte 1.4
--- do plano. `leads.custom_fields` nunca é limpo automaticamente.
+-- Campos customizados: a configuração mora em `crm_field` (bloco da
+-- migration 0012, abaixo). As tabelas antigas tenant_lead_field_definitions
+-- (0008) e tenant_lead_field_visibility (0009) foram removidas na 0014.
+-- `custom_fields` é indexado pelo `id` do campo (`crm_field.id`).
 ALTER TABLE modulo_crm.leads ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}';
 CREATE INDEX idx_leads_custom_fields_gin ON modulo_crm.leads USING GIN (custom_fields);
 
--- Campos híbridos (docs/plano-crm-campos-hibridos.md). Colunas de Camada
--- 1/2 já foram incorporadas direto em `modulo_crm.leads` acima (fonte
--- única do estado final); só a tabela de controle de visibilidade de
--- Camada 2 precisa de DDL própria.
-CREATE TABLE modulo_crm.tenant_lead_field_visibility (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  coluna VARCHAR NOT NULL,
-  visivel BOOLEAN NOT NULL DEFAULT false,
-  ordem INTEGER NOT NULL DEFAULT 0,
-  obrigatorio BOOLEAN NOT NULL DEFAULT false,
-
-  UNIQUE (tenant_id, coluna)
-);
-
-ALTER TABLE modulo_crm.tenant_lead_field_visibility ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON modulo_crm.tenant_lead_field_visibility
-  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
-
-CREATE INDEX idx_lead_field_visibility_tenant ON modulo_crm.tenant_lead_field_visibility(tenant_id);
-
 -- Filtros salvos e importação assíncrona (migration 0010,
--- docs/plano-crm-campos-hibridos.md passos 6 e 7). `filtros` é o mesmo
+-- docs/crm/plano-campos-hibridos.md passos 6 e 7). `filtros` é o mesmo
 -- body de POST /crm/leads/search; `payload` de import_jobs são as linhas
 -- já validadas que o worker consome.
 CREATE TABLE modulo_crm.crm_filter_views (
@@ -158,3 +114,114 @@ CREATE POLICY tenant_isolation ON modulo_crm.import_jobs
   USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
 
 CREATE INDEX idx_import_jobs_tenant_status ON modulo_crm.import_jobs(tenant_id, status);
+
+-- Registro único de campos (migration 0012, docs/crm/plano-configuracoes.md M1).
+CREATE TABLE modulo_crm.crm_field (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  system_key VARCHAR,
+  chave VARCHAR NOT NULL,
+  label VARCHAR NOT NULL,
+  type VARCHAR NOT NULL,
+  options JSONB,
+  position INTEGER NOT NULL DEFAULT 0,
+  is_required BOOLEAN NOT NULL DEFAULT false,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  -- Alvo das FKs compostas das tabelas filhas: garante que filho e campo
+  -- são do mesmo tenant (a FK simples por id aceitaria outro tenant).
+  UNIQUE (tenant_id, id)
+);
+
+-- Alvo do ON CONFLICT do reconcile: um campo do sistema por tenant.
+CREATE UNIQUE INDEX uq_crm_field_system_key
+  ON modulo_crm.crm_field (tenant_id, system_key) WHERE system_key IS NOT NULL;
+-- Chave de personalizado ativo é única; desativado (excluído) libera a
+-- chave pra um campo novo, com outro id — o dado antigo fica no id antigo.
+CREATE UNIQUE INDEX uq_crm_field_chave_personalizado_ativo
+  ON modulo_crm.crm_field (tenant_id, chave) WHERE system_key IS NULL AND is_active;
+CREATE INDEX idx_crm_field_tenant_position ON modulo_crm.crm_field (tenant_id, position);
+
+ALTER TABLE modulo_crm.crm_field ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_field
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+-- Visibilidade por contexto, contexto como linha (contexto novo sem
+-- migration). Sem linha = padrão do contrato.
+CREATE TABLE modulo_crm.crm_field_visibility (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  field_id UUID NOT NULL,
+  context VARCHAR NOT NULL CHECK (context IN ('create_form','detail','table','filter')),
+  visible BOOLEAN NOT NULL,
+
+  UNIQUE (field_id, context),
+  FOREIGN KEY (tenant_id, field_id) REFERENCES modulo_crm.crm_field (tenant_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE modulo_crm.crm_field_visibility ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_field_visibility
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_crm_field_visibility_tenant ON modulo_crm.crm_field_visibility (tenant_id);
+
+-- Criadas vazias agora; usadas em M8 (regras) e M13 (permissão por campo).
+CREATE TABLE modulo_crm.crm_field_rule (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  field_id UUID NOT NULL,
+  kind VARCHAR NOT NULL CHECK (kind IN ('required','required_from_status','conditional')),
+  condition JSONB NOT NULL DEFAULT '{}',
+  position INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (tenant_id, field_id) REFERENCES modulo_crm.crm_field (tenant_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE modulo_crm.crm_field_rule ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_field_rule
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_crm_field_rule_tenant_field ON modulo_crm.crm_field_rule (tenant_id, field_id);
+
+CREATE TABLE modulo_crm.crm_field_permission (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  field_id UUID NOT NULL,
+  role VARCHAR NOT NULL,
+  access VARCHAR NOT NULL CHECK (access IN ('edit','view','hidden')),
+
+  UNIQUE (field_id, role),
+  FOREIGN KEY (tenant_id, field_id) REFERENCES modulo_crm.crm_field (tenant_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE modulo_crm.crm_field_permission ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_field_permission
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX idx_crm_field_permission_tenant ON modulo_crm.crm_field_permission (tenant_id);
+
+-- Listas configuráveis (migration 0016, M3). O lead guarda a `key`.
+CREATE TABLE modulo_crm.crm_option (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  kind VARCHAR NOT NULL CHECK (kind IN ('status','fonte_lead','motivo_perda','tipo_atividade','tag')),
+  key VARCHAR NOT NULL,
+  label VARCHAR NOT NULL,
+  color VARCHAR CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
+  position INTEGER NOT NULL DEFAULT 0,
+  category VARCHAR CHECK (category IN ('aberto','ganho','perdido')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (tenant_id, kind, key),
+  UNIQUE (tenant_id, id),
+  CONSTRAINT chk_crm_option_categoria CHECK ((kind = 'status') = (category IS NOT NULL))
+);
+CREATE INDEX idx_crm_option_tenant_kind_position ON modulo_crm.crm_option (tenant_id, kind, position);
+ALTER TABLE modulo_crm.crm_option ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON modulo_crm.crm_option
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);

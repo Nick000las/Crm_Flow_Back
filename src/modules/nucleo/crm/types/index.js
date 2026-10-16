@@ -2,7 +2,7 @@
  * Tipos do módulo CRM. Sem TypeScript, servem ao editor (via JSDoc) e como
  * documentação viva do contorno de dado que sai dos `adapters/`.
  *
- * Camada 1 (docs/plano-crm-campos-hibridos.md) — sempre ativa, `email`/
+ * Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa, `email`/
  * `telefone` são cada um opcional isoladamente (regra "pelo menos um dos
  * dois" é `chk_leads_email_ou_telefone` no banco + validação no service).
  *
@@ -16,7 +16,7 @@
 
 /**
  * Camada 2 — nativa, visibilidade controlada por tenant via
- * `tenant_lead_field_visibility` (ver `field-visibility.service.js`).
+ * `crm_field` + `crm_field_visibility` (ver `field-schema.service.js`).
  *
  * @typedef {object} LeadCamada2
  * @property {string | null} empresa
@@ -115,7 +115,7 @@
  */
 
 /**
- * @typedef {'texto' | 'numero' | 'data' | 'booleano' | 'selecao' | 'selecao_multipla'} FieldDefinitionTipo
+ * @typedef {'texto' | 'texto_longo' | 'numero' | 'monetario' | 'data' | 'booleano' | 'selecao' | 'selecao_multipla' | 'telefone' | 'email' | 'url'} FieldDefinitionTipo
  */
 
 /**
@@ -149,7 +149,7 @@
  */
 
 /**
- * Estado de visibilidade de uma coluna de Camada 2 (docs/plano-crm-campos-hibridos.md)
+ * Estado de visibilidade de uma coluna de Camada 2 (docs/crm/plano-campos-hibridos.md)
  * pra um tenant. `coluna` é sempre um valor de `CAMADA_2_COLUNAS`.
  *
  * @typedef {object} FieldVisibility

@@ -186,9 +186,23 @@ Todo módulo exporta, do seu `index.js`, um objeto que satisfaz:
  * @property {string} key                    // identificador único, snake_case
  * @property {string} name                   // nome legível
  * @property {(app: FastifyInstance) => void | Promise<void>} registerRoutes
- * @property {string[]} [requiredFeatureFlags]
+ * @property {string[]} [featureFlags]     // catálogo de flags, prefixadas pela key
+ * @property {(tenantId: string) => Promise<unknown>} [reconciliar]
  */
 ```
+
+- **`featureFlags`** — as flags de rollout que o módulo declara (`crm.listas`).
+  `assertModule` exige o prefixo `<key>.`. É o catálogo que o MASTER liga por
+  tenant (`GET /admin/features`, `PUT /admin/tenants/:id/features`); a rota
+  usa `exigirFeature(flag)` e o service usa `featureAtiva(tenantId, flag)`
+  (`#core/tenant/feature-flags.js`). `/auth/me` devolve `featuresAtivas` pro
+  front. Flag é rollout/kill switch, **não cobrança**, e sai do código 1-2
+  releases depois de estabilizar.
+- **`reconciliar(tenantId)`** — passos **idempotentes** que levam o estado do
+  módulo num tenant ao que o código atual espera (ex: semear configuração
+  padrão). Roda no deploy por `pnpm reconcile` (ou `pnpm crm:reconcile`) e
+  pode rodar de novo sem efeito colateral. Dado de configuração por tenant
+  entra por aqui, nunca como migration de dado.
 
 Validado em runtime por `assertModule()` (`#core/types/module.js`) — um
 módulo mal formado quebra o **boot** do servidor, não uma requisição em
@@ -253,6 +267,12 @@ Nada em `api/app.js` precisa mudar — o loop que registra módulos já itera
 `MODULES` genericamente, chamando `assertModule` e `registerRoutes` para
 cada um. `assertUniqueModuleKeys` garante que duas `key` iguais quebram o
 boot, não silenciosamente sobrescrevem uma rota.
+
+O `core` não importa `#api/modules.js` (core só depende de core/shared). Quem
+precisa da lista no core (provisionamento, catálogo de flags, reconcile) lê
+de `#core/registry/modules.js`, que `buildApp` preenche com
+`registrarModulos(modules)`. Script que usa o core fora do servidor (ex:
+`scripts/create-tenant.js`) chama `registrarModulos(MODULES)` antes.
 
 ## 10. Checklist antes de considerar um módulo pronto
 

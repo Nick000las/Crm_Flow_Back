@@ -1,25 +1,32 @@
 import { z } from 'zod';
 import { BRAZIL_PHONE, TEXT_LIMITS } from '#shared/constants/index.js';
-import { STATUS_LEAD_VALORES, FONTE_LEAD_VALORES, MOTIVO_PERDA_VALORES } from '../constants.js';
 
-// Camada 1 (docs/plano-crm-campos-hibridos.md) — sempre ativa, mesmo nível
+// Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa, mesmo nível
 // de nome/telefone. `email`/`telefone` são cada um opcional isoladamente
 // (regra "pelo menos um dos dois" é validada no service, contra o objeto
 // completo — não dá pra expressar "A ou B obrigatório" por campo isolado).
+/** @param {string} mensagem */
+const opcaoDeLista = (mensagem) =>
+  z.string({ invalid_type_error: mensagem }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem).optional();
+
 const camposCamada1 = {
   email: z.string({ invalid_type_error: 'Informe um e-mail válido' }).trim().email('Informe um e-mail válido').optional(),
   telefone: z
     .string({ invalid_type_error: 'Informe um telefone válido' })
     .min(BRAZIL_PHONE.LANDLINE_LENGTH, 'Informe um telefone válido')
     .optional(),
-  fonteLead: z.enum(FONTE_LEAD_VALORES, { invalid_type_error: 'Origem do lead inválida' }).optional(),
-  status: z.enum(STATUS_LEAD_VALORES, { invalid_type_error: 'Status de lead inválido' }).optional(),
-  tags: z.array(z.string()).optional(),
+  // Listas configuráveis (M3): a opção válida depende do tenant, então só a
+  // forma é checada aqui; `leads.service.js` confere contra `crm_option`.
+  fonteLead: opcaoDeLista('Origem do lead inválida'),
+  status: opcaoDeLista('Status de lead inválido'),
+  tags: z
+    .array(z.string({ invalid_type_error: 'Tag inválida' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'))
+    .optional(),
   ultimaInteracaoEm: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
 };
 
 // Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar (ver
-// tenant_lead_field_visibility / field-visibility.service.js). O `service`
+// configuração em `crm_field`, via field-schema.service.js). O `service`
 // valida a obrigatoriedade dinâmica; aqui é só forma/tipo de cada campo.
 const camposCamada2 = {
   empresa: z.string({ invalid_type_error: 'Informe um valor válido' }).optional(),
@@ -34,7 +41,7 @@ const camposCamada2 = {
   dataConversao: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
   probabilidadeFechamento: z.number({ invalid_type_error: 'Informe um número válido' }).optional(),
   dataPrevistaFechamento: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
-  motivoPerda: z.enum(MOTIVO_PERDA_VALORES, { invalid_type_error: 'Motivo de perda inválido' }).optional(),
+  motivoPerda: opcaoDeLista('Motivo de perda inválido'),
   leadScore: z.number({ invalid_type_error: 'Informe um número válido' }).optional(),
   proximoFollowup: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
 };
@@ -72,7 +79,7 @@ export const criarLeadBodySchema = z
       .optional(),
     valor: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
     // Validação de forma só ("é um objeto") — obrigatoriedade/tipo por
-    // chave depende de `tenant_lead_field_definitions`, que é dado de
+    // chave depende dos campos personalizados (`crm_field`), que é dado de
     // banco por tenant, então só o service consegue validar isso de verdade.
     customFields: z.record(z.unknown()).optional(),
     // Omitido → o próprio usuário que está criando (ver leads.service.js).

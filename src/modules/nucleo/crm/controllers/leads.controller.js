@@ -14,6 +14,7 @@ import {
   leadIdParamSchema,
 } from '../schemas/leads.schema.js';
 import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/leads-search.schema.js';
+import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
@@ -35,16 +36,19 @@ export function registrarRotasLeads(app) {
   });
 
   // Campos ativos do tenant (Camada 1 + Camada 2 visível + Camada 3), fonte
-  // única pra formulário, filtro e mapeamento de import/export. Registrada
-  // antes de `/crm/leads/:id` só por legibilidade — rota estática já tem
-  // precedência no roteador do Fastify.
+  // única pra formulário, filtro e mapeamento de import/export.
+  // `?contexto=create_form|detail|table|filter` (M2) devolve só os visíveis
+  // naquela tela; sem ele, todos os que aparecem em algum contexto.
+  // Registrada antes de `/crm/leads/:id` só por legibilidade — rota
+  // estática já tem precedência no roteador do Fastify.
   app.get('/crm/leads/fields', async (req, reply) => {
     const { tenantId } = req.tenantContext;
-    return sendSuccess(reply, await listarCamposDoTenant(tenantId));
+    const { contexto } = contextoCamposQuerySchema.parse(req.query);
+    return sendSuccess(reply, await listarCamposDoTenant(tenantId, contexto));
   });
 
   // POST (não GET): filtro combinado com campos customizados não cabe bem
-  // em query string (docs/plano-crm-campos-filtros-import-export.md §2.2).
+  // em query string (docs/crm/plano-campos-filtros-import-export.md §2.2).
   app.post('/crm/leads/search', async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = pesquisarLeadsBodySchema.parse(req.body ?? {});

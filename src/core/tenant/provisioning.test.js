@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MODULES } from '#api/modules.js';
+import { registrarModulos } from '#core/registry/modules.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+import { reconciliarModulos } from '#core/tenant/reconcile.js';
 import { provisionarTenant } from './provisioning.js';
 
 const mockTx = {
@@ -12,6 +15,8 @@ const mockPrisma = {
   $transaction: vi.fn((callback) => callback(mockTx)),
 };
 
+vi.mock('#core/tenant/reconcile.js', () => ({ reconciliarModulos: vi.fn().mockResolvedValue([]) }));
+
 vi.mock('#core/db/tenantClient.js', () => ({
   getAdminClient: () => mockPrisma,
 }));
@@ -22,6 +27,9 @@ const inputValido = {
   owner: { nome: 'Dona Teste', email: 'dona@teste.com' },
   modulosContratados: ['crm'],
 };
+
+
+registrarModulos(MODULES);
 
 describe('provisionarTenant', () => {
   beforeEach(() => {
@@ -80,5 +88,16 @@ describe('provisionarTenant', () => {
 
     const dadosUsuario = mockTx.usuario.create.mock.calls[0][0].data;
     expect(dadosUsuario.role).toBe('DONO');
+  });
+
+  it('reconcilia os módulos contratados depois da transação', async () => {
+    await provisionarTenant(inputValido);
+    expect(reconciliarModulos).toHaveBeenCalledWith('tenant-1', ['crm']);
+  });
+
+  it('não reconcilia quando a criação falha', async () => {
+    mockTx.tenant.create.mockRejectedValue(new Error('subdomain duplicado'));
+    await expect(provisionarTenant(inputValido)).rejects.toThrow('subdomain duplicado');
+    expect(reconciliarModulos).not.toHaveBeenCalled();
   });
 });

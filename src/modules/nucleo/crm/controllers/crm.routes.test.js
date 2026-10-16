@@ -3,24 +3,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { buildApp } from '#api/app.js';
 import { signAccessToken } from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
-import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
+import { encerrarCache } from '#core/cache/cache.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { EXPORTACAO } from '../constants.js';
+import { editarDefinicao } from '../services/field-definitions.service.js';
+import { atualizarOpcao, criarOpcao, listarListas } from '../services/listas.service.js';
 import { atualizarLeadExistente, pesquisarLeads, registrarNovoLead } from '../services/leads.service.js';
 import { exportarLeads } from '../services/export.service.js';
 import { previsualizarImportacao } from '../services/import.service.js';
 import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
+import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configuracoes-campos.service.js';
+import { listarCamposDoTenant } from '../services/leads.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
  * na borda HTTP. Services mockados — regra de negócio já tem teste próprio.
  */
 
-const findFirst = vi.fn();
+const findManyModulos = vi.fn();
+const findManyFeatures = vi.fn();
 
 vi.mock('#core/db/tenantClient.js', () => ({
-  getAdminClient: vi.fn(() => ({ tenantModule: { findFirst } })),
+  getAdminClient: vi.fn(() => ({ tenantModule: { findMany: findManyModulos }, tenantModuleFeature: { findMany: findManyFeatures } })),
   getTenantClient: vi.fn(),
   disconnectDatabase: vi.fn(),
 }));
@@ -37,12 +42,7 @@ vi.mock('../services/field-definitions.service.js', () => ({
   listarDefinicoesPorTenant: vi.fn(),
   criarNovaDefinicao: vi.fn(),
   editarDefinicao: vi.fn(),
-  reordenarDefinicoesDoTenant: vi.fn(),
   removerDefinicao: vi.fn(),
-}));
-vi.mock('../services/field-visibility.service.js', () => ({
-  listarVisibilidadeDoTenant: vi.fn(),
-  atualizarVisibilidadeDoTenant: vi.fn(),
 }));
 vi.mock('../services/filter-views.service.js', () => ({
   listarViews: vi.fn(),
@@ -58,6 +58,19 @@ vi.mock('../services/import.service.js', () => ({
 }));
 vi.mock('../services/export.service.js', () => ({ exportarLeads: vi.fn() }));
 vi.mock('../services/usuarios.service.js', () => ({ listarResponsaveisPossiveis: vi.fn() }));
+vi.mock('../services/listas.service.js', () => ({
+  listarListas: vi.fn().mockResolvedValue({}),
+  criarOpcao: vi.fn().mockResolvedValue({ id: 'nova' }),
+  atualizarOpcao: vi.fn().mockResolvedValue({}),
+  reordenarLista: vi.fn().mockResolvedValue([]),
+  excluirOpcao: vi.fn().mockResolvedValue({ removido: true }),
+}));
+vi.mock('../services/configuracoes-campos.service.js', () => ({
+  listarConfiguracaoCampos: vi.fn().mockResolvedValue([]),
+  atualizarConfiguracaoCampo: vi.fn().mockResolvedValue({}),
+  reordenarCampos: vi.fn().mockResolvedValue([]),
+  restaurarOrdemPadrao: vi.fn().mockResolvedValue([]),
+}));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const LEAD = '00000000-0000-0000-0000-000000000009';
@@ -92,10 +105,11 @@ afterAll(async () => {
   await app.close();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  invalidarAcessoModulo(TENANT);
-  findFirst.mockResolvedValue({ id: 'modulo-crm' }); // CRM contratado por padrão
+  await encerrarCache();
+  findManyFeatures.mockResolvedValue([]);
+  findManyModulos.mockResolvedValue([{ moduleKey: 'crm' }]); // CRM contratado por padrão
   pesquisarLeads.mockResolvedValue({ itens: [], total: 0, pagina: 1, tamanho: TAMANHO });
 });
 
@@ -103,11 +117,11 @@ describe('autenticação e módulo contratado', () => {
   it('sem token → 401', async () => {
     const resposta = await app.inject({ method: 'GET', url: '/crm/leads' });
     expect(resposta.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(findManyModulos).not.toHaveBeenCalled();
   });
 
   it('tenant sem o módulo CRM → 403 MODULE_NOT_ENABLED', async () => {
-    findFirst.mockResolvedValue(null);
+    findManyModulos.mockResolvedValue([]);
     const resposta = await app.inject({ method: 'GET', url: '/crm/leads', headers: autorizado(tokenDono) });
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.code).toBe(ERROR_CODES.MODULE_NOT_ENABLED);
@@ -116,8 +130,8 @@ describe('autenticação e módulo contratado', () => {
 
   it('consulta o módulo certo do tenant do token', async () => {
     await app.inject({ method: 'GET', url: '/crm/leads', headers: autorizado(tokenOperador) });
-    expect(findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: TENANT, moduleKey: 'crm', disabledAt: null } }),
+    expect(findManyModulos).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT, disabledAt: null } }),
     );
   });
 });
@@ -125,9 +139,7 @@ describe('autenticação e módulo contratado', () => {
 describe('RBAC', () => {
   const ROTAS_DE_GESTAO = [
     ['POST', '/crm/field-definitions'],
-    ['PUT', '/crm/field-definitions/reorder'],
     ['DELETE', `/crm/field-definitions/${LEAD}`],
-    ['PUT', '/crm/field-visibility'],
     ['POST', '/crm/import/preview'],
     ['GET', `/crm/import/${LEAD}`],
     ['POST', '/crm/export'],
@@ -140,7 +152,7 @@ describe('RBAC', () => {
   });
 
   it('OPERADOR continua lendo a configuração e mexendo em leads', async () => {
-    for (const url of ['/crm/field-definitions', '/crm/field-visibility', '/crm/leads/fields', '/crm/leads']) {
+    for (const url of ['/crm/field-definitions', '/crm/configuracoes/campos', '/crm/leads/fields', '/crm/leads']) {
       const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.OK);
     }
@@ -244,5 +256,138 @@ describe('validação na borda', () => {
     });
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(resposta.json().error.message).toContain('arquivo');
+  });
+});
+
+describe('Configurações → Campos (M2)', () => {
+  const CAMPO = '00000000-0000-0000-0000-000000000077';
+  const ESCRITAS = [
+    ['PUT', '/crm/configuracoes/campos/ordem', { ids: [CAMPO] }],
+    ['POST', '/crm/configuracoes/campos/ordem/padrao', {}],
+    ['PUT', `/crm/configuracoes/campos/${CAMPO}`, { label: 'X' }],
+  ];
+
+  it.each(ESCRITAS)('OPERADOR em %s %s → 403 FORBIDDEN', async (method, url, payload) => {
+    const resposta = await app.inject({ method, url, headers: autorizado(tokenOperador), payload });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+    expect(resposta.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+  });
+
+  it('DONO, sem nenhuma feature flag ligada: repassa a visibilidade parcial e a ordem', async () => {
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/crm/configuracoes/campos/${CAMPO}`,
+      headers: autorizado(tokenDono),
+      payload: { visibilidade: { table: false } },
+    });
+    expect(put.statusCode).toBe(HTTP_STATUS.OK);
+    expect(atualizarConfiguracaoCampo).toHaveBeenCalledWith(TENANT, CAMPO, { visibilidade: { table: false } });
+
+    await app.inject({
+      method: 'PUT',
+      url: '/crm/configuracoes/campos/ordem',
+      headers: autorizado(tokenDono),
+      payload: { ids: [CAMPO] },
+    });
+    expect(reordenarCampos).toHaveBeenCalledWith(TENANT, [CAMPO]);
+  });
+
+  it('contexto inventado ou body vazio → 400', async () => {
+    for (const payload of [{ visibilidade: { kanban: false } }, {}]) {
+      const resposta = await app.inject({
+        method: 'PUT',
+        url: `/crm/configuracoes/campos/${CAMPO}`,
+        headers: autorizado(tokenDono),
+        payload,
+      });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+    expect(atualizarConfiguracaoCampo).not.toHaveBeenCalled();
+  });
+
+  it('GET /crm/leads/fields?contexto= repassa o contexto e rejeita o inválido (sem precisar de flag)', async () => {
+    listarCamposDoTenant.mockResolvedValue([]);
+    const ok = await app.inject({ method: 'GET', url: '/crm/leads/fields?contexto=table', headers: autorizado(tokenOperador) });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(listarCamposDoTenant).toHaveBeenCalledWith(TENANT, 'table');
+
+    const invalido = await app.inject({ method: 'GET', url: '/crm/leads/fields?contexto=x', headers: autorizado(tokenOperador) });
+    expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('rotas removidas', () => {
+  it.each([
+    ['GET', '/crm/field-visibility'],
+    ['PUT', '/crm/field-visibility'],
+  ])('%s %s não existe mais (404)', async (method, url) => {
+    const resposta = await app.inject({ method, url, headers: autorizado(tokenDono), payload: [] });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.NOT_FOUND);
+  });
+
+  it('PUT /crm/field-definitions/reorder não existe mais: "reorder" cai em /:id e não é um id', async () => {
+    const resposta = await app.inject({
+      method: 'PUT',
+      url: '/crm/field-definitions/reorder',
+      headers: autorizado(tokenDono),
+      payload: [],
+    });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    expect(editarDefinicao).not.toHaveBeenCalled();
+  });
+});
+
+describe('Configurações → Listas (M3, flag crm.listas)', () => {
+  const OPCAO = '00000000-0000-0000-0000-000000000088';
+  const COM_FLAG = [{ featureKey: 'crm.listas' }];
+
+  it('sem a flag → 403 FEATURE_NOT_ENABLED', async () => {
+    const resposta = await app.inject({ method: 'GET', url: '/crm/configuracoes/listas', headers: autorizado(tokenDono) });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+    expect(resposta.json().error.details).toEqual({ featureKey: 'crm.listas' });
+    expect(listarListas).not.toHaveBeenCalled();
+  });
+
+  it('OPERADOR lê, mas não escreve (403 FORBIDDEN mesmo com a flag)', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const leitura = await app.inject({ method: 'GET', url: '/crm/configuracoes/listas', headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
+    const escrita = await app.inject({
+      method: 'POST',
+      url: '/crm/configuracoes/listas/fonte_lead',
+      headers: autorizado(tokenOperador),
+      payload: { label: 'Feira' },
+    });
+    expect(escrita.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+  });
+
+  it('DONO cria e edita; lista, cor e corpo inválidos → 400 na borda', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const criada = await app.inject({
+      method: 'POST',
+      url: '/crm/configuracoes/listas/status',
+      headers: autorizado(tokenDono),
+      payload: { label: 'Pausado', category: 'aberto', color: '#AABBCC' },
+    });
+    expect(criada.statusCode).toBe(HTTP_STATUS.CREATED);
+    expect(criarOpcao).toHaveBeenCalledWith(TENANT, 'status', { label: 'Pausado', category: 'aberto', color: '#AABBCC' });
+
+    await app.inject({
+      method: 'PUT',
+      url: `/crm/configuracoes/listas/status/${OPCAO}`,
+      headers: autorizado(tokenDono),
+      payload: { ativo: false },
+    });
+    expect(atualizarOpcao).toHaveBeenCalledWith(TENANT, 'status', OPCAO, { ativo: false });
+
+    for (const [url, payload] of [
+      ['/crm/configuracoes/listas/inventada', { label: 'X' }],
+      ['/crm/configuracoes/listas/tag', { label: 'X', color: 'azul' }],
+      ['/crm/configuracoes/listas/tag', { label: 'X', key: 'forcada' }],
+    ]) {
+      const resposta = await app.inject({ method: 'POST', url, headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode, url).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
   });
 });

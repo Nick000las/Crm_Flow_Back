@@ -1,5 +1,9 @@
 # Plano: campos híbridos do CRM (Camadas 1/2/3)
 
+> **Substituído (2026-10-15):** documento histórico; o atual é [plano-configuracoes.md](./plano-configuracoes.md) (índice em [README.md](./README.md)).
+>
+> **Atualização (2026-10-15):** `tenant_lead_field_definitions` e `tenant_lead_field_visibility` foram substituídas por `crm_field` + `crm_field_visibility` (migrations 0012–0014). `custom_fields` é indexado pelo `id` do campo. Ver `docs/crm/plano-configuracoes.md` (M1/M2).
+
 **Status: implementado (2026-10-12; acesso, RBAC, responsável e edição em 2026-10-13).** Os passos 1 a 8 da seção 8 estão no código, a migration 0010 já foi aplicada e as decisões da seção 9 estão fechadas. Os estágios do funil ficam em aberto até a integração com o Kanban (seção 10). As seções 0 a 7 descrevem o desenho final. Onde a implementação divergiu da proposta original, o texto diz.
 
 ---
@@ -139,7 +143,7 @@ O import e o export aceitam ainda dois extras que não são campos de formulári
 **Montagem do SQL** ([lead-filter.service.js](../src/modules/nucleo/crm/services/lead-filter.service.js)): o SQL é montado com `Prisma.sql`/`Prisma.join`, nunca por concatenação.
 - **Camadas 1 e 2:** o nome da coluna sai só dos mapas fechados `CAMADA_1_CAMPOS` e `CAMADA_2_CAMPOS`.
 - **Camada 3:** a chave entra como parâmetro em `custom_fields->>$1`.
-- **Igualdade e seleção na Camada 3:** usam `@>`, que é o caso que o GIN acelera. Texto parcial e faixa numérica ou de data não usam o GIN. É o caveat já registrado no [plano anterior §2.4](./plano-crm-campos-filtros-import-export.md#24-caveat-honesto-sobre-o-índice-gin-checkpoint-do-roteiro-ajustado).
+- **Igualdade e seleção na Camada 3:** usam `@>`, que é o caso que o GIN acelera. Texto parcial e faixa numérica ou de data não usam o GIN. É o caveat já registrado no [plano anterior §2.4](./plano-campos-filtros-import-export.md#24-caveat-honesto-sobre-o-índice-gin-checkpoint-do-roteiro-ajustado).
 - **Cast de número e data na Camada 3:** é protegido (`jsonb_typeof` ou regex). Um valor órfão de outro tipo vira `NULL` em vez de derrubar a query.
 
 **Campos inativos:** uma chave fora dos campos ativos, incluindo uma coluna da Camada 2 desligada, dá 400. Não dá para filtrar por um campo invisível.

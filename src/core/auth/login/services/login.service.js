@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { LOGIN_MFA, PASSWORD_ACTIVATION, PASSWORD_POLICY } from '#core/auth/constants.js';
 import { AppError } from '#core/errors/app-error.js';
+import { listarFeaturesAtivas } from '#core/tenant/feature-flags.js';
 import { listarModulosAtivos } from '#core/tenant/module-access.js';
 import { ROLES_VALIDOS } from '#core/types/module.js';
 import { sendLoginMfaCode, sendPasswordActivationCode } from '#core/email/smtp.js';
@@ -319,18 +320,19 @@ export async function getUserContext({ userId }) {
 
 /**
  * Usuário da sessão (`/auth/me`): o `TenantContext` do token mais os
- * módulos contratados do tenant. Os módulos não viajam no JWT de propósito
- * — mudam por ação do MASTER e o token duraria com a lista velha; aqui
- * vêm sempre do banco. É só pra UX (esconder menu): quem bloqueia de
- * verdade é `exigirModuloAtivo` em cada rota de módulo.
+ * módulos contratados e as feature flags ligadas do tenant. Nenhum dos
+ * dois viaja no JWT de propósito — mudam por ação do MASTER e o token
+ * duraria com a lista velha. É só pra UX (esconder menu): quem bloqueia de
+ * verdade é `exigirModuloAtivo`/`exigirFeature` em cada rota.
  *
  * @param {import('#core/types/module.js').TenantContext} tenantContext
  */
 export async function getSessionUser(tenantContext) {
-  return {
-    ...tenantContext,
-    modulosAtivos: await listarModulosAtivos(tenantContext.tenantId),
-  };
+  const [modulosAtivos, featuresAtivas] = await Promise.all([
+    listarModulosAtivos(tenantContext.tenantId),
+    listarFeaturesAtivas(tenantContext.tenantId),
+  ]);
+  return { ...tenantContext, modulosAtivos, featuresAtivas };
 }
 
 /**
