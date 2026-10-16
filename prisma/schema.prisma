@@ -21,6 +21,7 @@ model Tenant {
   byok                  Boolean   @default(false)
   dataRegion            String?   @default("sa-east-1") @map("data_region") @db.VarChar
   retencaoConversaMeses Int?      @default(18) @map("retencao_conversa_meses")
+  fusoHorario           String    @default("America/Sao_Paulo") @map("fuso_horario") @db.VarChar
   canceladoEm           DateTime? @map("cancelado_em") @db.Timestamp(6)
   createdAt             DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt             DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)

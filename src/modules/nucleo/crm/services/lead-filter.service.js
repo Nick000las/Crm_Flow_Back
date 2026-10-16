@@ -2,11 +2,15 @@ import { Prisma } from '@prisma/client';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, OPERADORES_POR_TIPO } from '../constants.js';
+import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, OPERADORES_POR_TIPO, TIPOS_CAMPO } from '../constants.js';
+import { somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
+
+/** Tipos guardados como número (faixa e igualdade numérica). */
+const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
 
 /**
  * SERVICE: traduz o filtro de POST /crm/leads/search em fragmentos SQL
- * parametrizados (docs/plano-crm-campos-filtros-import-export.md §2.3).
+ * parametrizados (docs/crm/plano-campos-filtros-import-export.md §2.3).
  * Função pura — não acessa banco; o adapter só junta os fragmentos.
  *
  * Regras de segurança:
@@ -15,7 +19,9 @@ import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, OPERADORES_POR_TIPO } from '.
  * - todo valor (inclusive a `chave` de Camada 3) entra como parâmetro;
  * - o operador decide qual fragmento gerar, nunca é interpolado.
  *
- * @typedef {{ chave: string, label: string, tipo: string, camada: number, opcoes?: readonly string[] | null }} Campo
+ * @typedef {{ chave: string, label: string, tipo: string, camada: number, opcoes?: readonly string[] | null, chaveArmazenamento?: string }} Campo
+ *   `chaveArmazenamento`: onde o valor do personalizado mora em
+ *   `custom_fields` (o `id` do campo, via `camposParaFiltro`); omitida = `chave`.
  * @typedef {{ chave: string, operador: string, valor?: unknown }} FiltroCampo
  * @typedef {{
  *   busca?: string,
@@ -32,6 +38,12 @@ import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, OPERADORES_POR_TIPO } from '.
 /** Primeiros 10 caracteres (`AAAA-MM-DD`) de uma data ISO guardada em JSONB. */
 const TAMANHO_DATA_ISO = 10;
 
+/** Texto só com dígitos e máscara de telefone — sem letra nenhuma. */
+const PADRAO_BUSCA_TELEFONE = /^[\d\s()+.-]*\d[\d\s()+.-]*$/;
+
+/** Telefone nativo comparado sem máscara (texto fixo, sem dado do cliente). */
+const TELEFONE_SO_DIGITOS = Prisma.raw(`regexp_replace(l.telefone, '[^0-9]', '', 'g')`);
+
 /**
  * @param {FiltroLeads} filtro
  * @param {Campo[]} campos campos ativos do tenant (`listarCamposDoTenant`) —
@@ -43,9 +55,13 @@ export function montarCondicoes(filtro, campos) {
 
   if (filtro.busca) {
     const padrao = `%${escaparLike(filtro.busca)}%`;
-    condicoes.push(
-      Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR l.telefone ILIKE ${padrao})`,
-    );
+    const digitos = PADRAO_BUSCA_TELEFONE.test(filtro.busca) ? somenteDigitos(filtro.busca) : '';
+    // Busca com cara de telefone ("(11) 9999") compara pelos dígitos, que é
+    // como o telefone é gravado (e como os antigos, com máscara, ficam).
+    const porTelefone = digitos
+      ? Prisma.sql`${TELEFONE_SO_DIGITOS} LIKE ${`%${digitos}%`}`
+      : Prisma.sql`l.telefone ILIKE ${padrao}`;
+    condicoes.push(Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone})`);
   }
   if (filtro.funilEstagioId) {
     condicoes.push(Prisma.sql`l.funil_estagio_id = ${filtro.funilEstagioId}::uuid`);
@@ -88,6 +104,10 @@ export function montarCondicoes(filtro, campos) {
 }
 
 /**
+ * Coluna nativa na mesma forma canônica do valor do filtro
+ * (`textoDoTipo`): telefone sem máscara, e-mail minúsculo — vale também
+ * pra linha gravada antes da normalização.
+ *
  * @param {Campo} campo
  * @returns {Prisma.Sql}
  */
@@ -98,6 +118,8 @@ function colunaNativa(campo) {
     // defesa em profundidade, pra nunca cair num Prisma.raw sem mapa.
     throw erroDeFiltro(campo.chave, `"${campo.chave}" não é um campo filtrável`);
   }
+  if (campo.tipo === TIPOS_CAMPO.TELEFONE) return Prisma.raw(`regexp_replace(l.${coluna}, '[^0-9]', '', 'g')`);
+  if (campo.tipo === TIPOS_CAMPO.EMAIL) return Prisma.raw(`lower(l.${coluna})`);
   return Prisma.raw(`l.${coluna}`);
 }
 
@@ -124,11 +146,11 @@ function condicaoColuna(coluna, campo, { chave, operador, valor }) {
     case 'contem':
       return multipla
         ? Prisma.sql`${exigirTexto(chave, valor)} = ANY(${coluna})`
-        : Prisma.sql`${coluna} ILIKE ${`%${escaparLike(exigirTexto(chave, valor))}%`}`;
+        : Prisma.sql`${coluna} ILIKE ${`%${escaparLike(textoDoTipo(campo, exigirTexto(chave, valor)))}%`}`;
     case 'e_um_dos':
       return multipla
         ? Prisma.sql`${coluna} && ${exigirListaDeTexto(chave, valor)}::varchar[]`
-        : Prisma.sql`${coluna} = ANY(${exigirListaDeTexto(chave, valor)}::varchar[])`;
+        : Prisma.sql`${coluna} = ANY(${exigirListaDeTexto(chave, valor).map((item) => textoDoTipo(campo, item))}::varchar[])`;
     case 'igual':
       if (campo.tipo === 'data') {
         return Prisma.sql`${coluna}::date = ${exigirData(chave, valor)}::date`;
@@ -151,8 +173,11 @@ function condicaoColuna(coluna, campo, { chave, operador, valor }) {
  * @returns {Prisma.Sql}
  */
 function condicaoCamada3(campo, { chave, operador, valor }) {
-  const texto = Prisma.sql`(l.custom_fields->>${chave})`;
-  const json = Prisma.sql`(l.custom_fields->${chave})`;
+  // `chave` segue sendo o que o cliente mandou (mensagens de erro);
+  // `caminho` é a chave real dentro do JSONB.
+  const caminho = campo.chaveArmazenamento ?? chave;
+  const texto = Prisma.sql`(l.custom_fields->>${caminho})`;
+  const json = Prisma.sql`(l.custom_fields->${caminho})`;
 
   switch (operador) {
     case 'vazio':
@@ -161,19 +186,19 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
       return Prisma.sql`(COALESCE(${texto}, '') <> '' AND ${json} <> '[]'::jsonb)`;
     case 'contem':
       if (campo.tipo === 'selecao_multipla') {
-        return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [chave]: [exigirTexto(chave, valor)] })}::jsonb`;
+        return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: [exigirTexto(chave, valor)] })}::jsonb`;
       }
-      return Prisma.sql`${texto} ILIKE ${`%${escaparLike(exigirTexto(chave, valor))}%`}`;
+      return Prisma.sql`${texto} ILIKE ${`%${escaparLike(textoDoTipo(campo, exigirTexto(chave, valor)))}%`}`;
     case 'e_um_dos':
       if (campo.tipo === 'selecao_multipla') {
         return Prisma.sql`jsonb_exists_any(${json}, ${exigirListaDeTexto(chave, valor)}::text[])`;
       }
-      return Prisma.sql`${texto} = ANY(${exigirListaDeTexto(chave, valor)}::text[])`;
+      return Prisma.sql`${texto} = ANY(${exigirListaDeTexto(chave, valor).map((item) => textoDoTipo(campo, item))}::text[])`;
     case 'igual':
       if (campo.tipo === 'data') {
         return Prisma.sql`${dataCamada3(texto)} = ${exigirData(chave, valor)}::date`;
       }
-      return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [chave]: valorEscalar(campo, chave, valor) })}::jsonb`;
+      return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: valorEscalar(campo, chave, valor) })}::jsonb`;
     case 'entre':
       return condicaoEntre(
         campo.tipo === 'data' ? dataCamada3(texto) : numeroCamada3(json, texto),
@@ -235,12 +260,20 @@ function condicaoEntre(expressao, campo, chave, valor) {
  * @param {unknown} valor
  */
 function valorEscalar(campo, chave, valor) {
-  if (campo.tipo === 'numero') return exigirNumero(chave, valor);
+  if (TIPOS_NUMERICOS.has(campo.tipo)) return exigirNumero(chave, valor);
   if (campo.tipo === 'booleano') {
     if (typeof valor !== 'boolean') throw erroDeFiltro(chave, 'Informe verdadeiro ou falso');
     return valor;
   }
-  return exigirTexto(chave, valor);
+  return textoDoTipo(campo, exigirTexto(chave, valor));
+}
+
+/**
+ * @param {Campo} campo
+ * @param {string} texto
+ */
+function textoDoTipo(campo, texto) {
+  return textoDeBusca(campo.tipo, texto);
 }
 
 /** @param {string} chave @param {unknown} valor */

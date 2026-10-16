@@ -124,3 +124,99 @@ describe('montarCondicoes', () => {
     expect(condicoes).toHaveLength(['nome', 'segmento'].length);
   });
 });
+
+describe('personalizado lido pelo id do campo', () => {
+  const ID_SEGMENTO = '11111111-1111-1111-1111-111111111111';
+  const CAMPOS_POR_ID = CAMPOS.map((campo) =>
+    campo.chave === 'segmento' ? { ...campo, chaveArmazenamento: ID_SEGMENTO } : campo,
+  );
+
+  it('lê o JSONB pelo id, mas o cliente continua filtrando pela chave', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'segmento', operador: 'igual', valor: 'varejo' }] },
+      CAMPOS_POR_ID,
+    );
+    expect(valoresDe(condicoes)).toContain(JSON.stringify({ [ID_SEGMENTO]: 'varejo' }));
+    expect(valoresDe(condicoes)).not.toContain(JSON.stringify({ segmento: 'varejo' }));
+  });
+
+  it('operadores de texto/vazio também usam o id como caminho', () => {
+    const condicoes = montarCondicoes({ filtros: [{ chave: 'segmento', operador: 'vazio' }] }, CAMPOS_POR_ID);
+    expect(valoresDe(condicoes)).toContain(ID_SEGMENTO);
+  });
+});
+
+describe('tipos MVP do M2 no filtro', () => {
+  const VALOR_MIN = 100;
+  const CAMPOS_M2 = [
+    { chave: 'celular', label: 'Celular', tipo: 'telefone', camada: CAMADA.CAMADA_3 },
+    { chave: 'contrato', label: 'Contrato', tipo: 'monetario', camada: CAMADA.CAMADA_3 },
+    { chave: 'contato', label: 'Contato', tipo: 'email', camada: CAMADA.CAMADA_3 },
+    { chave: 'notas', label: 'Notas', tipo: 'texto_longo', camada: CAMADA.CAMADA_3 },
+  ];
+
+  it('telefone com máscara casa com o valor gravado só em dígitos', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'celular', operador: 'igual', valor: '(11) 99999-0000' }] },
+      CAMPOS_M2,
+    );
+    expect(valoresDe(condicoes)).toContain(JSON.stringify({ celular: '11999990000' }));
+  });
+
+  it('monetário aceita faixa numérica com cast protegido', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'contrato', operador: 'entre', valor: { de: VALOR_MIN } }] },
+      CAMPOS_M2,
+    );
+    expect(sqlDe(condicoes)).toContain('jsonb_typeof');
+    expect(valoresDe(condicoes)).toContain(VALOR_MIN);
+  });
+
+  it('e-mail compara em minúsculas', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'contato', operador: 'igual', valor: 'Ana@X.COM' }] },
+      CAMPOS_M2,
+    );
+    expect(valoresDe(condicoes)).toContain(JSON.stringify({ contato: 'ana@x.com' }));
+  });
+
+  it('texto longo não aceita igualdade (só contém/vazio)', () => {
+    expect(() =>
+      montarCondicoes({ filtros: [{ chave: 'notas', operador: 'igual', valor: 'x' }] }, CAMPOS_M2),
+    ).toThrow(/não se aplica/);
+  });
+});
+
+describe('e-mail e telefone nativos (tipos email/telefone)', () => {
+  const NATIVOS = [
+    { chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1 },
+    { chave: 'telefone', label: 'Telefone', tipo: 'telefone', camada: CAMADA.CAMADA_1 },
+  ];
+
+  it('telefone compara sem máscara dos dois lados (cobre linha antiga com máscara)', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'telefone', operador: 'contem', valor: '(11) 9888' }] },
+      NATIVOS,
+    );
+    expect(sqlDe(condicoes)).toContain("regexp_replace(l.telefone, '[^0-9]', '', 'g') ILIKE");
+    expect(valoresDe(condicoes)).toEqual(['%119888%']);
+  });
+
+  it('e-mail compara em minúsculas', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'email', operador: 'igual', valor: ' Ana@X.com ' }] },
+      NATIVOS,
+    );
+    expect(sqlDe(condicoes)).toContain('lower(l.email) =');
+    expect(valoresDe(condicoes)).toEqual(['ana@x.com']);
+  });
+
+  it('busca com cara de telefone procura pelos dígitos; busca com letra, não', () => {
+    const porTelefone = montarCondicoes({ busca: '(11) 9888-7' }, NATIVOS);
+    expect(sqlDe(porTelefone)).toContain("regexp_replace(l.telefone, '[^0-9]', '', 'g') LIKE");
+    expect(valoresDe(porTelefone)).toContain('%1198887%');
+
+    const porNome = montarCondicoes({ busca: 'Ana 2' }, NATIVOS);
+    expect(sqlDe(porNome)).toContain('l.telefone ILIKE');
+  });
+});

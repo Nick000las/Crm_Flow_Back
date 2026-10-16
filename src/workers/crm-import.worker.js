@@ -8,7 +8,7 @@ import { processarImportacao } from '#modules/nucleo/crm/services/import.service
 /**
  * Entrypoint do worker de importação do CRM — processo separado do HTTP
  * (`pnpm worker:crm`), mesmo papel de um controller: recebe o evento da
- * fila e delega pro service (docs/plano-crm-campos-filtros-import-export.md §3.3).
+ * fila e delega pro service (docs/crm/plano-campos-filtros-import-export.md §3.3).
  * Um job por vez: cada import já é sequencial por linha, e concorrência
  * aqui só disputaria o pool do Neon com o servidor HTTP.
  */

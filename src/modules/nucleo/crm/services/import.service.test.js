@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  converterLinha,
   previsualizarImportacao,
   validarImportacao,
   confirmarImportacao,
@@ -21,6 +22,10 @@ import { buscarLeadDuplicado, criarLead, atualizarLead } from '../adapters/leads
 import { CAMADA } from '../constants.js';
 
 vi.mock('./leads.service.js', () => ({ listarCamposDoTenant: vi.fn() }));
+vi.mock('./field-schema.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  obterSchemaCampos: vi.fn().mockResolvedValue({ visibilidade: [], definicoes: [], campos: [] }),
+}));
 vi.mock('../adapters/funil-estagios.repository.js', () => ({ buscarEstagiosPorTenant: vi.fn() }));
 vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
@@ -52,8 +57,8 @@ const LINHA_VAZIA = 4;
 
 const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1, obrigatorio: true },
-  { chave: 'email', label: 'E-mail', tipo: 'texto', camada: CAMADA.CAMADA_1, obrigatorio: false },
-  { chave: 'telefone', label: 'Telefone', tipo: 'texto', camada: CAMADA.CAMADA_1, obrigatorio: false },
+  { chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1, obrigatorio: false },
+  { chave: 'telefone', label: 'Telefone', tipo: 'telefone', camada: CAMADA.CAMADA_1, obrigatorio: false },
   { chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1, obrigatorio: false, opcoes: ['novo', 'ganho'] },
   { chave: 'ultimaInteracaoEm', label: 'Última interação', tipo: 'data', camada: CAMADA.CAMADA_1, obrigatorio: false },
   { chave: 'segmento', label: 'Segmento', tipo: 'selecao', camada: CAMADA.CAMADA_3, obrigatorio: true, opcoes: ['Varejo', 'Indústria'] },
@@ -135,7 +140,7 @@ describe('validarImportacao', () => {
     const motivosLinha3 = resultado.erros.filter((erro) => erro.linha === LINHA_BIA).map((erro) => erro.motivo);
     expect(motivosLinha3).toEqual(
       expect.arrayContaining([
-        'E-mail inválido: "email-ruim"',
+        'E-mail inválido em "E-mail": "email-ruim"',
         '"talvez" não é uma opção de "Status"',
         '"Última interação" espera uma data (dd/mm/aaaa)',
         'Estágio "Inexistente" não existe no funil',
@@ -274,5 +279,41 @@ describe('processarImportacao — estratégias de duplicata', () => {
     buscarImportJobComPayload.mockResolvedValue({ id: JOB, status: 'concluido', payload: [LINHA] });
     await processarImportacao(TENANT, JOB);
     expect(criarLead).not.toHaveBeenCalled();
+  });
+});
+
+describe('converterLinha — tipos MVP do M2', () => {
+  const CAMPOS_M2 = [
+    { chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1, obrigatorio: false },
+    { chave: 'contrato', label: 'Contrato', tipo: 'monetario', camada: CAMADA.CAMADA_3, obrigatorio: false },
+    { chave: 'celular', label: 'Celular', tipo: 'telefone', camada: CAMADA.CAMADA_3, obrigatorio: false },
+    { chave: 'site', label: 'Site', tipo: 'url', camada: CAMADA.CAMADA_3, obrigatorio: false },
+  ];
+  const porChave = new Map(CAMPOS_M2.map((campo) => [campo.chave, campo]));
+  const mapa = { Email: 'email', Contrato: 'contrato', Celular: 'celular', Site: 'site' };
+  const VALOR_CONTRATO = 1234.56;
+
+  it('converte e normaliza os tipos novos pro customFields', () => {
+    const { dados, erros } = converterLinha(
+      { numero: LINHA_ANA, valores: { Email: 'a@x.com', Contrato: 'R$ 1.234,56', Celular: '(11) 99999-0000', Site: 'https://x.com' } },
+      mapa,
+      CAMPOS_M2,
+      porChave,
+      new Map(),
+    );
+    expect(erros).toEqual([]);
+    expect(dados.customFields).toEqual({ contrato: VALOR_CONTRATO, celular: '11999990000', site: 'https://x.com' });
+  });
+
+  it('valor inválido vira erro da linha no Revisar', () => {
+    const { erros } = converterLinha(
+      { numero: LINHA_BIA, valores: { Email: 'a@x.com', Contrato: 'caro', Celular: '12', Site: 'x' } },
+      mapa,
+      CAMPOS_M2,
+      porChave,
+      new Map(),
+    );
+    expect(erros.map((erro) => erro.coluna)).toEqual(['Contrato', 'Celular', 'Site']);
+    expect(erros.every((erro) => erro.linha === LINHA_BIA)).toBe(true);
   });
 });

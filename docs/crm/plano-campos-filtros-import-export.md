@@ -1,8 +1,12 @@
 # Plano de implementação — CRM: Campos Customizados, Filtros e Import/Export
 
+> **Substituído (2026-10-15):** documento histórico. O desenho atual de campos
+> está em [plano-configuracoes.md](./plano-configuracoes.md); o índice em
+> [README.md](./README.md).
+>
 > **Status (2026-10-12): implementado.** O estado final, as decisões tomadas e as
 > divergências em relação a este plano estão em
-> [plano-crm-campos-hibridos.md](./plano-crm-campos-hibridos.md). Principais
+> [plano-campos-hibridos.md](./plano-campos-hibridos.md). Principais
 > diferenças: export síncrono com download direto na rota (sem `data_jobs` nem
 > storage); a tabela de jobs virou `import_jobs`, só para import; e `origem`
 > passou a se chamar `fonte_lead`.

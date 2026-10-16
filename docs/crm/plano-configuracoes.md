@@ -1,0 +1,524 @@
+# Plano: Configurações e Features do CRM
+
+Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
+
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0016 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15 (falta o front); próximo marco: M4.
+
+## Contexto
+O CRM já tem:
+- leads com 3 camadas de campo, filtro, views, import/export, RBAC, módulo contratado e responsável;
+- no front: lista, ficha (drawer), form dinâmico, página Campos e wizard de import.
+
+A especificação transforma a página "Campos" numa área **Configurações** com 9 subseções e cobre as 6 lacunas do diagnóstico:
+1. visibilidade única;
+2. ordem numérica;
+3. sem identificador;
+4. listas fixas;
+5. só "Excluir";
+6. sem histórico.
+
+O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes. Cada marco tem objetivo, checklist e critério de pronto verificáveis, para que cada etapa termine estável antes da próxima.
+
+## Decisões de arquitetura (já tomadas)
+
+**A. Registro único de campos (`crm_field`)**
+- **Contrato dos campos do sistema:** a constante da Camada 1 continua sendo o contrato (coluna, tipo, validador). Ela ganha **flags de capacidade** (`canHide`, `canMakeOptional`, `canRename`), validadas no back.
+- **O que vai para `crm_field`:** só a configuração por tenant (label, ordem, ativo).
+- **Tabelas filhas** com FK para `crm_field.id`: visibilidade por contexto, regras e permissões.
+- **Campos do sistema:** entram via `reconcileSystemFields(tenantId)` idempotente.
+  - Usa `ON CONFLICT DO NOTHING` e unique parcial em `(tenant_id, system_key)`.
+  - Roda na criação do tenant, num job de deploy e de forma preguiçosa no resolver.
+- **Valores não mudam de lugar:** continuam nas colunas nativas e em `custom_fields` JSONB. O JSONB passa a ser **indexado pelo id do campo** (nunca pelo label).
+  - Os UUIDs de `tenant_lead_field_definitions` são reaproveitados como `crm_field.id`.
+- **Resolver:** `getEffectiveFieldSchema(tenantId)`, com cache em Redis, alimenta form, tabela, filtros, importação e o schema Zod.
+- **Migração:** atrás de feature flag, com **escrita dupla por uma release** antes de aposentar as tabelas antigas.
+
+**B. Listas (`crm_option`) por chave estável**
+- **Chave:** `unique (tenant_id, kind, key)`. A `key` é gerada do label (slug, com sufixo se colidir) e é **imutável**; renomear muda só o label.
+- **Seed sem migrar leads:** os valores atuais dos CHECKs viram opções seed com as **mesmas chaves**. Os leads não mudam; só os CHECKs são removidos.
+- **Status ganha `category`** (`open`/`won`/`lost`).
+  - Relatórios, a regra "lost exige motivo" e a inatividade usam a `category`.
+  - O back impede desativar a última opção `won` ou `lost`.
+- **Ciclo de vida das opções:**
+  - opção com leads vinculados nunca é excluída, só desativada;
+  - a escrita aceita só opções ativas;
+  - a leitura exibe as inativas com um selo.
+- **Validação:** centralizada no resolver, gerando o schema Zod usado por form, API, import e bot.
+- **Opcional:** FK composta via coluna gerada stored constante. Antes de adotar, validar com um spike no Neon (M3).
+
+**C. Feature flags: rollout, não preço**
+- **Nada fica atrás de pagamento:** tudo faz parte do módulo CRM base.
+- **Para que servem as flags:** cada subseção nasce atrás de uma `tenant_module_feature` para liberação gradual e kill switch.
+- **Ciclo de vida:** ao estabilizar, a feature liga por padrão para todo tenant com CRM, e a flag **sai do código em 1 a 2 releases**.
+- **Custo variável:** features com custo variável (como provedor pago de CNPJ) podem ganhar cota no futuro, dentro do CRM.
+
+## Convenções que valem para todo marco
+- **Back:**
+  - camadas `controller → service → adapter`;
+  - `getTenantClient` só em adapters;
+  - toda tabela nova com `tenant_id`, RLS e policy (exceto `crm_cnpj_cache`, que é global e documentada como exceção no `rls-coverage`);
+  - migrations **aditivas** (MASTER_DOCUMENT §1.1.3).
+- **Regras de negócio validadas no back** e reaplicadas no import, nunca só no front.
+- **Front:** consome só o resolver (`/crm/leads/fields` evoluído) e nunca hardcoda campo. Visibilidade passa por `podeVer`.
+- **Gates de todo marco:**
+  - `pnpm lint` e `vitest` no back, e `pnpm lint`, `node --test` e `build` no front;
+  - `test:rls-coverage` e `test:tenant-isolation` quando houver migration;
+  - smoke test em **branch de dev do Neon**, nunca no banco principal.
+- **Flag:** todo marco define a sua (`crm.<subsecao>`), com o comportamento antigo quando ela está desligada.
+- **Documentação:** atualizar os docs do back e do front ao fechar cada marco.
+- **Git:** nunca rodar git que altere estado; o usuário commita.
+- **Divisão back/front:** este plano é executado por dois agentes. O do back não altera `Front/`; ao fechar cada marco, entrega ao agente do front o contrato HTTP (rotas, payloads, erros, flags) e o que a interface precisa fazer.
+
+---
+
+## FASE 0: Plataforma (pré-requisito)
+
+### M0. Infraestrutura compartilhada
+**Objetivo:** dar às fases seguintes flags, cache e fuso por tenant.
+
+- **0.1 Feature flags.**
+  - Criar `#core/tenant/feature-flags.js` com `featureAtiva(tenantId, featureKey)`, cache curto e invalidação, no mesmo padrão de `module-access.js`.
+  - Criar o preHandler `exigirFeature(...)`.
+  - Expor as flags ativas em `/auth/me` (`featuresAtivas`).
+  - No front: helper `temFeature`.
+- **0.2 Cache Redis.**
+  - Criar `#core/cache/` com get/set/del por chave e TTL, sobre o `ioredis` existente.
+  - Sem `REDIS_URL` (dev), cai num cache em memória.
+  - `REDIS_URL` passa a ser recomendado também para o servidor HTTP.
+- **0.3 Fuso por tenant.** Coluna `tenants.fuso_horario` (padrão `America/Sao_Paulo`), editável na área admin. O job de notificação de M9 depende dela.
+- **0.4 Job de deploy.** Script `pnpm crm:reconcile` que roda as reconciliações idempotentes em todos os tenants. Ele é usado a partir de M1.
+
+**Checklist**
+- [x] O helper e o preHandler de flag têm teste unitário (cache e invalidação).
+- [x] `/auth/me` devolve `featuresAtivas`, e há teste de rota.
+- [x] A abstração de cache tem testes com Redis mockado e com o fallback em memória.
+- [x] A migration do fuso foi aplicada e o RLS continua verde.
+
+**Pronto quando:** uma rota de teste protegida por flag responde 403 com a flag desligada e 200 com ela ligada, e o front esconde o item de menu correspondente. *(coberto por `feature-flags.test.js` no back e `acesso.test.js` no front)*
+
+**Como ficou (M0)**
+- **Flags:** `#core/tenant/feature-flags.js` (`listarFeaturesAtivas`, `featureAtiva(tenantId, featureKey)`, `invalidarFeatures`, `exigirFeature` → 403 `FEATURE_NOT_ENABLED`). A chave já carrega o módulo (`crm.campos_v2`), por isso a assinatura não recebe `moduleKey`. Cada módulo declara o catálogo em `Module.featureFlags` (substitui o `requiredFeatureFlags`, que não era usado); o CRM usa `CRM_FEATURES` (`constants.js`). Admin: `GET /admin/features`, `PUT /admin/tenants/:id/features` (substitui o conjunto; lista vazia = kill switch) e `features` no `GET /admin/tenants/:id`. Front: `temFeature(user, flag)`, `feature` em `podeVer`/registry/`RequireRole` (sem `featuresAtivas` = desligada) e a seção "Feature flags" no detalhe do tenant.
+- **Cache:** `#core/cache/cache.js` (`cacheGet/Set/Del`, `lerComCache`, `encerrarCache`), com chave prefixada `cache:` no Redis. Falha do Redis vira miss. `module-access.js` continua com o cache próprio em memória.
+- **Fuso:** `tenants.fuso_horario` (migration 0011), validado e normalizado por `fusoHorarioSchema` (`#shared/validators`), editável em `PUT /admin/tenants/:id` e no card Identidade do admin.
+- **Reconcile:** hook opcional `Module.reconciliar(tenantId)`; o do CRM é `reconciliarTenant` (`services/reconcile.service.js`, lista `PASSOS` vazia até M1). Scripts `pnpm reconcile [-- --modulo= --tenant=]` e `pnpm crm:reconcile`.
+
+---
+
+## FASE 1: Fundação de configuração
+
+### M1. `crm_field` e resolver de schema (flag `crm.campos_v2` — removida)
+**Objetivo:** ter uma única fonte de metadado de campos para todos os consumidores, sem perder dado.
+
+- **1.1 Schema.**
+  - **`crm_field`:** `id, tenant_id, system_key?, label, type, options jsonb, position, is_active`.
+    - `type` cobre o sistema e o personalizado.
+    - Unique parcial `(tenant_id, system_key) WHERE system_key IS NOT NULL`.
+  - **`crm_field_visibility`:** `field_id, context, visible`, com o contexto como linha.
+  - **`crm_field_rule`** e **`crm_field_permission`:** criadas vazias agora (usadas em M8 e M13).
+  - Todas com RLS.
+- **1.2 Contrato do sistema.**
+  - A constante da Camada 1 vira `CAMPOS_SISTEMA`: cada campo tem `system_key`, coluna, tipo, validador e `canHide/canMakeOptional/canRename`, cobrindo as Camadas 1 e 2 de hoje.
+  - `reconcileSystemFields(tenantId)` é chamado em `provisionarTenant`, no `crm:reconcile` e de forma preguiçosa no resolver.
+- **1.3 Backfill.**
+  - As definições de `tenant_lead_field_definitions` viram `crm_field`, **com o mesmo `id`**.
+  - `tenant_lead_field_visibility` vira `crm_field_visibility`.
+  - `custom_fields` dos leads é re-chaveado de `chave` para `id`, num `UPDATE` em lote idempotente.
+- **1.4 Resolver.**
+  - `getEffectiveFieldSchema(tenantId)` junta o contrato do sistema e a configuração do tenant.
+  - Entrega `{ campos[], porContexto, zod(contexto) }`.
+  - Cache Redis, invalidado em toda escrita de configuração.
+- **1.5 Escrita dupla (1 release).**
+  - Toda escrita de configuração grava no modelo novo **e** no antigo.
+  - Toda escrita de `custom_fields` grava por `id`.
+  - A leitura vem do modelo novo quando a flag está ligada.
+- **1.6 Troca dos consumidores:**
+  - `listarCamposDoTenant`;
+  - validação de lead (substitui `validarCustomFields`/`validarCamada2Obrigatoria` pelo Zod do resolver);
+  - `lead-filter`, import, export e `formatarLead`.
+- **1.7 Contrato HTTP:** o payload e o filtro continuam aceitando `chave` (estável e legível), traduzida para `id` pelo resolver. **Decidido (D2): sim** — a API segue com `chave`; só o armazenamento usa `id`.
+- **1.8 Aposentadoria** (release seguinte): remover a escrita dupla e as tabelas antigas, e retirar a flag.
+
+**Checklist**
+- [x] Rodar `reconcileSystemFields` duas vezes não duplica nada (teste). *(unitário: `campos-escrita-dupla.test.js`/`campos-reconcile.service.test.js`; no Postgres: `campos-v2.db.test.js`, pendente de rodar)*
+- [ ] O backfill é idempotente: rodar de novo não altera nada, e as contagens batem antes e depois. *(coberto por `campos-v2.db.test.js` — rodar com `CRM_DB_TESTS=1` numa branch de dev depois da 0012)*
+- [x] Com a flag ligada e desligada, `/crm/leads/fields`, a busca, o import e o export devolvem o mesmo resultado num tenant migrado (teste de paridade). *(unitário em `field-schema.service.test.js`; busca/filtro no banco em `campos-v2.db.test.js`)*
+- [x] A invalidação de cache é testada: alterar um label reflete na próxima leitura.
+- [x] Os testes atuais de leads, filtro, import e export continuam verdes sem mudança de expectativa. *(só os mocks mudaram: flag desligada + cache zerado)*
+
+**Pronto quando:** um tenant migrado opera inteiro pelo modelo novo, com a flag ligada, sem diferença observável no front.
+
+**Aposentadoria antecipada (2026-10-15).** Sem produção, os itens 1.5 e 1.8 viraram uma conversão única:
+- **Migration 0014:**
+  - semeia os campos do sistema (snapshot do contrato) e copia os personalizados com o mesmo `id`;
+  - reescreve `custom_fields` só por `id`;
+  - apaga `tenant_lead_field_definitions`/`tenant_lead_field_visibility` e as linhas da flag `crm.campos_v2`.
+- **Resolver:** um caminho só (`crm_field`).
+- **Reconcile:** só semeia os campos do sistema.
+- **`custom_fields`:** é gravado por `id` e volta por `chave`. Valor de campo excluído (desativado) fica no banco e some da API.
+- **Rotas antigas removidas** (2026-10-15, depois que o front migrou): `GET/PUT /crm/field-visibility` e `PUT /crm/field-definitions/reorder`. Ficam `POST`, `PUT :id` e `DELETE :id` de `/crm/field-definitions` (criar, editar e excluir personalizado), com as regras do M2.
+- **Testes:** o teste de banco agora é `services/campos.db.test.js` (`CRM_DB_TESTS=1`).
+
+O que está abaixo descreve a etapa intermediária, mantida como histórico.
+
+**Como ficou (M1)**
+- **Schema** (migration 0012): `crm_field` (`system_key` nulo = personalizado; `chave` = slug da API; `is_required`/`is_active`), `crm_field_visibility` (contexto como linha), `crm_field_rule` e `crm_field_permission` vazias. Filhas com FK composta `(tenant_id, field_id)`, que impede filho de outro tenant. Índices únicos parciais: um `system_key` por tenant e `chave` única só entre personalizados **ativos** (excluir libera a chave). Sem CHECK em `type`: os tipos crescem em M2/M11.
+- **Contrato:** `CAMPOS_SISTEMA` + `CONTEXTOS_VISIBILIDADE` em `constants.js`, derivados das constantes de camada, com `canHide/canMakeOptional/canRename`.
+- **Reconcile:** `services/campos-reconcile.service.js` (passos `campos-sistema`, `campos-personalizados`, `custom-fields-por-id`) em `PASSOS` do CRM. Roda no `pnpm crm:reconcile`, na criação do tenant e na contratação do módulo (`#core/tenant/reconcile.js`, best-effort) e de forma preguiçosa no resolver.
+- **Resolver:** `services/field-schema.service.js` → `obterSchemaCampos(tenantId)` = `{ v2, visibilidade, definicoes, campos }`, mesmo formato nos dois modos, cache `crm:campos:<tenant>:v1|v2` (60 s) invalidado em toda escrita de configuração. `listarVisibilidadeDoTenant`/`listarDefinicoesPorTenant` viraram leituras dele; leads, filtro, import, export e views só passam por ali.
+- **`custom_fields` por id:** escrita dupla nos dois modos (`customFieldsParaArmazenamento` grava na `chave` e no `id`, e `null` limpa os dois). A resposta HTTP volta sempre por `chave` (`customFieldsParaApi`), sem as cópias por id. No modo novo o filtro lê `custom_fields[id]` (`chaveArmazenamento`).
+- **Escrita dupla de configuração:** os adapters antigos gravam também em `crm_field` na mesma transação. Excluir definição apaga no antigo e só **desativa** no novo.
+- **Correção junto:** personalizado cuja chave colide com a de um campo do sistema (ex.: "Empresa") passa a dar 409.
+- **Desvios do plano:**
+  - **Zod gerado pelo resolver (1.6):** fica pro M2, quando os tipos novos entram no contrato. A validação continua em `leads.service`/`import.service`, mas lendo o schema do resolver.
+  - **`label` dos campos do sistema:** já é gravado em `crm_field`, mas só passa a valer com o renomear (M2).
+- **1.8 Aposentadoria (próxima release):** remover a escrita dupla e as tabelas antigas, rodar um passo de reconcile que apague as chaves por `chave` dos personalizados em `custom_fields` e retirar a flag `crm.campos_v2`.
+
+### M2. Área Configurações, visibilidade por contexto, ordenação e tipos MVP
+**Objetivo:** fechar as lacunas 1 e 2, e criar a casca das 9 subseções.
+
+- **2.0 Navegação.**
+  - "Campos" vira "Configurações" (`/crm/configuracoes/:secao`), com uma sidebar interna das 9 subseções.
+  - As subseções ainda não entregues ficam ocultas por flag.
+  - Escrita só para DONO/MASTER.
+- **2.1 Visibilidade por contexto.**
+  - Na UI, uma matriz Criação · Ficha · Tabela · Filtros por campo.
+  - No back, `PUT` por campo e contexto, respeitando `canHide`.
+  - **Consumidores:**
+    - o form de criação usa `create_form`;
+    - a ficha usa `detail`;
+    - o seletor de colunas usa `table`;
+    - o construtor de filtro usa `filter`.
+  - Desligar um contexto não apaga dados.
+- **2.2 Ordenação por arrastar.**
+  - Lista com drag-and-drop, com alternativa por teclado (MASTER_DOCUMENT §4.3; mantém ↑/↓).
+  - "Voltar ao padrão", que restaura a ordem do contrato do sistema e dos personalizados por data de criação.
+  - O input numérico some.
+  - No back, `PUT .../reorder` em transação.
+- **2.3 Tipos MVP.**
+  - Somar `texto_longo`, `monetario` (BRL), `telefone`, `email` e `url` aos atuais.
+  - Cada tipo tem validador no contrato, renderizador no front e conversão no import, filtro e export.
+
+**Checklist**
+- [x] Teste de rota: OPERADOR → 403 na escrita. *(`crm.routes.test.js`: papel conferido antes das flags)*
+- [x] Desligar "Filtros" de um campo o tira do construtor de filtro, e o back rejeita um filtro por ele. *(`field-schema.service.test.js`; vale pra busca, export e views salvas)*
+- [x] A reordenação é atômica, e "voltar ao padrão" é testado. *(um UPDATE com `unnest … WITH ORDINALITY` numa transação)*
+- [x] Cada tipo novo é validado no form, no PUT, no import (linha inválida aparece no Revisar), no filtro (operadores por tipo) e no export (formatação). *(no back; o renderizador de cada tipo fica com o front)*
+- [ ] A ordenação funciona sem mouse (navegação por teclado). *(front)*
+
+**Pronto quando:** o DONO esconde um campo só da tabela e o reordena, e o OPERADOR vê o efeito nos quatro contextos.
+
+**Como ficou (M2, back)**
+- **Rotas novas** (`controllers/configuracoes.controller.js`), **sem feature flag** (a flag `crm.configuracoes` foi removida quando o front apagou a página Campos antiga; leitura para qualquer papel, escrita só DONO/MASTER):
+  - `GET /crm/configuracoes/campos`: todos os campos ativos, inclusive ocultos, com `id`, `labelPadrao`, `visibilidade` por contexto e `capacidades`.
+  - `PUT /crm/configuracoes/campos/:id`: `{ label?, obrigatorio?, visibilidade? }` parcial; `label: null` volta ao nome padrão.
+  - `PUT /crm/configuracoes/campos/ordem`: `{ ids }` com todos os campos.
+  - `POST /crm/configuracoes/campos/ordem/padrao`.
+
+  Escrita só DONO/MASTER; o papel é conferido antes da flag.
+- **Regras de capacidade no back** (`services/configuracoes-campos.service.js`):
+  - **Ocultar:** só campo com `canHide`. A Camada 1 abriu para `fonteLead`, `tags` e `ultimaInteracaoEm`; `nome`, `email`, `telefone` e `status` nunca somem.
+  - **Obrigatoriedade:** obrigatoriedade fixa (`nome`/`email`/`telefone`) não muda, e campo obrigatório precisa aparecer em `create_form`.
+  - **Renomear:** nome repetido dá 409.
+  - **Ordem:** a lista precisa ter cada campo exatamente uma vez.
+- **Resolver:**
+  - **Visibilidade:** cada campo traz `visibilidade` (`create_form/detail/table/filter`) nos dois modos. No modo antigo, os quatro contextos derivam do `visivel`.
+  - **Campo oculto:** oculto em todos os contextos sai da lista, e `camposDoContexto` filtra uma tela.
+  - **Label e obrigatoriedade:** o label renomeado e a obrigatoriedade da Camada 1 vêm de `crm_field`.
+  - **Dado na resposta:** a Camada 2 só deixa de vir na resposta quando está oculta em todos os contextos.
+- **`GET /crm/leads/fields?contexto=`**: devolve só os campos de uma tela. Sem o parâmetro, o comportamento é o de antes, agora com `visibilidade` em cada campo.
+- **Filtro por contexto:** busca, export e views só filtram por campo visível em `filter`.
+- **Obrigatoriedade genérica** (`validarObrigatoriosNativos`): vale para qualquer nativo obrigatório visível em `create_form`, incluindo a Camada 1 configurada. Também não deixa limpar com `null`.
+- **Tipos MVP** (`services/tipos-campo.service.js`): `texto_longo` (até 10.000), `monetario` (reais, até 2 casas), `telefone` (gravado só com dígitos, sem DDI), `email` (minúsculo) e `url` (http/https). Cada tipo tem validação, normalização e conversão da planilha (`R$ 1.234,56`, máscara de telefone). O filtro normaliza o valor buscado (telefone com máscara, e-mail) e tem operadores por tipo; o export sai com telefone formatado. A migration 0013 amplia o CHECK da tabela antiga por causa da escrita dupla.
+- **Escrita dupla:** existiu nesta etapa (`espelharNoModeloAntigo`) e saiu com a aposentadoria.
+- **Desvio:** o Zod gerado pelo resolver (pendente desde 1.6) ficou de fora outra vez. A validação por tipo agora é única (`tipos-campo.service.js`) e compartilhada por form, PUT, import e filtro, o que cobre o objetivo; a geração de schema Zod em si volta a ser avaliada no M8 (regras condicionais).
+
+### M3. Listas configuráveis (flag `crm.listas`)
+**Objetivo:** fechar a lacuna 4 (Status, Origem, Motivo de perda, Tipos de atividade, Tags).
+
+- **3.1 Schema.**
+  - `crm_option_list`, ou `kind` direto em `crm_option`.
+  - `crm_option`: `tenant_id, kind, key, label, color, position, category?, is_active`, com `unique(tenant_id, kind, key)`.
+- **3.2 Seed e CHECKs.**
+  - Seed das opções atuais com as mesmas chaves, via reconcile.
+  - Os padrões sugeridos pela spec entram só em tenant novo, porque os existentes mantêm as chaves atuais.
+  - Migration que remove os CHECKs de `status`, `fonte_lead` e `motivo_perda`.
+- **3.3 Regras no back:**
+  - slug imutável com sufixo em colisão;
+  - não excluir opção em uso, só desativar;
+  - impedir desativar a última `won` ou `lost`;
+  - escrita só com opção ativa (no Zod do resolver);
+  - leitura marca as inativas.
+- **3.4 Tags centralizadas.** Tag nova vinda do form ou do import entra na lista automaticamente (upsert por `key`).
+- **3.5 Spike de FK composta** no Neon: a decisão de adotar ou não fica registrada no documento.
+- **3.6 UI.**
+  - Uma subseção "Listas" com abas por `kind`: editar label, cor, ordem (drag), categoria (só Status) e ativo.
+  - O selo "inativa" aparece em badges e seletores.
+  - A cor da opção aparece no `OpcaoBadge` sem quebrar o contraste AA (texto com contraste calculado).
+
+**Checklist**
+- [x] Os leads existentes continuam válidos depois da migration, sem nenhum `UPDATE` em `leads` (conferido no dev: todo valor gravado tem opção).
+- [x] Renomear "Perdido" não quebra a regra baseada em `category` (teste em `listas.service.test.js`).
+- [x] Excluir uma opção em uso → 409; desativar → some dos seletores (`opcoes`), mas o lead antigo exibe com selo (`opcoesLista[].ativo`). O selo em si é do front.
+- [x] Filtro, import e export funcionam com opção nova e com opção inativa (filtro por key; import casa key ou nome de opção ativa; export sai com o nome).
+
+**Como ficou (back, 2026-10-15):**
+- **Schema (migration 0016):** `crm_option` com `kind` direto (sem `crm_option_list`): `status`, `fonte_lead`, `motivo_perda`, `tipo_atividade`, `tag`. Colunas `key` (imutável, é o que o lead grava), `label`, `color` (`#RRGGBB`), `position`, `category` (`aberto`/`ganho`/`perdido`, obrigatória em status e proibida no resto, por CHECK) e `is_active`; `unique(tenant_id, kind, key)`, RLS e FK de tenant. Os CHECKs de `status`, `fonte_lead` e `motivo_perda` em `leads` saíram.
+- **Seed (reconcile, passo `listas-padrao`):** cada lista semeada uma vez. Tenant com lead recebe as keys antigas (as dos CHECKs, mais "Negociação"); sem lead, os padrões da spec. Tipo de atividade entra com o padrão da spec pra todos. Toda tag já gravada num lead vira opção com key = label = o texto. O resolver semeia de forma preguiçosa se faltar lista.
+- **Resolver:** `obterSchemaCampos` traz `listas` (por kind, com as inativas) no mesmo cache dos campos. Campo de lista (`status`, `fonteLead`, `motivoPerda`, `tags`) sai com `lista`, `opcoes` (keys ativas; `null` em tags, que é livre) e `opcoesLista` (`key, label, color, category, ativo`).
+- **Regras (`listas.service.js`):** key = slug do nome, com sufixo `_2`, `_3`... em colisão; nome único por lista; não exclui opção em uso (409, sugere desativar) nem a última de uma lista semeada; sempre sobra um status ativo de `ganho` e de `perdido`; lead só grava opção ativa, a não ser a que ele já tinha (o lead atual só é lido nesse caso).
+- **Tags centralizadas:** no formulário, na edição e no import, a tag casa por key, nome ou slug; texto novo vira opção nova (criada só depois de validar o lead) e o lead grava a key.
+- **Rotas (`controllers/listas.controller.js`), atrás de `crm.listas`; leitura pra qualquer papel, escrita DONO/MASTER:**
+  - `GET /crm/configuracoes/listas`: `{ [kind]: [{ id, kind, key, label, color, position, category, ativo, usos }] }`.
+  - `POST /crm/configuracoes/listas/:tipo`: `{ label, color?, category? }` → 201.
+  - `PUT /crm/configuracoes/listas/:tipo/:id`: `{ label?, color? (null limpa), category?, ativo? }`.
+  - `PUT /crm/configuracoes/listas/:tipo/ordem`: `{ ids }` com todas as opções da lista.
+  - `DELETE /crm/configuracoes/listas/:tipo/:id`.
+- **Decisão D3 (spike no Neon, Postgres 18):** a FK composta funciona com uma coluna gerada constante (`(tenant_id, 'status', status)` → `crm_option(tenant_id, kind, key)`; barra valor fora da lista; VALIDATE em 47 ms no dev). **Não adotada:** custaria três colunas geradas em `leads`, não cobre `tags` (array) e não resolve "só opção ativa" nem "não excluir em uso", que precisam de regra na aplicação de qualquer jeito — um mecanismo só pras cinco listas é mais simples.
+- **Fica pro M5:** `tipo_atividade` ainda não tem onde ser usado (sem atividades), então nunca está "em uso".
+
+**Pronto quando:** o DONO cria uma origem nova com cor, renomeia um status e desativa um motivo de perda, e nenhum lead antigo é afetado.
+
+### M4. Layout do lead (flag `crm.layout`)
+**Objetivo:** fechar a lacuna 3 (identificador, subtítulo, destaques, seções e colunas padrão).
+
+- **4.1 Schema.**
+  - `crm_layout_config`, com uma linha por tenant: identificador, subtítulo (até 2), destaques (até 4), seções em JSONB e colunas padrão.
+  - `crm_user_layout_override`, com o mesmo formato, parcial.
+  - Todas as referências vão para `crm_field.id`.
+- **4.2 Back.**
+  - `GET` do layout efetivo, que mescla o padrão do tenant com o override do usuário.
+  - `PUT` do padrão (DONO) e `PUT`/`DELETE` do override ("Voltar ao padrão").
+  - **Regra de mescla:** um campo novo do padrão entra no fim da lista do usuário.
+  - **Validação:** o identificador precisa ser um campo de texto permitido (Nome, Empresa, CNPJ, CPF, E-mail ou personalizado de texto).
+- **4.3 Busca pelo identificador.**
+  - Coluna ou expressão normalizada (só dígitos para CNPJ/CPF) entra no `busca` do filtro.
+  - Índice de expressão, para buscar com ou sem pontuação.
+- **4.4 Front:**
+  - título, subtítulo (" · ") e chips de destaque no drawer;
+  - a primeira coluna da tabela é o identificador;
+  - fallback: identificador vazio → Nome → "Lead sem nome";
+  - máscaras por tipo (CNPJ, telefone);
+  - editor visual na subseção "Layout do lead", em que o OPERADOR edita só o override;
+  - colunas padrão quando não há view salva.
+
+**Checklist**
+- [ ] Teste da mescla padrão + override, incluindo um campo novo adicionado depois do override.
+- [ ] Buscar `12.345.678/0001-90` e `12345678000190` acha o mesmo lead.
+- [ ] O fallback do identificador é testado (função pura no front).
+- [ ] O OPERADOR não consegue alterar o padrão do tenant (403).
+
+**Pronto quando:** um tenant B2B configura CNPJ como identificador e Empresa · Cidade como subtítulo, e a tabela, o drawer e a busca refletem isso.
+
+### M5. Arquivar e lixeira (flag `crm.arquivo`)
+**Objetivo:** fechar a lacuna 5 na parte destrutiva.
+
+- **5.1 Schema.** `leads.archived_at` e `leads.deleted_at`, com índices parciais.
+- **5.2 Back.**
+  - Arquivar e desarquivar.
+  - "Excluir" vira soft delete, com restauração possível por 30 dias.
+  - Purga definitiva por job agendado (BullMQ, diário).
+  - Toda leitura, busca, export e deduplicação ignora `deleted_at`.
+  - Os arquivados ficam fora do padrão, com o filtro fixo `situacao: ativos|arquivados|lixeira`.
+- **5.3 Front:**
+  - "Arquivar" substitui o botão vermelho de destaque;
+  - "Excluir" vai para o menu "…";
+  - página ou filtro de Lixeira com "Restaurar";
+  - filtro "Arquivados".
+
+**Checklist**
+- [ ] Teste de que nenhuma consulta de lead vaza registro com `deleted_at` (busca, detalhe, export, import/dedup e contagem).
+- [ ] Restaurar dentro de 30 dias funciona; o job purga depois do prazo (teste com relógio falso).
+- [ ] Ninguém consegue editar um lead da lixeira (404).
+
+**Pronto quando:** arquivar, restaurar e excluir funcionam pela tela, e a purga roda no worker.
+
+**Marco da Fase 1:** área Configurações com Campos, Listas e Layout no ar; arquivo e lixeira; flags `crm.listas`, `crm.layout` e `crm.arquivo` ligadas por padrão; tabelas antigas aposentadas.
+
+---
+
+## FASE 2: Qualidade de dados
+
+> **Ordem ajustada em relação à spec:** atividades e histórico vêm **antes** da inatividade, porque "atividade concluída" e "atividade agendada pausa" são os gatilhos do contador. A timeline completa na interface continua na Fase 3 (M16).
+
+### M6. Atividades e histórico (base) (flag `crm.atividades`)
+**Objetivo:** criar a entidade de atividade e o registro de mudanças, que a inatividade, a mesclagem e a timeline usam.
+
+- **6.1 Schema.**
+  - `crm_activity`: `lead_id, tipo (crm_option kind=atividade), titulo, notas, agendada_para, concluida_em, autor_id`.
+  - `crm_lead_event`: tipo, autor, `diff` em JSONB e data, append-only. Avaliar reaproveitar o `audit_log` do core para eventos administrativos.
+- **6.2 Back.**
+  - CRUD de atividades.
+  - Concluir uma atividade atualiza `ultima_interacao_em`.
+  - A atualização de lead registra o diff dos campos no evento; o autor vem do token.
+- **6.3 Front (mínimo).** Aba "Atividades" no drawer: registrar, concluir e listar.
+
+**Checklist**
+- [ ] Concluir uma atividade e mudar o status atualizam `ultima_interacao_em`; editar um campo não atualiza (decisão aberta D1).
+- [ ] O evento guarda o antes e o depois só dos campos alterados, respeitando a permissão de campo quando M13 existir.
+- [ ] RLS e isolamento verdes.
+
+### M7. Duplicidade e mesclagem (flag `crm.duplicidade`)
+**Objetivo:** detecção configurável de duplicados e uma mesclagem segura.
+
+- **7.1 Schema.** `crm_duplicate_rule` (campos, método e ação `warn`/`block`, ativo).
+- **7.2 Normalizadores puros:**
+  - e-mail em minúsculas com trim;
+  - telefone só com dígitos, sem +55 e com ou sem o 9 após o DDD;
+  - CNPJ só com dígitos ou alfanumérico (novo formato);
+  - CPF só com dígitos.
+
+  Colunas ou índices normalizados para a busca ser rápida.
+- **7.3 Aplicação:** `POST`/`PUT` de lead (`warn` devolve candidatos, `block` responde 409 com o id existente), import (o Revisar marca a linha com pular, atualizar ou criar, substituindo o dedup fixo de hoje) e API.
+- **7.4 Mesclagem.**
+  - `POST /crm/leads/merge` com escolha campo a campo.
+  - Une atividades, tags e eventos e faz soft delete do descartado.
+  - O evento de auditoria guarda o id original. Tudo numa transação.
+- **7.5 Front:**
+  - subseção "Duplicidade";
+  - aviso e bloqueio no form;
+  - dialog de mesclagem (pelo "…" e pela seleção de 2 leads).
+- **Fase 2 da spec:** o "Nome + Empresa aproximado" (`pg_trgm`) fica atrás de um spike de extensão no Neon.
+
+**Checklist**
+- [ ] Os normalizadores têm casos com e sem 9 e com e sem +55 (teste puro).
+- [ ] `warn` deixa salvar, e `block` impede e oferece abrir o existente.
+- [ ] A mesclagem é atômica; se falhar no meio, nada muda (teste).
+- [ ] O import aplica as mesmas regras do form.
+
+### M8. Obrigatoriedade por status e condicional (flag `crm.regras`)
+**Objetivo:** "Status = Perdido exige Motivo" e regras do tipo "se A = X, B fica visível e/ou obrigatório".
+
+- **8.1** `crm_field_rule` com `kind` (`required`, `required_from_status`, `conditional`) e `condition` em JSONB, aproveitando o mesmo vocabulário de operadores do filtro.
+- **8.2** O resolver gera um Zod com `superRefine` a partir das regras e o aplica na criação, na edição (contra o lead resultante, não só contra o payload) e no import.
+- **8.3** No front, as mesmas regras são avaliadas por função pura, só para UX: o campo dependente aparece ou some e o obrigatório é marcado. A validação real é no back.
+- **8.4** Seed da regra `category=lost → motivo_perda obrigatório`, desligável.
+
+**Checklist**
+- [ ] Teste de que uma edição parcial que muda só o status para "lost" sem motivo dá 400.
+- [ ] O import reporta a linha que viola uma regra.
+- [ ] A função pura do front e o Zod do back concordam (mesmos casos de teste nos dois lados).
+
+### M9. Lead esfriando (flag `crm.inatividade`)
+**Objetivo:** dias até esfriar por status, com indicador, filtro, view e notificação.
+
+- **9.1** `crm_stale_config` (opção de status → dias), com seed das sugestões e `won`/`lost` desligados.
+- **9.2 Cálculo.**
+  - Grava `leads.stale_since`. Um job (BullMQ, de hora em hora) recalcula, e o recálculo também acontece no evento de interação.
+  - **Pausa:** uma atividade agendada no futuro pausa a contagem até a data dela.
+- **9.3** Filtro fixo "Esfriando", uma view padrão do sistema e o indicador "esfriando há N dias" na tabela e no drawer.
+- **9.4 Notificação in-app.**
+  - Tabela `notificacoes` no core, com `GET` e marcar como lida.
+  - Sino no shell do front.
+  - Job diário às 8h no fuso do tenant (M0.3).
+
+**Checklist**
+- [ ] Teste do cálculo com relógio falso: limite, pausa por atividade agendada e reset por interação.
+- [ ] O job é idempotente e não gera notificação duplicada no mesmo dia.
+- [ ] O filtro "Esfriando" e o indicador batem com o cálculo do back.
+
+### M10. Edição em massa, exportação aprimorada e primeiro nome (flag `crm.massa`)
+- **10.1** Checkbox na tabela e uma barra de ações: Status, Responsável, Tags e Origem (depois, campos personalizados).
+  - No back, `PATCH /crm/leads/bulk` com limite de quantidade.
+  - Aplica regras, permissões e duplicidade por lead e devolve um relatório por id.
+- **10.2** Export com formato `.xlsx` ou `.csv` e seletor de campos que **respeita a view atual** (filtro e colunas). O export já respeita filtro e colunas hoje; falta o CSV e herdar a view por padrão.
+- **10.3** "Primeiro nome": campo do sistema derivado do Nome e editável, para personalizar mensagens.
+- **10.4** Confirmar que o passo Mapear lista os campos personalizados como destino (já lista; cobrir com teste).
+
+**Checklist:** o relatório da edição em massa traz o resultado parcial; o CSV abre corretamente no Excel pt-BR (separador `;` e BOM UTF-8); o primeiro nome é derivado e editável.
+
+### M11. Tipos de campo avançados e enriquecimento por CNPJ (flag `crm.cnpj`)
+- **11.1 Tipos "Depois" da spec:**
+  - CPF, CNPJ (incluindo o alfanumérico) e CEP, com máscara e dígito verificador;
+  - endereço;
+  - usuário (lookup de membro, via `/crm/usuarios`);
+  - intervalo de datas;
+  - hora.
+- **11.2** `crm_cnpj_cache` global (sem `tenant_id`, por ser dado público, com TTL de 30 dias). É a exceção documentada no teste de cobertura de RLS.
+- **11.3 Provedor.**
+  - BrasilAPI como primário e um provedor pago como opção, ambos atrás de um adapter de provedor.
+  - Fila BullMQ com rate limiter por provedor.
+  - O import de 5.000 linhas enfileira os CNPJs.
+- **11.4** Configuração: ligar e desligar, modo manual (lupa) ou automático, mapeamento entre dado da Receita e campo, e se sobrescreve. Cada consulta gera um evento na timeline (M6).
+
+**Checklist:** o cache evita uma segunda chamada; o rate limit é respeitado (teste com o provedor mockado); "não sobrescrever" é respeitado; uma falha do provedor não bloqueia salvar o lead.
+
+**Marco da Fase 2:** dados limpos na entrada (duplicidade, regras e CNPJ), a operação diária (esfriando e edição em massa) e a base de atividades e eventos.
+
+---
+
+## FASE 3: Gestão e diferenciais
+
+### M12. Distribuição automática (flag `crm.distribuicao`)
+- **12.1** `crm_assignment_rule` (posição, condições em JSONB, usuário ou grupo de destino, ativo) e grupos de usuários: `crm_user_group` e membros, com gestão na própria subseção.
+- **12.2 Motor.**
+  - A primeira regra que casar decide; um grupo distribui em round-robin.
+  - Fallback para o round-robin geral ou para ficar sem responsável, conforme a configuração.
+  - Respeita o responsável já preenchido.
+  - Pula usuários inativos ou ausentes (`usuarios.presenca`).
+  - Grava `leads.assigned_by_rule_id`.
+- **12.3** Ponteiro do round-robin com `INCR` atômico no Redis (ou `SELECT … FOR UPDATE`). Aplica-se a form, import, API e canais.
+- **12.4** Notificação in-app ao responsável, reaproveitando M9.4.
+
+**Checklist:** um teste de concorrência (N criações simultâneas) mostra distribuição justa e sem colisão; a regra que atribuiu aparece no lead; o import em lote distribui de forma consistente.
+
+### M13. Permissão por campo (flag `crm.permissoes`)
+- **13.1** `crm_field_permission` (campo, papel e acesso `edit`/`view`/`hidden`). DONO e MASTER ignoram.
+- **13.2** Aplicada no **back**: leitura remove o oculto, escrita rejeita o "só ver" e o oculto, e filtro, export, import, histórico e edição em massa respeitam a regra.
+- **13.3** No front, campo "só ver" desabilitado com tooltip "sem permissão"; campo oculto não aparece.
+
+**Checklist:** o OPERADOR não consegue filtrar, exportar nem ver no histórico um campo oculto (testes de rota para cada caminho).
+
+### M14. Pontuação de leads (flag `crm.score`)
+- **14.1** `crm_score_rule` (condição e pontos, podendo ser negativos) e `crm_score_band` (mínimo, máximo, rótulo e cor), com seed Frio, Morno e Quente.
+- **14.2** O score fica em `leads.score`, recalculado ao salvar o lead e em job assíncrono quando as regras mudam.
+- **14.3** O score vira campo do sistema: tabela, filtros, destaque e faixa colorida.
+- O score de engajamento (com decaimento) fica para quando existir o omnichannel.
+
+**Checklist:** o recálculo em lote é idempotente e mostra progresso; o filtro por faixa funciona; uma regra com campo inativo é ignorada.
+
+### M15. Base legal LGPD (flag `crm.lgpd`)
+- **15.1** Colunas `legal_basis`, `legal_basis_at`, `origem_registro` e `marketing_opt_out_at` como campos do sistema.
+- **15.2** Configuração: base legal padrão e obrigatoriedade, com um passo extra no wizard de import (base legal do lote).
+- **15.3** Pedido do titular: **anonimizar** o lead, preservando estatísticas (sem PII nos eventos), com registro de auditoria.
+
+**Checklist:** a anonimização remove PII do lead, das atividades e dos eventos; o import exige a base legal quando ela é obrigatória.
+
+### M16. Timeline completa no drawer (flag `crm.timeline`)
+- **16.1** O drawer ganha as abas Dados · Atividades · Histórico.
+  - O Histórico mostra mudanças de campo com autor e data, mesclagens, enriquecimentos e atribuições, a partir de `crm_lead_event`.
+- **16.2** Paginação, filtro por tipo de evento e respeito à permissão de campo.
+
+**Marco da Fase 3:** todas as 9 subseções de Configurações entregues, e todas as flags estabilizadas e removidas do código.
+
+---
+
+## Revisão pós-M2 (2026-10-15)
+
+Correções:
+- **Lint de fronteira:** não checava nenhum import por alias `#...`. Resolver próprio (`eslint-resolver-imports.cjs`); o core deixou de importar `#api/modules.js` e lê os módulos de `#core/registry/modules.js` (preenchido por `buildApp`).
+- **Admin:** recontratar módulo desligado (soft-disable) agora reativa a linha e reconcilia.
+- **FKs de tenant (migration 0015):** 22 tabelas de módulo estavam sem FK pra `tenants` no banco de dev (drift: a 0001 usa `CREATE TABLE IF NOT EXISTS` sobre tabelas que já existiam). FK criada em todas (`NOT VALID` onde há órfão); `fk_leads_usuario_responsavel` virou `ON DELETE SET NULL`. Teste `pnpm test:fk-coverage`.
+- **Campo oculto em todos os contextos** não sai na resposta, nas três camadas (antes só a Camada 2).
+- **Obrigatório só conta no formulário de criação** (`exigidoNaCriacao`), no cadastro manual e no import, pras três camadas.
+- **Edição antiga de personalizado** (`PUT /crm/field-definitions/:id`): nome único, obrigatório exige o formulário de criação, tipo fixo depois que algum lead tem valor. Criar também checa nome contra os campos do sistema renomeados.
+- **Ordem:** `ordemPadrao` = posição no contrato (Camada 2 depois da Camada 1); reordenar em Configurações passou a valer pra Camada 1.
+- **E-mail/telefone nativos** com tipo `email`/`telefone`: gravados normalizados (dígitos sem DDI; minúsculo) e comparados normalizados no filtro e na busca, inclusive linhas antigas com máscara.
+- **Cache de acesso a módulo** no `#core/cache` (Redis entre instâncias), igual às flags.
+
+Organização: regras por tipo num arquivo só (`tipos-campo.service.js`: validar, normalizar, converter célula, texto de busca); `constants.js` do CRM separado em `constants/` (o arquivo reexporta); fábricas `erroDeValidacao`/`erroNaoEncontrado`/`erroDeConflito` em `#core/errors/app-error.js`; documentação do CRM em `docs/crm/` com índice.
+
+Pendente/decisão do usuário: órfãos no dev (2 leads, 4 estágios sem tenant; FK `NOT VALID` até limpar); juntar 0012–0015 só se a produção ainda não tiver aplicado nenhuma delas; Prettier adiado (reformataria o repositório inteiro).
+
+## Decisões abertas (resolver no início do marco indicado)
+- **D1 (M6):** editar um campo reseta o contador de inatividade? A spec propõe que não.
+- **D2 (M1):** o contrato HTTP continua com `chave` e só o armazenamento usa `id`? Recomendado: sim.
+- ~~**D3 (M3):** adotar ou não a FK composta, depois do spike no Neon.~~ **Fechada em 2026-10-15:** não adotada (ver M3, "Como ficou").
+- **D4 (M7):** `pg_trgm` disponível no plano do Neon, para o "Nome + Empresa aproximado".
+- **D5 (M9/M12):** a notificação in-app fica no core (servindo outros módulos) ou no CRM? Recomendado: core.
+- **D6 (Kanban):** o identificador do layout vale nos cards do Kanban quando a integração existir. Fica fora deste plano.
+
+## Verificação geral
+- **Gates de cada marco** (seção Convenções) e o checklist do marco, todos marcados.
+- **Teste de paridade em M1** antes de ligar a flag para qualquer tenant real.
+- **Smoke test** de cada marco em branch de dev do Neon, com DONO e OPERADOR, cobrindo o caminho feliz e cada regra de bloqueio.
+- **Retirada de flag:** só depois de 1 a 2 releases estáveis, com o marco seguinte já em andamento.

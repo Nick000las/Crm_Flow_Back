@@ -348,11 +348,12 @@ describe('MFA por e-mail no login', () => {
     }
   });
 
-  it('/auth/me devolve o contexto da sessão com os módulos contratados', async () => {
+  it('/auth/me devolve o contexto da sessão com módulos contratados e features ligadas', async () => {
     const app = await createTestApp();
     const tenantContext = { tenantId: 'tenant-id', userId: 'user-id', role: 'OPERADOR' };
     const accessToken = signAccessToken(app, tenantContext);
-    vi.mocked(getSessionUser).mockResolvedValue({ ...tenantContext, modulosAtivos: ['crm'] });
+    const sessao = { ...tenantContext, modulosAtivos: ['crm'], featuresAtivas: ['crm.layout'] };
+    vi.mocked(getSessionUser).mockResolvedValue(sessao);
 
     try {
       const response = await app.inject({
@@ -363,7 +364,7 @@ describe('MFA por e-mail no login', () => {
 
       expect(response.statusCode).toBe(HTTP_STATUS.OK);
       expect(getSessionUser).toHaveBeenCalledWith(tenantContext);
-      expect(response.json().data.user).toEqual({ ...tenantContext, modulosAtivos: ['crm'] });
+      expect(response.json().data.user).toEqual(sessao);
     } finally {
       await app.close();
     }

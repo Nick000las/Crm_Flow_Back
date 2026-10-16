@@ -1,7 +1,5 @@
-import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
+import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
-import { ERROR_CODES } from '#shared/http/error-codes.js';
 import {
   buscarLeadsComFiltro,
   buscarLeadPorId,
@@ -10,16 +8,24 @@ import {
   removerLead as removerLeadRepository,
 } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
-import { listarDefinicoesPorTenant } from './field-definitions.service.js';
-import { listarVisibilidadeDoTenant } from './field-visibility.service.js';
-import { montarCondicoes } from './lead-filter.service.js';
 import {
-  CAMADA,
-  CAMADA_1_CAMPOS,
-  CAMADA_2_COLUNA_PARA_CAMPO,
-  CAMADA_2_METADADOS,
-  CAMPOS_CAMADA_1,
-} from '../constants.js';
+  camposDoContexto,
+  camposParaFiltro,
+  customFieldsParaApi,
+  customFieldsParaArmazenamento,
+  exigidoNaCriacao,
+  obterSchemaCampos,
+} from './field-schema.service.js';
+import { montarCondicoes } from './lead-filter.service.js';
+import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
+import { CAMADA, CAMPOS_SISTEMA } from '../constants.js';
+
+/**
+ * Campos com regra própria de obrigatoriedade: `nome` é checado à parte e
+ * `email`/`telefone` seguem "pelo menos um dos dois".
+ */
+const CHAVES_OBRIGATORIEDADE_PROPRIA = new Set(['nome', 'email', 'telefone']);
 
 /**
  * SERVICE: lógica de negócio pura. Nunca importa Fastify.
@@ -35,16 +41,13 @@ import {
  * @returns {Promise<Lead>}
  */
 export async function buscarLeadFormatado(tenantId, leadId) {
-  const [lead, visibilidade] = await Promise.all([
-    buscarLeadPorId(tenantId, leadId),
-    listarVisibilidadeDoTenant(tenantId),
-  ]);
+  const [lead, schema] = await Promise.all([buscarLeadPorId(tenantId, leadId), obterSchemaCampos(tenantId)]);
 
   if (!lead) {
     throw leadNaoEncontrado();
   }
 
-  return formatarLead(lead, visibilidade);
+  return formatarLead(lead, schema);
 }
 
 /**
@@ -54,27 +57,22 @@ export async function buscarLeadFormatado(tenantId, leadId) {
  *   quando `input.usuarioResponsavelId` não vem
  * @returns {Promise<{ id: string }>}
  */
-export async function registrarNovoLead(tenantId, input, usuarioId) {
+export async function registrarNovoLead(tenantId, entrada, usuarioId) {
+  const input = comContatoNormalizado(entrada);
   if (input.nome.trim().length === 0) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Nome do lead não pode ser vazio',
-      fields: { nome: ['Informe o nome do lead'] },
-    });
+    throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
 
   validarEmailOuTelefone(input);
 
-  const [visibilidade, definicoes] = await Promise.all([
-    listarVisibilidadeDoTenant(tenantId),
-    listarDefinicoesPorTenant(tenantId),
-  ]);
-  validarCamada2Obrigatoria(input, visibilidade);
-
-  // Criação exige todo campo customizado obrigatório presente — edição não
-  // (ver validarCustomFields).
-  validarCustomFields(definicoes, input.customFields, { exigirObrigatorios: true });
+  const schema = await obterSchemaCampos(tenantId);
+  const { definicoes } = schema;
+  validarCustomFields(definicoes, input.customFields);
+  // Criação exige todo campo obrigatório (nativo ou personalizado) do
+  // formulário de criação — edição não (ver atualizarLeadExistente).
+  validarObrigatoriosNaCriacao(schema.campos, input);
+  // Status/origem/motivo só com opção ativa; tags viram keys (M3).
+  const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input);
 
   // O criador já veio de um token válido deste tenant — só um responsável
   // escolhido explicitamente precisa ser conferido.
@@ -82,11 +80,13 @@ export async function registrarNovoLead(tenantId, input, usuarioId) {
     await validarResponsavel(tenantId, input.usuarioResponsavelId);
   }
 
+  // Tag nova entra na lista só quando tudo já foi validado.
+  await gravarTagsNovas(tenantId, tagsNovas);
   // `customFields` vai como objeto puro — é o repository quem faz o
   // `JSON.stringify` (uma vez só). Stringificar aqui também gravaria uma
   // string dupla-serializada no JSONB em vez do objeto.
   return criarLeadRepository(tenantId, {
-    ...input,
+    ...comCustomFieldsArmazenaveis(comListas, definicoes),
     usuarioResponsavelId: input.usuarioResponsavelId ?? usuarioId,
   });
 }
@@ -97,33 +97,32 @@ export async function registrarNovoLead(tenantId, input, usuarioId) {
  * @param {AtualizarLeadInput} input
  * @returns {Promise<Lead>}
  */
-export async function atualizarLeadExistente(tenantId, leadId, input) {
+export async function atualizarLeadExistente(tenantId, leadId, entrada) {
+  const input = comContatoNormalizado(entrada);
   if (input.nome !== undefined && input.nome.trim().length === 0) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Nome do lead não pode ser vazio',
-      fields: { nome: ['Informe o nome do lead'] },
-    });
+    throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
 
-  const [visibilidade, definicoes] = await Promise.all([
-    listarVisibilidadeDoTenant(tenantId),
-    listarDefinicoesPorTenant(tenantId),
-  ]);
+  const schema = await obterSchemaCampos(tenantId);
+  const { definicoes } = schema;
 
   // Edição é parcial: só valida tipo/opções das chaves que vieram agora,
   // nunca exige que TODO campo obrigatório esteja neste payload. O que a
   // edição pode fazer é LIMPAR um campo (`null`) — isso sim é checado.
-  validarCustomFields(definicoes, input.customFields, { exigirObrigatorios: false });
-  validarLimpezaDeObrigatorios(input, visibilidade, definicoes);
+  validarCustomFields(definicoes, input.customFields);
+  validarLimpezaDeObrigatorios(input, schema.campos, definicoes);
   await validarContatoRestante(tenantId, leadId, input);
+  // Opção inativa que o lead já tinha continua aceita (só aí o lead é lido).
+  const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input, () =>
+    buscarLeadPorId(tenantId, leadId),
+  );
 
   if (input.usuarioResponsavelId) {
     await validarResponsavel(tenantId, input.usuarioResponsavelId);
   }
 
-  const leadAtualizado = await atualizarLeadRepository(tenantId, leadId, input);
+  await gravarTagsNovas(tenantId, tagsNovas);
+  const leadAtualizado = await atualizarLeadRepository(tenantId, leadId, comCustomFieldsArmazenaveis(comListas, definicoes));
 
   // UPDATE ... RETURNING sem linha = id não existe (ou não é deste
   // tenant) — mesmo padrão de field-definitions.service.js, sem query
@@ -132,7 +131,7 @@ export async function atualizarLeadExistente(tenantId, leadId, input) {
     throw leadNaoEncontrado();
   }
 
-  return formatarLead(leadAtualizado, visibilidade);
+  return formatarLead(leadAtualizado, schema);
 }
 
 /**
@@ -151,21 +150,19 @@ export async function excluirLead(tenantId, leadId) {
 }
 
 /**
- * Fonte única pra formulário/filtro/mapeamento de import (docs/plano-crm-campos-hibridos.md,
- * decisão 5) — Camada 1 fixa + Camada 2 visível pro tenant + Camada 3
+ * Fonte única pra formulário/filtro/mapeamento de import (docs/crm/plano-campos-hibridos.md,
+ * decisão 5) — Camada 1 + Camada 2 visível pro tenant + Camada 3
  * (definições customizadas), no mesmo shape `{ chave, label, tipo, camada,
- * obrigatorio, ordem, opcoes? }`.
+ * obrigatorio, ordem, visibilidade, opcoes? }`. Com `contexto` (M2), só os
+ * campos visíveis nele — `create_form`, `detail`, `table` ou `filter`.
  *
  * @param {string} tenantId
- * @returns {Promise<Array<{ chave: string, label: string, tipo: string, camada: 1 | 2 | 3, obrigatorio: boolean, ordem: number, opcoes?: string[] | null }>>}
+ * @param {string} [contexto]
+ * @returns {Promise<Array<{ chave: string, label: string, tipo: string, camada: 1 | 2 | 3, obrigatorio: boolean, ordem: number, visibilidade: Record<string, boolean>, opcoes?: string[] | null }>>}
  */
-export async function listarCamposDoTenant(tenantId) {
-  const [visibilidade, definicoes] = await Promise.all([
-    listarVisibilidadeDoTenant(tenantId),
-    listarDefinicoesPorTenant(tenantId),
-  ]);
-
-  return montarCampos(visibilidade, definicoes);
+export async function listarCamposDoTenant(tenantId, contexto) {
+  const { campos } = await obterSchemaCampos(tenantId);
+  return contexto ? camposDoContexto(campos, contexto) : campos;
 }
 
 /**
@@ -195,49 +192,65 @@ export async function pesquisarLeads(tenantId, input) {
  * @param {{ limite: number, offset: number }} paginacao
  */
 export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
-  const [visibilidade, definicoes] = await Promise.all([
-    listarVisibilidadeDoTenant(tenantId),
-    listarDefinicoesPorTenant(tenantId),
-  ]);
-  const campos = montarCampos(visibilidade, definicoes);
-  const condicoes = montarCondicoes(filtro, campos);
+  const schema = await obterSchemaCampos(tenantId);
+  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema));
   const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, paginacao);
 
   return {
-    itens: itens.map((lead) => formatarLead(lead, visibilidade)),
+    itens: itens.map((lead) => formatarLead(lead, schema)),
     total,
-    campos,
+    campos: schema.campos,
   };
 }
 
 /**
- * @param {FieldVisibility[]} visibilidade
+ * `customFields` por `chave` (API) → normalizado por tipo e indexado por
+ * `id` do campo, como é gravado (`customFieldsParaArmazenamento`).
+ *
+ * @template {{ customFields?: Record<string, unknown> }} T
+ * @param {T} input
  * @param {import('../types/index.js').FieldDefinition[]} definicoes
+ * @returns {T}
  */
-function montarCampos(visibilidade, definicoes) {
-  // `coluna` (Camadas 1/2): nome da propriedade no lead lido (snake_case),
-  // enquanto `chave` (camelCase) é o que vai no payload e no filtro. A
-  // Camada 3 não tem `coluna` — o valor fica em `custom_fields[chave]`.
-  const camposCamada1 = CAMPOS_CAMADA_1.map((campo) => ({
-    ...campo,
-    coluna: CAMADA_1_CAMPOS[campo.chave],
-    camada: CAMADA.CAMADA_1,
-  }));
+function comCustomFieldsArmazenaveis(input, definicoes) {
+  if (input.customFields === undefined) return input;
+  const tipoPorChave = new Map(definicoes.map((definicao) => [definicao.chave, definicao.tipo]));
+  // Forma canônica por tipo (telefone só dígitos, e-mail minúsculo...) —
+  // depois de validado, antes de trocar `chave` por `id`.
+  const normalizados = Object.fromEntries(
+    Object.entries(input.customFields).map(([chave, valor]) => [
+      chave,
+      valor === null ? null : normalizarValorDoTipo(tipoPorChave.get(chave), valor),
+    ]),
+  );
+  return { ...input, customFields: customFieldsParaArmazenamento(definicoes, normalizados) };
+}
 
-  const camposCamada2 = visibilidade
-    .filter((item) => item.visivel)
-    .map((item) => ({
-      chave: CAMADA_2_COLUNA_PARA_CAMPO[item.coluna],
-      coluna: item.coluna,
-      ...CAMADA_2_METADADOS[item.coluna],
-      camada: CAMADA.CAMADA_2,
-      obrigatorio: item.obrigatorio,
-      ordem: item.ordem,
-    }));
-
-  const camposCamada3 = definicoes.map((definicao) => ({ ...definicao, camada: CAMADA.CAMADA_3 }));
-
-  return [...camposCamada1, ...camposCamada2, ...camposCamada3].sort((a, b) => a.ordem - b.ordem);
+/**
+ * E-mail e telefone nativos na forma canônica dos tipos `email`/`telefone`
+ * (a mesma do personalizado): telefone só dígitos, sem DDI 55; e-mail
+ * minúsculo. `null` (limpar, na edição) passa direto. Leads gravados antes
+ * disso podem ter máscara — o filtro compara pela forma normalizada.
+ *
+ * @template {{ email?: string | null, telefone?: string | null }} T
+ * @param {T} input
+ * @returns {T}
+ */
+function comContatoNormalizado(input) {
+  const normalizado = { ...input };
+  if (typeof input.telefone === 'string') {
+    const telefone = normalizarTelefone(input.telefone);
+    if (!telefone) {
+      throw erroDeValidacao(
+        'telefone',
+        'Informe um telefone válido',
+        'Informe um telefone com DDD (10 ou 11 dígitos)',
+      );
+    }
+    normalizado.telefone = telefone;
+  }
+  if (typeof input.email === 'string') normalizado.email = input.email.trim().toLowerCase();
+  return normalizado;
 }
 
 /**
@@ -251,81 +264,77 @@ function montarCampos(visibilidade, definicoes) {
  */
 function validarEmailOuTelefone(input) {
   if (!input.email && !input.telefone) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Informe e-mail ou telefone',
-      fields: { email: ['Informe e-mail ou telefone'] },
-    });
+    throw erroDeValidacao('email', 'Informe e-mail ou telefone');
   }
 }
 
 /**
- * Campo de Camada 2 marcado `obrigatorio: true` só é exigido se também
- * estiver `visivel: true` — um campo desligado não pode travar a criação
- * do lead. `visibilidade[].coluna` é snake_case (nome da coluna real);
- * `input` usa as chaves camelCase do schema — `CAMADA_2_COLUNA_PARA_CAMPO`
- * faz a ponte entre os dois. Só roda na criação (mesma assimetria de
- * `validarCustomFields`).
+ * Obrigatoriedade na criação, lida do resolver, pras três camadas: Camada 2
+ * só entra em `campos` se estiver ligada, a Camada 1 pode ter sido marcada
+ * obrigatória pelo tenant (M2) e o personalizado traz o `obrigatorio` da
+ * definição. Só conta campo do formulário de criação (`exigidoNaCriacao`).
  *
+ * @param {ReturnType<typeof import('./field-schema.service.js').montarCampos>} campos
  * @param {CriarLeadInput} input
- * @param {FieldVisibility[]} visibilidade
  */
-function validarCamada2Obrigatoria(input, visibilidade) {
-  for (const item of visibilidade) {
-    if (!item.visivel || !item.obrigatorio) continue;
+function validarObrigatoriosNaCriacao(campos, input) {
+  for (const campo of campos) {
+    if (!exigidoNaCriacao(campo) || CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) continue;
 
-    const campo = CAMADA_2_COLUNA_PARA_CAMPO[item.coluna];
-    if (valorAusente(input[campo])) {
-      const label = CAMADA_2_METADADOS[item.coluna]?.label ?? campo;
-      throw new AppError({
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        code: ERROR_CODES.VALIDATION_ERROR,
-        message: `Informe o campo "${label}"`,
-        fields: { [campo]: [`"${label}" é obrigatório`] },
-      });
+    const personalizado = campo.camada === CAMADA.CAMADA_3;
+    const valor = personalizado ? input.customFields?.[campo.chave] : input[campo.chave];
+    if (valorAusente(valor)) {
+      throw erroDeValidacao(
+        personalizado ? 'customFields' : campo.chave,
+        `Informe o campo "${campo.label}"`,
+        `"${campo.label}" é obrigatório`,
+      );
     }
   }
 }
 
 /**
- * Remove do lead qualquer coluna de Camada 2 com `visivel: false` pro
- * tenant antes de devolver — não é só esconder no frontend, o dado bruto
- * não pode vazar na resposta HTTP de um campo desligado (docs/plano-crm-campos-hibridos.md,
- * seção 3). Também aplica `formatarTelefoneBR` (mesmo de antes desta
- * mudança). `visibilidade` já vem com a lista completa das 15 colunas de
- * Camada 2 (default `visivel: false` pras nunca configuradas — ver
- * `field-visibility.service.js`), então dá pra iterar só sobre ela em vez
- * de precisar de outra lista de colunas.
+ * Campo oculto em TODOS os contextos é "desligado": o dado bruto não sai
+ * na resposta HTTP, não só some da tela (docs/crm/plano-campos-hibridos.md,
+ * seção 3). Vale igual pras três camadas — coluna nativa (Camada 1 que
+ * pode ser ocultada, Camada 2) e personalizado. Oculto só em alguns
+ * contextos continua vindo; cada tela filtra pelo seu (`camposDoContexto`).
+ *
+ * Também aplica `formatarTelefoneBR`. `custom_fields` é gravado por `id`
+ * do campo e volta por `chave` (`customFieldsParaApi`).
  *
  * @param {Lead} lead
- * @param {FieldVisibility[]} visibilidade
+ * @param {Pick<import('./field-schema.service.js').SchemaCampos, 'campos' | 'definicoes'>} schema
  * @returns {Lead}
  */
-function formatarLead(lead, visibilidade) {
+function formatarLead(lead, { campos, definicoes }) {
   // `telefone` é nullable desde a migration 0009 (lead só com e-mail).
   const leadFormatado = { ...lead, telefone: lead.telefone ? formatarTelefoneBR(lead.telefone) : null };
+  const ligados = new Set(campos.map((campo) => campo.chave));
 
-  for (const { coluna, visivel } of visibilidade) {
-    if (!visivel) {
-      delete leadFormatado[coluna];
-    }
+  if ('custom_fields' in lead) {
+    const definicoesLigadas = definicoes.filter((definicao) => ligados.has(definicao.chave));
+    leadFormatado.custom_fields = customFieldsParaApi(definicoesLigadas, lead.custom_fields);
+  }
+  for (const campo of CAMPOS_SISTEMA) {
+    if (!ligados.has(campo.systemKey)) delete leadFormatado[campo.coluna];
   }
 
   return leadFormatado;
 }
 
 /**
- * Valida `customFields` contra as `tenant_lead_field_definitions` vigentes
+ * Valida `customFields` contra os campos personalizados ativos (`crm_field`)
  * do tenant — é dado de banco por tenant, então não dá pra expressar isso
  * num schema Zod estático na borda (o "schema" de custom_fields muda
- * conforme o tenant e só existe em tempo de execução).
+ * conforme o tenant e só existe em tempo de execução). Só chave e tipo:
+ * obrigatoriedade é `validarObrigatoriosNaCriacao` (criação) e
+ * `validarLimpezaDeObrigatorios` (edição).
  *
  * @param {import('../types/index.js').FieldDefinition[]} definicoes
  * @param {Record<string, unknown> | undefined} customFields
- * @param {{ exigirObrigatorios: boolean }} opcoes
  */
-function validarCustomFields(definicoes, customFields, { exigirObrigatorios }) {
+function validarCustomFields(definicoes, customFields) {
   const valores = customFields ?? {};
   const definicaoPorChave = new Map(definicoes.map((definicao) => [definicao.chave, definicao]));
 
@@ -333,34 +342,15 @@ function validarCustomFields(definicoes, customFields, { exigirObrigatorios }) {
     const definicao = definicaoPorChave.get(chave);
 
     if (!definicao) {
-      throw new AppError({
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        code: ERROR_CODES.VALIDATION_ERROR,
-        message: `Campo customizado desconhecido: "${chave}"`,
-        fields: { customFields: [`"${chave}" não corresponde a nenhum campo cadastrado`] },
-      });
+      throw erroDeValidacao(
+        'customFields',
+        `Campo customizado desconhecido: "${chave}"`,
+        `"${chave}" não corresponde a nenhum campo cadastrado`,
+      );
     }
 
     validarValorPorTipo(definicao, valores[chave]);
   }
-
-  if (exigirObrigatorios) {
-    for (const definicao of definicoes) {
-      if (definicao.obrigatorio && valorAusente(valores[definicao.chave])) {
-        throw new AppError({
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-          code: ERROR_CODES.VALIDATION_ERROR,
-          message: `Informe o campo "${definicao.label}"`,
-          fields: { customFields: [`"${definicao.label}" é obrigatório`] },
-        });
-      }
-    }
-  }
-}
-
-/** @param {unknown} valor */
-function valorAusente(valor) {
-  return valor === undefined || valor === null || valor === '' || (Array.isArray(valor) && valor.length === 0);
 }
 
 /**
@@ -369,42 +359,16 @@ function valorAusente(valor) {
  */
 function validarValorPorTipo(definicao, valor) {
   const erroDeTipo = () =>
-    new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: `Valor inválido para o campo "${definicao.label}"`,
-      fields: { customFields: [`"${definicao.label}" espera um valor do tipo ${definicao.tipo}`] },
-    });
+    erroDeValidacao(
+      'customFields',
+      `Valor inválido para o campo "${definicao.label}"`,
+      `"${definicao.label}" espera um valor do tipo ${definicao.tipo}`,
+    );
 
   if (valorAusente(valor)) return; // obrigatoriedade é checada à parte
 
-  switch (definicao.tipo) {
-    case 'texto':
-      if (typeof valor !== 'string') throw erroDeTipo();
-      return;
-    case 'numero':
-      if (typeof valor !== 'number' || !Number.isFinite(valor)) throw erroDeTipo();
-      return;
-    case 'data':
-      if (typeof valor !== 'string' || Number.isNaN(Date.parse(valor))) throw erroDeTipo();
-      return;
-    case 'booleano':
-      if (typeof valor !== 'boolean') throw erroDeTipo();
-      return;
-    case 'selecao':
-      if (!definicao.opcoes?.includes(valor)) throw erroDeTipo();
-      return;
-    case 'selecao_multipla':
-      if (!Array.isArray(valor) || !valor.every((item) => definicao.opcoes?.includes(item))) {
-        throw erroDeTipo();
-      }
-      return;
-    default:
-      // FIELD_DEFINITION_TIPOS (constants.js) e o CHECK do banco garantem
-      // que `tipo` só chega aqui com um dos 6 valores válidos — default
-      // é só defesa em profundidade, nunca deveria disparar de verdade.
-      throw erroDeTipo();
-  }
+  // Regras por tipo: `tipos-campo.service.js` (as mesmas do import e do filtro).
+  if (!valorValidoParaTipo(definicao.tipo, valor, definicao.opcoes)) throw erroDeTipo();
 }
 
 /**
@@ -425,29 +389,27 @@ async function validarContatoRestante(tenantId, leadId, input) {
   const email = input.email !== undefined ? input.email : atual.email;
   const telefone = input.telefone !== undefined ? input.telefone : atual.telefone;
   if (!email && !telefone) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'O lead precisa manter e-mail ou telefone',
-      fields: { [input.email === null ? 'email' : 'telefone']: ['O lead precisa manter e-mail ou telefone'] },
-    });
+    throw erroDeValidacao(
+      input.email === null ? 'email' : 'telefone',
+      'O lead precisa manter e-mail ou telefone',
+    );
   }
 }
 
 /**
- * Campo obrigatório (Camada 2 visível com `obrigatorio`, ou definição de
+ * Campo obrigatório (nativo obrigatório no resolver, ou definição de
  * Camada 3 obrigatória) não pode ser limpo com `null` na edição.
  *
  * @param {AtualizarLeadInput} input
- * @param {FieldVisibility[]} visibilidade
+ * @param {ReturnType<typeof import('./field-schema.service.js').montarCampos>} campos
  * @param {import('../types/index.js').FieldDefinition[]} definicoes
  */
-function validarLimpezaDeObrigatorios(input, visibilidade, definicoes) {
-  for (const item of visibilidade) {
-    if (!item.visivel || !item.obrigatorio) continue;
-    const campo = CAMADA_2_COLUNA_PARA_CAMPO[item.coluna];
-    if (input[campo] === null) {
-      throw campoObrigatorioNaoPodeSerLimpo(campo, CAMADA_2_METADADOS[item.coluna]?.label ?? campo);
+function validarLimpezaDeObrigatorios(input, campos, definicoes) {
+  for (const campo of campos) {
+    if (campo.camada === CAMADA.CAMADA_3 || !campo.obrigatorio) continue;
+    if (CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) continue;
+    if (input[campo.chave] === null) {
+      throw campoObrigatorioNaoPodeSerLimpo(campo.chave, campo.label);
     }
   }
 
@@ -460,12 +422,7 @@ function validarLimpezaDeObrigatorios(input, visibilidade, definicoes) {
 
 /** @param {string} campo @param {string} label */
 function campoObrigatorioNaoPodeSerLimpo(campo, label) {
-  return new AppError({
-    statusCode: HTTP_STATUS.BAD_REQUEST,
-    code: ERROR_CODES.VALIDATION_ERROR,
-    message: `"${label}" é obrigatório e não pode ser limpo`,
-    fields: { [campo]: [`"${label}" é obrigatório e não pode ser limpo`] },
-  });
+  return erroDeValidacao(campo, `"${label}" é obrigatório e não pode ser limpo`);
 }
 
 /**
@@ -474,19 +431,14 @@ function campoObrigatorioNaoPodeSerLimpo(campo, label) {
  */
 async function validarResponsavel(tenantId, usuarioId) {
   if (!(await buscarUsuarioAtivoDoTenant(tenantId, usuarioId))) {
-    throw new AppError({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      code: ERROR_CODES.VALIDATION_ERROR,
-      message: 'Responsável inválido',
-      fields: { usuarioResponsavelId: ['Escolha um usuário ativo desta conta'] },
-    });
+    throw erroDeValidacao(
+      'usuarioResponsavelId',
+      'Responsável inválido',
+      'Escolha um usuário ativo desta conta',
+    );
   }
 }
 
 function leadNaoEncontrado() {
-  return new AppError({
-    statusCode: HTTP_STATUS.NOT_FOUND,
-    code: ERROR_CODES.RESOURCE_NOT_FOUND,
-    message: 'Lead não encontrado',
-  });
+  return erroNaoEncontrado('Lead não encontrado');
 }

@@ -22,9 +22,12 @@
     "test:watch": "vitest",
     "test:rls-coverage": "vitest run src/core/db/__tests__/rls-coverage.test.js",
     "test:tenant-isolation": "vitest run src/core/db/__tests__/tenant-isolation.test.js",
+    "test:fk-coverage": "vitest run src/core/db/__tests__/tenant-fk-coverage.test.js",
     "create:master": "node scripts/create-master.js",
     "create:tenant": "node scripts/create-tenant.js",
     "create:user": "node scripts/create-user.js",
+    "reconcile": "node scripts/reconcile.js",
+    "crm:reconcile": "node scripts/reconcile.js --modulo=crm",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy"

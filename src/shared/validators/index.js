@@ -25,3 +25,34 @@ export const paginacaoSchema = z.object({
     .max(PAGINATION.MAX_ITEMS_PER_PAGE)
     .default(PAGINATION.DEFAULT_ITEMS_PER_PAGE),
 });
+
+/**
+ * Nome IANA canônico de um fuso (`america/sao_paulo` → `America/Sao_Paulo`),
+ * ou `null` se o `Intl` do Node não o reconhece. Valida pelo próprio
+ * runtime em vez de uma lista fixa, que envelheceria com o tzdata.
+ *
+ * @param {string} fuso
+ * @returns {string | null}
+ */
+export function normalizarFusoHorario(fuso) {
+  try {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: fuso }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
+export const fusoHorarioSchema = z
+  .string()
+  .trim()
+  .transform((fuso, ctx) => {
+    const canonico = normalizarFusoHorario(fuso);
+    if (!canonico) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Fuso horário inválido — use um nome IANA, ex: America/Sao_Paulo',
+      });
+      return z.NEVER;
+    }
+    return canonico;
+  });

@@ -1,5 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import js from '@eslint/js';
 import boundaries from 'eslint-plugin-boundaries';
+
+const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * A fronteira entre módulos NÃO é física (não há workspaces) — é garantida aqui.
@@ -57,6 +61,12 @@ export default [
     },
     plugins: { boundaries },
     settings: {
+      // Sem resolver próprio, `#core/...`/`#modules/...` não resolvem e a
+      // regra de fronteira ignora o import (ver eslint-resolver-imports.cjs).
+      'import/resolver': {
+        [path.join(RAIZ, 'eslint-resolver-imports.cjs')]: {},
+        node: true,
+      },
       'boundaries/include': ['src/**/*.js'],
       'boundaries/elements': [
         { type: 'core', pattern: 'src/core/**' },
@@ -187,6 +197,16 @@ export default [
     files: ['src/**/constants.js', 'src/**/constants/**/*.js'],
     rules: {
       'no-magic-numbers': 'off',
+    },
+  },
+
+  // Resolver do ESLint: CommonJS, carregado com `require`.
+  {
+    files: ['*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'commonjs',
+      globals: { require: 'readonly', exports: 'writable', __dirname: 'readonly' },
     },
   },
 

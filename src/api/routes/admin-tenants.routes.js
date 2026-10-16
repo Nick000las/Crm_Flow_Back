@@ -3,7 +3,8 @@ import { authenticateHook, requireRole } from '#core/auth/rbac.js';
 import { HTTP_STATUS, TENANT_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
 import { provisionarTenant } from '#core/tenant/provisioning.js';
-import { TenantManagement } from '#core/tenant/management.js';
+import { TenantManagement, listarCatalogoFeatures } from '#core/tenant/management.js';
+import { fusoHorarioSchema } from '#shared/validators/index.js';
 
 const criarTenantBodySchema = z.object({
   nome: z.string().min(1),
@@ -31,11 +32,17 @@ const atualizarTenantBodySchema = z
     temaJson: z.record(z.unknown()).optional(),
     dataRegion: z.string().min(1).optional(),
     retencaoConversaMeses: z.coerce.number().int().positive().optional(),
+    fusoHorario: fusoHorarioSchema.optional(),
   })
   .strict();
 
 const atualizarStatusBodySchema = z.object({
   status: z.enum(Object.values(TENANT_STATUS)),
+});
+
+// Lista vazia é válida: desliga todas as flags do tenant (kill switch).
+const atualizarFeaturesBodySchema = z.object({
+  features: z.array(z.string().min(1)),
 });
 
 const atualizarModulosBodySchema = z.object({
@@ -95,6 +102,18 @@ export function registerAdminTenantRoutes(app) {
     const { modulosContratados } = atualizarModulosBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarModulosTenant(id, modulosContratados);
     return sendSuccess(reply, tenant);
+  });
+
+  // Catálogo de flags que o MASTER pode ligar — declarado por cada módulo.
+  app.get('/admin/features', protegida, async (req, reply) =>
+    sendSuccess(reply, listarCatalogoFeatures()),
+  );
+
+  app.put('/admin/tenants/:id/features', protegida, async (req, reply) => {
+    const { id } = idParamSchema.parse(req.params);
+    const { features } = atualizarFeaturesBodySchema.parse(req.body);
+    const ligadas = await TenantManagement.atualizarFeaturesTenant(id, features);
+    return sendSuccess(reply, { features: ligadas });
   });
 
   app.delete('/admin/tenants/:id/modules/:moduleKey', protegida, async (req, reply) => {

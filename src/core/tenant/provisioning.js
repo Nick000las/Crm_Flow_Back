@@ -1,8 +1,6 @@
 import { getAdminClient } from '#core/db/tenantClient.js';
-import { MODULES } from '#api/modules.js';
-import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
-import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { reconciliarModulos } from '#core/tenant/reconcile.js';
+import { validarModuleKeys } from '#core/registry/modules.js';
 
 /**
  * @typedef {object} ProvisionarTenantInput
@@ -37,7 +35,7 @@ export async function provisionarTenant(input) {
   // Conflito de subdomain (tenants.subdomain é @unique) é resolvido pelo
   // error-handler.js global (Prisma P2002 -> 409 RESOURCE_CONFLICT) — não
   // precisa de pre-check aqui, evita a corrida check-then-insert.
-  return prisma.$transaction(async (tx) => {
+  const criado = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: { nome, subdomain },
     });
@@ -68,18 +66,9 @@ export async function provisionarTenant(input) {
 
     return { tenantId: tenant.id, usuarioId: usuario.id };
   });
-}
 
-/** @param {string[]} moduleKeys */
-function validarModuleKeys(moduleKeys) {
-  for (const moduleKey of moduleKeys) {
-    if (!moduleKey || typeof moduleKey !== 'string' || !MODULES.some((mod) => mod.key === moduleKey)) {
-      throw new AppError({
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        code: ERROR_CODES.VALIDATION_ERROR,
-        message: `Module key inválido: ${moduleKey}`,
-        fields: { modulosContratados: [`"${moduleKey}" não é um módulo válido`] },
-      });
-    }
-  }
+  // Fora da transação: estado inicial dos módulos (ex: campos do sistema
+  // do CRM). Best-effort — ver `reconciliarModulos`.
+  await reconciliarModulos(criado.tenantId, modulosContratados);
+  return criado;
 }

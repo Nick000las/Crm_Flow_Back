@@ -6,10 +6,12 @@ import { registerHealthRoutes } from '#api/routes/health.routes.js';
 import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { MODULES } from '#api/modules.js';
 import { registerJwt } from '#core/auth/plugin.js';
+import { encerrarCache } from '#core/cache/cache.js';
 import { authenticateHook } from '#core/auth/rbac.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
+import { registrarModulos } from '#core/registry/modules.js';
 import { exigirModuloAtivo } from '#core/tenant/module-access.js';
 import { assertModule } from '#core/types/module.js';
 
@@ -41,6 +43,9 @@ export async function buildApp(options = {}) {
 
   const modules = MODULES.map(assertModule);
   assertUniqueModuleKeys(modules);
+  // O core (provisionamento, flags, reconcile) lê a lista daqui — não
+  // pode importar `#api/modules.js`.
+  registrarModulos(modules);
 
   registerHealthRoutes(app, {
     appName: config.APP_NAME,
@@ -65,7 +70,10 @@ export async function buildApp(options = {}) {
     );
   }
 
-  app.addHook('onClose', async () => disconnectDatabase());
+  app.addHook('onClose', async () => {
+    await encerrarCache();
+    await disconnectDatabase();
+  });
   await app.ready();
   return app;
 }

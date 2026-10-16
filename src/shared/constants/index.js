@@ -30,6 +30,9 @@ export const TIME_UNITS = Object.freeze({
   MILLISECONDS_PER_SECOND: 1_000,
 });
 
+/** Fuso padrão de tenant novo (espelha o DEFAULT de `tenants.fuso_horario`). */
+export const FUSO_HORARIO_PADRAO = 'America/Sao_Paulo';
+
 export const TEXT_LIMITS = Object.freeze({
   NON_EMPTY_MIN_LENGTH: 1,
 });

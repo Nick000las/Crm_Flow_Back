@@ -37,8 +37,11 @@ Antes de escrever ou revisar:
    PRIVILEGES` pro `app_tenant`, copiando o padrão da migration 0004 —
    senão as tabelas desse módulo ficam com RLS habilitado mas
    inacessíveis (falha visível na hora, não vazamento silencioso).
-7. Depois de mudança de schema, rodar `npm run test:rls-coverage`.
+7. Depois de mudança de schema, rodar `npm run test:rls-coverage` e
+   `npm run test:fk-coverage` (toda tabela com `tenant_id` tem FK pra `tenants`).
 8. Antes de considerar qualquer tarefa concluída, rodar `npm run lint` —
    é o que pega import indevido entre módulos, já que nada impede fisicamente.
+   A regra de fronteira só enxerga os aliases `#...` por causa do resolver
+   `eslint-resolver-imports.cjs`; sem ele, nenhum import por alias é checado.
 
 Consulte `MODULE_CONTRACT.md` na raiz do repo para o contrato completo.
