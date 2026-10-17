@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PAGINATION, TEXT_LIMITS } from '#shared/constants/index.js';
-import { BUSCA_LEADS, FILTRO_OPERADORES } from '../constants.js';
+import { BUSCA_LEADS, FILTRO_OPERADORES, LISTA_SITUACOES_LEAD } from '../constants.js';
 
 // Forma só — `chave`/`valor` dependem dos campos ativos do tenant (Camadas
 // 2/3 são dado de banco), então tipo do valor e compatibilidade com o
@@ -28,6 +28,12 @@ export const filtroLeadsSchema = z.object({
   valorMax: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
   criadoDe: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
   criadoAte: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
+  // M5: sem ela, só os ativos. `arquivados`/`lixeira` exigem `crm.arquivo`.
+  situacao: z
+    .enum(/** @type {[string, ...string[]]} */ ([...LISTA_SITUACOES_LEAD]), {
+      errorMap: () => ({ message: `Situação deve ser uma de: ${LISTA_SITUACOES_LEAD.join(', ')}` }),
+    })
+    .optional(),
   filtros: z
     .array(filtroCampoSchema)
     .max(BUSCA_LEADS.MAX_FILTROS, `Use no máximo ${BUSCA_LEADS.MAX_FILTROS} filtros`)

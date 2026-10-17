@@ -44,13 +44,13 @@ describe('contarUsos', () => {
     expect(usos.get('ganho')).toBe(USOS);
   });
 
-  it('tags contam pelo unnest; lista sem coluna no lead (tipo de atividade) não consulta', async () => {
+  it('tags contam pelo unnest; tipo de atividade conta as atividades (M6)', async () => {
     await contarUsos(TENANT, TIPOS_LISTA.TAG);
     expect(chamadas[0].sql).toContain('unnest(l.tags)');
 
     chamadas = [];
-    await expect(contarUsos(TENANT, TIPOS_LISTA.TIPO_ATIVIDADE)).resolves.toEqual(new Map());
-    expect(chamadas).toHaveLength(0);
+    await contarUsos(TENANT, TIPOS_LISTA.TIPO_ATIVIDADE);
+    expect(chamadas[0].sql).toContain('FROM modulo_crm.crm_activity');
   });
 });
 

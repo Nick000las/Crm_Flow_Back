@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarCondicoes } from './lead-filter.service.js';
+import { condicaoDaSituacao, dataDaPurga, inicioDaLixeira, montarCondicoes } from './lead-filter.service.js';
 import { CAMADA } from '../constants.js';
 
 const CAMPOS = [
@@ -25,8 +25,10 @@ function valoresDe(condicoes) {
 }
 
 describe('montarCondicoes', () => {
-  it('sem filtro nenhum, não gera condição', () => {
-    expect(montarCondicoes({}, CAMPOS)).toEqual([]);
+  it('sem filtro nenhum, só a situação (ativos: fora da lixeira e do arquivo)', () => {
+    const condicoes = montarCondicoes({}, CAMPOS);
+    expect(condicoes).toHaveLength(1);
+    expect(sqlDe(condicoes)).toBe('l.deleted_at IS NULL AND l.archived_at IS NULL');
   });
 
   it('busca textual vira ILIKE parametrizado com % e _ escapados', () => {
@@ -121,7 +123,7 @@ describe('montarCondicoes', () => {
       },
       CAMPOS,
     );
-    expect(condicoes).toHaveLength(['nome', 'segmento'].length);
+    expect(condicoes).toHaveLength(['situacao', 'nome', 'segmento'].length);
   });
 });
 
@@ -218,5 +220,67 @@ describe('e-mail e telefone nativos (tipos email/telefone)', () => {
 
     const porNome = montarCondicoes({ busca: 'Ana 2' }, NATIVOS);
     expect(sqlDe(porNome)).toContain('l.telefone ILIKE');
+  });
+});
+
+describe('busca pelo identificador do layout (M4)', () => {
+  const CNPJ = { chave: 'cnpj', camada: CAMADA.CAMADA_2, id: 'id-cnpj' };
+
+  it('CNPJ com e sem pontuação geram a mesma condição (só dígitos, prefixo)', () => {
+    const comMascara = montarCondicoes({ busca: '12.345.678/0001-90' }, CAMPOS, { identificador: CNPJ });
+    const semMascara = montarCondicoes({ busca: '12345678000190' }, CAMPOS, { identificador: CNPJ });
+
+    expect(sqlDe(comMascara)).toContain("regexp_replace(l.cnpj, '[^0-9]', '', 'g') LIKE");
+    expect(valoresDe(comMascara)).toContain('12345678000190%');
+    expect(valoresDe(semMascara)).toContain('12345678000190%');
+  });
+
+  it('busca com letra não tenta o documento; identificador de texto vira ILIKE', () => {
+    expect(sqlDe(montarCondicoes({ busca: 'Ana' }, CAMPOS, { identificador: CNPJ }))).not.toContain('l.cnpj');
+
+    const empresa = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
+      identificador: { chave: 'empresa', camada: CAMADA.CAMADA_2 },
+    });
+    expect(sqlDe(empresa)).toContain('l.empresa ILIKE');
+
+    const personalizado = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
+      identificador: { chave: 'razao', camada: CAMADA.CAMADA_3, id: 'id-razao' },
+    });
+    expect(sqlDe(personalizado)).toContain('l.custom_fields->>');
+    expect(valoresDe(personalizado)).toContain('id-razao');
+  });
+
+  it('sem identificador (Nome), a busca segue igual', () => {
+    expect(sqlDe(montarCondicoes({ busca: '123' }, CAMPOS))).not.toContain('cnpj');
+  });
+});
+
+describe('situação do lead (M5)', () => {
+  const AGORA = new Date('2026-10-16T12:00:00Z');
+
+  it('toda consulta exclui a lixeira, a menos que ela seja pedida', () => {
+    for (const situacao of [undefined, 'ativos', 'arquivados']) {
+      expect(sqlDe(montarCondicoes({ situacao, busca: 'ana' }, CAMPOS))).toContain('l.deleted_at IS NULL');
+    }
+  });
+
+  it('arquivados: fora da lixeira e com archived_at', () => {
+    expect(condicaoDaSituacao('arquivados').sql).toBe('l.deleted_at IS NULL AND l.archived_at IS NOT NULL');
+  });
+
+  it('lixeira: só o que foi excluído dentro do prazo de 30 dias', () => {
+    const condicao = condicaoDaSituacao('lixeira', { agora: AGORA });
+    expect(condicao.sql).toBe('l.deleted_at >= ?');
+    expect(condicao.values).toEqual([new Date('2026-09-16T12:00:00Z')]);
+  });
+
+  it('sem a feature crm.arquivo, "ativos" inclui os arquivados (kill switch não esconde lead)', () => {
+    expect(condicaoDaSituacao('ativos', { comArquivo: false }).sql).toBe('l.deleted_at IS NULL');
+  });
+
+  it('prazo e purga são o mesmo intervalo', () => {
+    const excluidoEm = new Date('2026-10-01T00:00:00Z');
+    expect(dataDaPurga(excluidoEm)).toEqual(new Date('2026-10-31T00:00:00Z'));
+    expect(inicioDaLixeira(dataDaPurga(excluidoEm))).toEqual(excluidoEm);
   });
 });

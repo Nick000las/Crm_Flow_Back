@@ -46,6 +46,11 @@ CREATE TABLE modulo_crm.leads (
   lead_score NUMERIC,
   proximo_followup TIMESTAMP,
 
+  -- Arquivo e lixeira (M5, migration 0018): na lixeira por 30 dias, depois
+  -- a purga diária apaga de vez.
+  archived_at TIMESTAMP,
+  deleted_at TIMESTAMP,
+
   CONSTRAINT chk_leads_email_ou_telefone CHECK (email IS NOT NULL OR telefone IS NOT NULL)
 );
 
@@ -59,6 +64,9 @@ CREATE POLICY tenant_isolation ON modulo_crm.leads
 
 CREATE INDEX idx_leads_tenant_id ON modulo_crm.leads(tenant_id);
 CREATE INDEX idx_leads_tenant_estagio ON modulo_crm.leads(tenant_id, funil_estagio_id);
+CREATE INDEX idx_leads_arquivados ON modulo_crm.leads(tenant_id, archived_at)
+  WHERE archived_at IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX idx_leads_lixeira ON modulo_crm.leads(tenant_id, deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX idx_funil_estagios_tenant_order ON modulo_crm.funil_estagios(tenant_id, "order");
 
 -- Campos customizados: a configuração mora em `crm_field` (bloco da

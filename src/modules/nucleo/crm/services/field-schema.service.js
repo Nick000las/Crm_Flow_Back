@@ -30,7 +30,7 @@ import { reconciliarListas } from './listas-reconcile.service.js';
  * @typedef {import('../types/index.js').FieldVisibility} FieldVisibility
  * @typedef {import('../types/index.js').FieldDefinition} FieldDefinition
  * @typedef {Record<string, boolean>} VisibilidadePorContexto  `{ create_form, detail, table, filter }`
- * @typedef {{ label?: string, obrigatorio?: boolean, ordem?: number, visibilidade?: VisibilidadePorContexto }} Sobreposicao
+ * @typedef {{ id?: string, label?: string, obrigatorio?: boolean, ordem?: number, visibilidade?: VisibilidadePorContexto }} Sobreposicao
  *   o que a configuração do tenant muda num campo, por `chave` (M2)
  * @typedef {import('../adapters/crm-options.repository.js').OpcaoLista} OpcaoLista
  * @typedef {Record<string, OpcaoLista[]>} Listas  opções por `kind` (M3), inclusive as inativas
@@ -204,6 +204,7 @@ export function montarBaseDoModeloNovo(linhas) {
     const contrato = linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
     if (linha.system_key !== null && !contrato) continue; // system_key fora do contrato atual
     sobreposicoes[linha.system_key ?? linha.chave] = {
+      id: linha.id,
       label: contrato && !contrato.canRename ? contrato.label : linha.label,
       obrigatorio: contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
       ordem: linha.position,
@@ -250,6 +251,8 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
     const sobre = sobreposicoes[campo.chave];
     return {
       ...comOpcoesDaLista(campo, listas),
+      // `id` em crm_field (referência do layout, M4); sem linha, `null`.
+      id: sobre?.id ?? null,
       label: sobre?.label ?? campo.label,
       obrigatorio: sobre?.obrigatorio ?? campo.obrigatorio,
       // ordem configurada (área Configurações); sem linha, a do contrato
@@ -267,6 +270,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
       const sobre = sobreposicoes[chave];
       return {
         chave,
+        id: sobre?.id ?? null,
         coluna: item.coluna,
         ...comOpcoesDaLista(CAMADA_2_METADADOS[item.coluna], listas),
         label: sobre?.label ?? CAMADA_2_METADADOS[item.coluna].label,

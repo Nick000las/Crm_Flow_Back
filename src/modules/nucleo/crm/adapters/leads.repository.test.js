@@ -10,6 +10,15 @@ function sqlDe(atribuicoes) {
 }
 
 describe('montarAtribuicoes (SET dinâmico do PUT de lead)', () => {
+  it('mudar o status atualiza a última interação (D1, M6); outro campo não', () => {
+    expect(sqlDe(montarAtribuicoes({ status: 'ganho' }))).toContain(
+      'ultima_interacao_em = CASE WHEN status IS DISTINCT FROM ? THEN now() ELSE ultima_interacao_em END',
+    );
+    expect(sqlDe(montarAtribuicoes({ nome: 'Ana' }))).not.toContain('ultima_interacao_em');
+    // Valor explícito manda: sem o CASE.
+    expect(sqlDe(montarAtribuicoes({ status: 'ganho', ultimaInteracaoEm: null }))).not.toContain('CASE');
+  });
+
   it('campo omitido não entra no UPDATE; updated_at sempre entra', () => {
     const sql = sqlDe(montarAtribuicoes({ nome: 'Ana' }));
     expect(sql).toContain('nome = ?');

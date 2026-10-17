@@ -2,7 +2,20 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
-import { CAMPOS_SISTEMA, LISTA_CONTEXTOS_VISIBILIDADE, LISTAS_SEMEADAS, OPCOES_SUGERIDAS } from '../constants.js';
+import { invalidarFeatures } from '#core/tenant/feature-flags.js';
+import { buscarLeadDuplicado, purgarLixeira } from '../adapters/leads.repository.js';
+import {
+  CAMPOS_SISTEMA,
+  CRM_FEATURES,
+  LISTA_CONTEXTOS_VISIBILIDADE,
+  LISTAS_SEMEADAS,
+  MODULO_CRM,
+  OPCOES_SUGERIDAS,
+} from '../constants.js';
+import { arquivarLead, excluirLead, restaurarLead } from './arquivo.service.js';
+import { editarAtividade, listarAtividades, registrarAtividade } from './atividades.service.js';
+import { listarHistorico } from './historico.service.js';
+import { exportarLeads } from './export.service.js';
 import {
   atualizarConfiguracaoCampo,
   listarConfiguracaoCampos,
@@ -10,7 +23,14 @@ import {
 } from './configuracoes-campos.service.js';
 import { criarNovaDefinicao, removerDefinicao } from './field-definitions.service.js';
 import { camposDoContexto, obterSchemaCampos } from './field-schema.service.js';
-import { buscarLeadFormatado, pesquisarLeads, registrarNovoLead } from './leads.service.js';
+import { inicioDaLixeira } from './lead-filter.service.js';
+import {
+  atualizarLeadExistente,
+  buscarLeadFormatado,
+  pesquisarLeads,
+  registrarNovoLead,
+} from './leads.service.js';
+import { obterLayout, salvarMeu, salvarPadrao } from './layout.service.js';
 import { excluirOpcao, listarListas } from './listas.service.js';
 import { reconciliarTenant } from './reconcile.service.js';
 
@@ -24,7 +44,7 @@ import { reconciliarTenant } from './reconcile.service.js';
  *
  *   CRM_DB_TESTS=1 pnpm vitest run src/modules/nucleo/crm/services/campos.db.test.js
  *
- * Exige as migrations até a 0016 aplicadas.
+ * Exige as migrations até a 0019 aplicadas.
  */
 
 const rodar = process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
@@ -151,5 +171,173 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', () => {
     const proposta = listas.status.find((opcao) => opcao.key === 'proposta');
     expect(proposta.usos).toBe(1);
     await expect(excluirOpcao(tenantId, 'status', proposta.id)).rejects.toThrow(/desative em vez de excluir/);
+  });
+
+  it('Layout (M4): CNPJ como identificador, Empresa · Cidade no subtítulo, busca com e sem pontuação', async () => {
+    const configurados = await listarConfiguracaoCampos(tenantId);
+    const id = (chave) => configurados.find((campo) => campo.chave === chave).id;
+    const todosOsContextos = { create_form: true, detail: true, table: true, filter: true };
+    for (const chave of ['cnpj', 'empresa', 'cidade']) {
+      await atualizarConfiguracaoCampo(tenantId, id(chave), { visibilidade: todosOsContextos });
+    }
+
+    const padrao = {
+      identificador: id('cnpj'),
+      subtitulo: [id('empresa'), id('cidade')],
+      destaques: ['lead.valor', id('status')],
+      secoes: [{ nome: 'Empresa', campos: [id('empresa'), id('cnpj'), id('cidade')] }],
+      colunas: [id('empresa'), id('telefone')],
+    };
+    await salvarPadrao(tenantId, usuarioId, padrao);
+    const { id: leadId } = await registrarNovoLead(
+      tenantId,
+      { nome: 'Acme', email: 'acme@smoke.test', cnpj: '12.345.678/0001-90', empresa: 'Acme SA', cidade: 'Joinville' },
+      usuarioId,
+    );
+
+    for (const busca of ['12.345.678/0001-90', '12345678000190', '12.345']) {
+      const resultado = await pesquisarLeads(tenantId, { busca, paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA } });
+      expect(resultado.itens.map((lead) => lead.id), busca).toEqual([leadId]);
+    }
+
+    const { efetivo } = await obterLayout(tenantId, usuarioId);
+    expect(efetivo.identificador.chave).toBe('cnpj');
+    expect(efetivo.subtitulo.map((item) => item.chave)).toEqual(['empresa', 'cidade']);
+
+    // Override do usuário; depois o DONO acrescenta uma coluna → entra no fim da lista dele.
+    await salvarMeu(tenantId, usuarioId, { colunas: [id('telefone')] });
+    await salvarPadrao(tenantId, usuarioId, { ...padrao, colunas: [...padrao.colunas, id('cidade')] });
+    const depois = await obterLayout(tenantId, usuarioId);
+    expect(depois.efetivo.colunas.map((item) => item.chave)).toEqual(['telefone', 'cidade']);
+  });
+
+  it('Arquivo e lixeira (M5): nada vaza da lixeira, restaurar no prazo, purga depois', async () => {
+    await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+    await prisma.tenantModuleFeature.create({
+      data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.ARQUIVO },
+    });
+    await invalidarFeatures(tenantId);
+
+    const criar = async (nome, email) => (await registrarNovoLead(tenantId, { nome, email }, usuarioId)).id;
+    const arquivado = await criar('M5 arquivado', 'm5-arq@smoke.test');
+    const excluido = await criar('M5 excluido', 'm5-exc@smoke.test');
+    const vencido = await criar('M5 vencido', 'm5-venc@smoke.test');
+    await arquivarLead(tenantId, arquivado);
+    await excluirLead(tenantId, excluido);
+    await excluirLead(tenantId, vencido);
+    // Excluído há 31 dias: passou do prazo, mas a purga ainda não rodou.
+    await prisma.$executeRaw`
+      UPDATE modulo_crm.leads SET deleted_at = now() - interval '31 days' WHERE id = ${vencido}::uuid
+    `;
+
+    const buscar = (situacao) =>
+      pesquisarLeads(tenantId, { busca: 'm5', situacao, paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA } });
+    const ids = async (situacao) => (await buscar(situacao)).itens.map((lead) => lead.id);
+
+    // Busca e contagem.
+    expect(await ids()).toEqual([]);
+    expect(await ids('arquivados')).toEqual([arquivado]);
+    const lixeira = await buscar('lixeira');
+    expect(lixeira.itens.map((lead) => lead.id)).toEqual([excluido]); // o vencido já não aparece
+    expect(lixeira.total).toBe(1);
+    expect(lixeira.itens[0].purga_em).toBeInstanceOf(Date);
+
+    // Detalhe e edição: 404. Arquivado continua legível.
+    await expect(buscarLeadFormatado(tenantId, excluido)).rejects.toThrow('Lead não encontrado');
+    await expect(atualizarLeadExistente(tenantId, excluido, { nome: 'Outro' })).rejects.toThrow('Lead não encontrado');
+    await expect(buscarLeadFormatado(tenantId, arquivado)).resolves.toMatchObject({ id: arquivado });
+    // Edição (de arquivado inclusive) devolve as colunas da leitura, `estagio_nome` incluso.
+    const editado = await atualizarLeadExistente(tenantId, arquivado, { nome: 'M5 arquivado editado' });
+    expect(editado).toHaveProperty('estagio_nome');
+    expect(editado.archived_at).toBeInstanceOf(Date);
+
+    // Deduplicação do import: lixeira não conta, arquivado conta.
+    await expect(buscarLeadDuplicado(tenantId, { email: 'm5-exc@smoke.test' })).resolves.toBeUndefined();
+    await expect(buscarLeadDuplicado(tenantId, { email: 'm5-arq@smoke.test' })).resolves.toEqual({ id: arquivado });
+
+    // Export: a lixeira não sai.
+    await expect(exportarLeads(tenantId, { colunas: ['nome'], filtro: { situacao: 'lixeira' } })).rejects.toThrow(
+      'A lixeira não pode ser exportada',
+    );
+
+    // Restaurar: dentro do prazo volta; fora dele, 404.
+    await expect(restaurarLead(tenantId, vencido)).rejects.toThrow('Lead não encontrado');
+    await restaurarLead(tenantId, excluido);
+    expect(await ids()).toEqual([excluido]);
+
+    // Purga (só deste tenant): apaga de vez o vencido.
+    await expect(purgarLixeira(tenantId, inicioDaLixeira())).resolves.toBe(1);
+    const [{ existe }] = await prisma.$queryRaw`
+      SELECT EXISTS (SELECT 1 FROM modulo_crm.leads WHERE id = ${vencido}::uuid) AS existe
+    `;
+    expect(existe).toBe(false);
+  });
+
+  it('Atividades e histórico (M6): interação, diff só do que mudou, append-only', async () => {
+    const autorId = randomUUID();
+    await prisma.usuario.create({
+      data: { id: autorId, tenantId, nome: 'Smoke operador', email: `smoke-op-${autorId}@smoke.test`, role: 'OPERADOR', ativo: true },
+    });
+    const { listas } = await obterSchemaCampos(tenantId);
+    const [statusA, statusB] = listas.status.map((opcao) => opcao.key);
+    const { id: leadId } = await registrarNovoLead(tenantId, { nome: 'M6 lead', email: 'm6@smoke.test', status: statusA }, autorId);
+
+    const interacao = async () => {
+      const [{ ultima_interacao_em: valor }] = await prisma.$queryRaw`
+        SELECT ultima_interacao_em FROM modulo_crm.leads WHERE id = ${leadId}::uuid
+      `;
+      return valor;
+    };
+    const voltarInteracao = () => prisma.$executeRaw`
+      UPDATE modulo_crm.leads SET ultima_interacao_em = '2020-01-01' WHERE id = ${leadId}::uuid
+    `;
+    const ANTIGA = new Date('2020-01-01T00:00:00Z');
+
+    // Editar um campo não conta como interação (D1); mudar o status conta.
+    await atualizarLeadExistente(tenantId, leadId, { nome: 'M6 lead editado' }, autorId);
+    expect(await interacao()).toBeNull();
+    await atualizarLeadExistente(tenantId, leadId, { status: statusB }, autorId);
+    expect(await interacao()).not.toBeNull();
+    // Mesmo status de novo: nem interação nem evento.
+    await voltarInteracao();
+    await atualizarLeadExistente(tenantId, leadId, { status: statusB }, autorId);
+    expect(await interacao()).toEqual(ANTIGA);
+
+    // Concluir atividade (na criação ou depois) atualiza a interação.
+    await registrarAtividade(tenantId, leadId, { tipo: 'ligacao', titulo: 'Liguei', concluida: true }, autorId);
+    expect((await interacao()) > ANTIGA).toBe(true);
+    await voltarInteracao();
+    const reuniao = await registrarAtividade(
+      tenantId,
+      leadId,
+      { tipo: 'reuniao', titulo: 'Apresentação', agendadaPara: new Date('2030-01-01T13:00:00Z') },
+      autorId,
+    );
+    expect(await interacao()).toEqual(ANTIGA); // agendar não é interação
+    await editarAtividade(tenantId, leadId, reuniao.id, { concluida: true });
+    expect((await interacao()) > ANTIGA).toBe(true);
+    const atividades = await listarAtividades(tenantId, leadId);
+    expect(atividades.map((atividade) => atividade.titulo).sort()).toEqual(['Apresentação', 'Liguei']);
+    expect(atividades[0].autor).toEqual({ id: autorId, nome: 'Smoke operador' });
+
+    // Histórico: mais novo primeiro, só os campos alterados, autor do token.
+    const { itens } = await listarHistorico(tenantId, leadId, { pagina: 1, tamanho: TAMANHO_PAGINA });
+    expect(itens.map((evento) => evento.tipo)).toEqual(['atualizado', 'atualizado', 'criado']);
+    expect(itens[0].diff).toEqual([
+      expect.objectContaining({ campo: 'status', chave: 'status', antes: statusA, depois: statusB }),
+    ]);
+    expect(itens[1].diff).toEqual([
+      expect.objectContaining({ campo: 'nome', antes: 'M6 lead', depois: 'M6 lead editado' }),
+    ]);
+    expect(itens[2].autor).toEqual({ id: autorId, nome: 'Smoke operador' });
+
+    // Append-only: o conteúdo não muda...
+    await expect(prisma.$executeRaw`
+      UPDATE modulo_crm.crm_lead_event SET diff = '[]' WHERE lead_id = ${leadId}::uuid
+    `).rejects.toThrow(/append-only/);
+    // ...mas o usuário pode sair: o autor vira nulo (ON DELETE SET NULL passa no trigger).
+    await prisma.usuario.delete({ where: { id: autorId } });
+    const depois = await listarHistorico(tenantId, leadId, { pagina: 1, tamanho: TAMANHO_PAGINA });
+    expect(depois.itens.every((evento) => evento.autor === null)).toBe(true);
   });
 });

@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0016 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15 (falta o front); próximo marco: M4.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0019 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4 (back e front), M5 e M6 em 2026-10-16 (faltam os fronts do M5 e do M6); próximo marco: M7.
 
 ## Contexto
 O CRM já tem:
@@ -302,10 +302,22 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - colunas padrão quando não há view salva.
 
 **Checklist**
-- [ ] Teste da mescla padrão + override, incluindo um campo novo adicionado depois do override.
-- [ ] Buscar `12.345.678/0001-90` e `12345678000190` acha o mesmo lead.
-- [ ] O fallback do identificador é testado (função pura no front).
-- [ ] O OPERADOR não consegue alterar o padrão do tenant (403).
+- [x] Teste da mescla padrão + override, incluindo um campo novo adicionado depois do override (unidade e contra o banco).
+- [x] Buscar `12.345.678/0001-90` e `12345678000190` acha o mesmo lead (teste contra o banco; com 20 mil leads simulados, a busca usa `idx_leads_cnpj_digitos` e leva 0,1 ms).
+- [x] O fallback do identificador é testado (função pura no front, fechado em 2026-10-16). No back, identificador oculto na ficha já cai pro Nome.
+- [x] O OPERADOR não consegue alterar o padrão do tenant (403).
+
+**Como ficou (back, 2026-10-16):**
+- **Schema (migration 0017):** `crm_layout_config` (uma linha por tenant, `layout` JSONB) e `crm_user_layout_override` (por usuário, `layout` parcial + `padrao_visto`), as duas com RLS e FK. Índices de expressão `(tenant_id, regexp_replace(cnpj|cpf, '[^0-9]', '', 'g') text_pattern_ops)`.
+- **Formato:** `{ identificador, subtitulo[] (até 2), destaques[] (até 4), secoes[{ nome, campos[] }] (até 12), colunas[] }`. Cada item é o `id` de um campo em `crm_field` ou uma referência fixa: `lead.valor`, `lead.responsavel`, `lead.estagio`, `lead.criadoEm` (dados do lead que não são campos configuráveis; sem elas, os destaques de exemplo da spec não seriam configuráveis). Sem FK pros ids: referência a campo inativo ou oculto some na leitura.
+- **Layout inicial (sem linha no banco):** identificador Nome; subtítulo E-mail · Telefone; destaques Valor, Status, Responsável; sem seções; colunas Telefone, E-mail, Status, Origem, Valor, Responsável, Criado em.
+- **Resolução (`layout.service.js`):** o layout organiza, a visibilidade do M2 esconde. Identificador, subtítulo, destaques e seções usam o contexto `detail`; colunas, o `table`. Campo da ficha fora de qualquer seção vai pra uma seção automática no fim ("Dados do lead" se não há seções, "Outros campos" se há). As colunas não repetem o identificador, que é sempre a 1ª coluna.
+- **Mescla:** o override substitui só o que traz. Em subtítulo, destaques e colunas, o que o DONO acrescentar ao padrão depois do override entra no fim da lista do usuário, até o limite; o que o usuário já tinha visto e tirado não volta.
+- **Validação:** identificador só Nome, Empresa, CNPJ, CPF, E-mail ou personalizado de texto; referência tem que ser campo ativo (pode estar oculto agora) ou fixa; sem repetir item numa lista nem campo em duas seções; nome de seção único; padrão exige o layout completo, override aceita parcial.
+- **Busca (M4.3):** o identificador do padrão do tenant entra na `busca`. CNPJ/CPF compara só os dígitos com LIKE de prefixo (a expressão dos índices); outro identificador de texto, ILIKE. Nome e E-mail já estavam na busca.
+- **Resolver:** os campos da Camada 1 e 2 de `GET /crm/leads/fields` agora trazem o `id` em `crm_field` (referência do layout).
+- **Front (2026-10-16):** as views salvas guardam só filtro; `efetivo.colunas` vale pra quem ainda não escolheu colunas na tabela (escolha guardada no navegador). `lead.estagio` mostra `estagio_nome`, que vem em toda leitura e também na resposta do `PUT /crm/leads/:id`. O OPERADOR entra em Configurações › Layout do lead (com `crm.layout`); Campos e Listas seguem só pra DONO e MASTER.
+- **Rotas (`controllers/layout.controller.js`), atrás de `crm.layout`:** `GET /crm/layout` e `PUT`/`DELETE /crm/layout/meu` pra qualquer papel; `PUT /crm/layout/padrao` só DONO/MASTER. Toda resposta é `{ padrao, padraoConfigurado, meu, efetivo }`.
 
 **Pronto quando:** um tenant B2B configura CNPJ como identificador e Empresa · Cidade como subtítulo, e a tabela, o drawer e a busca refletem isso.
 
@@ -326,9 +338,18 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - filtro "Arquivados".
 
 **Checklist**
-- [ ] Teste de que nenhuma consulta de lead vaza registro com `deleted_at` (busca, detalhe, export, import/dedup e contagem).
-- [ ] Restaurar dentro de 30 dias funciona; o job purga depois do prazo (teste com relógio falso).
-- [ ] Ninguém consegue editar um lead da lixeira (404).
+- [x] Teste de que nenhuma consulta de lead vaza registro com `deleted_at` (busca, detalhe, export, import/dedup e contagem) — contra o banco, em `campos.db.test.js`.
+- [x] Restaurar dentro de 30 dias funciona; o job purga depois do prazo (teste com relógio falso em `arquivo.service.test.js` e, contra o banco, um lead excluído há 31 dias).
+- [x] Ninguém consegue editar um lead da lixeira (404).
+
+**Como ficou (back, 2026-10-16):**
+- **Schema (migration 0018):** `leads.archived_at` e `leads.deleted_at` (TIMESTAMP em UTC, como `created_at`), com os índices parciais `idx_leads_arquivados` e `idx_leads_lixeira`. Um lead pode ter os dois: restaurar devolve ele pra onde estava (arquivado continua arquivado).
+- **Situação na busca:** `situacao: ativos | arquivados | lixeira` (padrão `ativos`) em `POST /crm/leads/search`, nas views salvas e no export. `montarCondicoes` sempre começa pela condição da situação, então nenhuma consulta montada ali vê a lixeira sem pedir. A lixeira só mostra o que foi excluído há menos de 30 dias: passado o prazo, o lead já conta como apagado mesmo antes da purga. Lead da lixeira volta com `purga_em`.
+- **Fora da busca:** detalhe e edição ignoram a lixeira (404); a deduplicação do import também (reimportar cria de novo), mas conta o arquivado, que continua existindo. Export da lixeira → 400.
+- **Contagem de uso** (opção de lista em uso, campo com valor): continua contando lead da lixeira, porque ele pode ser restaurado.
+- **Flag `crm.arquivo`:** guarda `POST /crm/leads/:id/arquivar`, `/desarquivar` e `/restaurar`, e as situações `arquivados`/`lixeira` (403 `FEATURE_NOT_ENABLED`). O `DELETE /crm/leads/:id` é lixeira sempre, com ou sem a flag (sem ela só não há tela pra restaurar). Com a flag desligada, `ativos` inclui os arquivados: o kill switch não esconde lead.
+- **Purga:** `src/workers/crm.worker.js` (antes `crm-import.worker.js`; `pnpm worker:crm`) consome também a fila `crm-manutencao` e, ao subir, agenda a purga com `upsertJobScheduler` (idempotente) às 3h de Brasília. Roda em todo tenant que já contratou o CRM, mesmo cancelado; um tenant que falha não para os outros. O DELETE da purga segue as FKs de antes (CASCADE/SET NULL).
+- **Permissão:** qualquer papel arquiva, exclui e restaura (como o "Excluir" de antes); restrição por papel fica pro marco de permissões.
 
 **Pronto quando:** arquivar, restaurar e excluir funcionam pela tela, e a purga roda no worker.
 
@@ -353,9 +374,18 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **6.3 Front (mínimo).** Aba "Atividades" no drawer: registrar, concluir e listar.
 
 **Checklist**
-- [ ] Concluir uma atividade e mudar o status atualizam `ultima_interacao_em`; editar um campo não atualiza (decisão aberta D1).
-- [ ] O evento guarda o antes e o depois só dos campos alterados, respeitando a permissão de campo quando M13 existir.
-- [ ] RLS e isolamento verdes.
+- [x] Concluir uma atividade e mudar o status atualizam `ultima_interacao_em`; editar um campo não atualiza (D1 fechada; teste contra o banco).
+- [x] O evento guarda o antes e o depois só dos campos alterados (teste puro do diff e contra o banco). Na leitura, campo desligado ou personalizado excluído sai do diff; a permissão por campo entra quando o M13 existir.
+- [x] RLS e isolamento verdes (`rls-coverage`, `fk-coverage`, `tenant-isolation`).
+
+**Como ficou (back, 2026-10-16):**
+- **Schema (migration 0019):** `crm_activity` (`tipo` = key da lista `tipo_atividade`, sem FK como as outras listas; `agendada_para`, `concluida_em`, `autor_id` com `ON DELETE SET NULL`) e `crm_lead_event` (`tipo`, `autor_id`, `diff` JSONB, `created_at`). As duas com RLS, FK pro tenant e `ON DELETE CASCADE` no lead (a purga do M5 leva junto).
+- **Append-only:** trigger barra qualquer UPDATE em `crm_lead_event`, menos mudar `lead_id` (a mesclagem do M7 vai mover o histórico) e `autor_id` virar NULL (usuário removido). DELETE fica liberado porque o evento segue o lead. **Não reaproveita o `audit_log` do core:** lá o DELETE é bloqueado por trigger, o que impediria a purga, e o formato é de ação administrativa, não de diff.
+- **Eventos gravados:** `criado`, `atualizado`, `arquivado`, `desarquivado`, `excluido`, `restaurado`, sempre na mesma transação da mudança e com o autor do token. São gravados com ou sem a flag; ela só libera a leitura. Arquivar o que já está arquivado não grava nada. O import ainda não grava evento (autor = sistema): fica pro M7, que refaz a deduplicação do import.
+- **Diff (`historico.service.js`, função pura):** só os campos que mudaram, com antes e depois serializáveis (data em ISO, NUMERIC em número). A chave é o que não muda: `systemKey` pros campos do sistema, `valor`/`funilEstagioId`/`usuarioResponsavelId` pros dados do lead e `campoId` (`crm_field.id`) pro personalizado. O estágio guarda também o nome do momento. O UPDATE lê o lead de antes com `FOR UPDATE`, na mesma transação. Label, tipo e opções vêm do schema na leitura: renomear um campo não reescreve o histórico.
+- **Interação (D1):** mudar o status atualiza `ultima_interacao_em` no próprio UPDATE (o `CASE` compara com o status de antes; status igual não conta); concluir uma atividade leva a data pra conclusão, nunca pra trás. Editar outro campo, agendar ou reabrir atividade não mexe. Quando é a regra de status que muda `ultimaInteracaoEm`, ele não entra no diff.
+- **Atividades:** tipo só de opção ativa (ou o que a atividade já tinha). Criar com `concluida: true` registra algo que já aconteceu. Lead na lixeira → 404. "Em uso" do tipo de atividade agora conta as atividades (excluir opção em uso → 409). Qualquer papel cria, edita e remove; restrição por papel fica pro M13.
+- **Rotas (`controllers/atividades.controller.js`), atrás de `crm.atividades`, qualquer papel:** `GET /crm/atividades/tipos` (opções da lista pro formulário, sem depender de `crm.listas`, pedido do front em 2026-10-16), `GET`/`POST /crm/leads/:id/atividades`, `PUT`/`DELETE /crm/leads/:id/atividades/:atividadeId` e `GET /crm/leads/:id/historico?pagina=&tamanho=`.
 
 ### M7. Duplicidade e mesclagem (flag `crm.duplicidade`)
 **Objetivo:** detecção configurável de duplicados e uma mesclagem segura.
@@ -510,7 +540,7 @@ Organização: regras por tipo num arquivo só (`tipos-campo.service.js`: valida
 Pendente/decisão do usuário: órfãos no dev (2 leads, 4 estágios sem tenant; FK `NOT VALID` até limpar); juntar 0012–0015 só se a produção ainda não tiver aplicado nenhuma delas; Prettier adiado (reformataria o repositório inteiro).
 
 ## Decisões abertas (resolver no início do marco indicado)
-- **D1 (M6):** editar um campo reseta o contador de inatividade? A spec propõe que não.
+- ~~**D1 (M6):** editar um campo reseta o contador de inatividade? A spec propõe que não.~~ **Fechada em 2026-10-16:** não reseta, como a spec propõe. Contam como interação: concluir uma atividade e mudar o status (ver M6, "Como ficou").
 - **D2 (M1):** o contrato HTTP continua com `chave` e só o armazenamento usa `id`? Recomendado: sim.
 - ~~**D3 (M3):** adotar ou não a FK composta, depois do spike no Neon.~~ **Fechada em 2026-10-15:** não adotada (ver M3, "Como ficou").
 - **D4 (M7):** `pg_trgm` disponível no plano do Neon, para o "Nome + Empresa aproximado".

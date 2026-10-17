@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "node --watch src/api/server.js",
     "start": "node src/api/server.js",
-    "worker:crm": "node src/workers/crm-import.worker.js",
+    "worker:crm": "node src/workers/crm.worker.js",
     "lint": "eslint .",
     "check": "pnpm lint && pnpm test",
     "test": "vitest run",

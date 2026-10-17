@@ -9,8 +9,12 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { EXPORTACAO } from '../constants.js';
 import { editarDefinicao } from '../services/field-definitions.service.js';
 import { atualizarOpcao, criarOpcao, listarListas } from '../services/listas.service.js';
+import { removerMeu, salvarMeu, salvarPadrao } from '../services/layout.service.js';
 import { atualizarLeadExistente, pesquisarLeads, registrarNovoLead } from '../services/leads.service.js';
 import { exportarLeads } from '../services/export.service.js';
+import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
+import { editarAtividade, registrarAtividade, removerAtividade } from '../services/atividades.service.js';
+import { listarHistorico } from '../services/historico.service.js';
 import { previsualizarImportacao } from '../services/import.service.js';
 import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configuracoes-campos.service.js';
@@ -34,7 +38,6 @@ vi.mock('../services/leads.service.js', () => ({
   buscarLeadFormatado: vi.fn(),
   registrarNovoLead: vi.fn(),
   atualizarLeadExistente: vi.fn(),
-  excluirLead: vi.fn(),
   listarCamposDoTenant: vi.fn(),
   pesquisarLeads: vi.fn(),
 }));
@@ -57,7 +60,28 @@ vi.mock('../services/import.service.js', () => ({
   encerrarImportacao: vi.fn(),
 }));
 vi.mock('../services/export.service.js', () => ({ exportarLeads: vi.fn() }));
+vi.mock('../services/atividades.service.js', () => ({
+  listarTiposDeAtividade: vi.fn().mockResolvedValue([{ key: 'ligacao', label: 'Ligação', ativo: true }]),
+  listarAtividades: vi.fn().mockResolvedValue([]),
+  registrarAtividade: vi.fn().mockResolvedValue({ id: 'at' }),
+  editarAtividade: vi.fn().mockResolvedValue({ id: 'at' }),
+  removerAtividade: vi.fn().mockResolvedValue({ removido: true }),
+}));
+vi.mock('../services/historico.service.js', () => ({ listarHistorico: vi.fn().mockResolvedValue({ itens: [] }) }));
+vi.mock('../services/arquivo.service.js', () => ({
+  arquivarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
+  desarquivarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
+  restaurarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
+  excluirLead: vi.fn().mockResolvedValue({ removido: true }),
+}));
 vi.mock('../services/usuarios.service.js', () => ({ listarResponsaveisPossiveis: vi.fn() }));
+vi.mock('../services/layout.service.js', () => ({
+  obterLayout: vi.fn().mockResolvedValue({ efetivo: {} }),
+  salvarPadrao: vi.fn().mockResolvedValue({}),
+  salvarMeu: vi.fn().mockResolvedValue({}),
+  removerMeu: vi.fn().mockResolvedValue({}),
+  identificadorDaBusca: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('../services/listas.service.js', () => ({
   listarListas: vi.fn().mockResolvedValue({}),
   criarOpcao: vi.fn().mockResolvedValue({ id: 'nova' }),
@@ -220,11 +244,12 @@ describe('validação na borda', () => {
       payload: { email: null, cargo: null, customFields: { origem: null } },
     });
     expect(limpar.statusCode).toBe(HTTP_STATUS.OK);
-    expect(atualizarLeadExistente).toHaveBeenCalledWith(TENANT, LEAD, {
-      email: null,
-      cargo: null,
-      customFields: { origem: null },
-    });
+    expect(atualizarLeadExistente).toHaveBeenCalledWith(
+      TENANT,
+      LEAD,
+      { email: null, cargo: null, customFields: { origem: null } },
+      'u-op', // autor do histórico (M6)
+    );
 
     const semNome = await app.inject({
       method: 'PUT',
@@ -389,5 +414,195 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
       const resposta = await app.inject({ method: 'POST', url, headers: autorizado(tokenDono), payload });
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+  });
+});
+
+describe('Layout do lead (M4, flag crm.layout)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.layout' }];
+  const LAYOUT = { identificador: 'id-cnpj', subtitulo: [], destaques: [], secoes: [], colunas: ['lead.valor'] };
+
+  it('sem a flag → 403 FEATURE_NOT_ENABLED', async () => {
+    const resposta = await app.inject({ method: 'GET', url: '/crm/layout', headers: autorizado(tokenOperador) });
+    expect(resposta.json().error.details).toEqual({ featureKey: 'crm.layout' });
+  });
+
+  it('OPERADOR não altera o padrão do tenant (403), mas salva e apaga o próprio override', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const padrao = await app.inject({ method: 'PUT', url: '/crm/layout/padrao', headers: autorizado(tokenOperador), payload: LAYOUT });
+    expect(padrao.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+    expect(padrao.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+    expect(salvarPadrao).not.toHaveBeenCalled();
+
+    const meu = await app.inject({
+      method: 'PUT',
+      url: '/crm/layout/meu',
+      headers: autorizado(tokenOperador),
+      payload: { colunas: ['lead.valor'] },
+    });
+    expect(meu.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarMeu).toHaveBeenCalledWith(TENANT, 'u-op', { colunas: ['lead.valor'] });
+
+    await app.inject({ method: 'DELETE', url: '/crm/layout/meu', headers: autorizado(tokenOperador) });
+    expect(removerMeu).toHaveBeenCalledWith(TENANT, 'u-op');
+  });
+
+  it('DONO salva o padrão completo; incompleto, mais de 2 no subtítulo ou campo extra → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const ok = await app.inject({ method: 'PUT', url: '/crm/layout/padrao', headers: autorizado(tokenDono), payload: LAYOUT });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarPadrao).toHaveBeenCalledWith(TENANT, 'u-dono', LAYOUT);
+
+    for (const payload of [
+      { identificador: 'id-cnpj' },
+      { ...LAYOUT, subtitulo: ['a', 'b', 'c'] },
+      { ...LAYOUT, extra: true },
+    ]) {
+      const resposta = await app.inject({ method: 'PUT', url: '/crm/layout/padrao', headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+  });
+});
+
+describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.arquivo' }];
+  const ACOES = [
+    ['arquivar', arquivarLead],
+    ['desarquivar', desarquivarLead],
+    ['restaurar', restaurarLead],
+  ];
+
+  it('sem a flag, arquivar/desarquivar/restaurar → 403 FEATURE_NOT_ENABLED', async () => {
+    for (const [acao, service] of ACOES) {
+      const resposta = await app.inject({ method: 'POST', url: `/crm/leads/${LEAD}/${acao}`, headers: autorizado(tokenOperador) });
+      expect(resposta.statusCode, acao).toBe(HTTP_STATUS.FORBIDDEN);
+      expect(resposta.json().error.details).toEqual({ featureKey: 'crm.arquivo' });
+      expect(service).not.toHaveBeenCalled();
+    }
+  });
+
+  it('com a flag, qualquer papel arquiva, desarquiva e restaura', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    for (const [acao, service] of ACOES) {
+      const resposta = await app.inject({ method: 'POST', url: `/crm/leads/${LEAD}/${acao}`, headers: autorizado(tokenOperador) });
+      expect(resposta.statusCode, acao).toBe(HTTP_STATUS.OK);
+      expect(service).toHaveBeenCalledWith(TENANT, LEAD, 'u-op');
+    }
+  });
+
+  it('DELETE manda pra lixeira mesmo sem a flag; id inválido → 400', async () => {
+    const ok = await app.inject({ method: 'DELETE', url: `/crm/leads/${LEAD}`, headers: autorizado(tokenOperador) });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(excluirLead).toHaveBeenCalledWith(TENANT, LEAD, 'u-op');
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const invalido = await app.inject({ method: 'POST', url: '/crm/leads/nao-e-uuid/arquivar', headers: autorizado(tokenDono) });
+    expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('situacao inválida na busca → 400; export da lixeira → 400', async () => {
+    const busca = await app.inject({
+      method: 'POST',
+      url: '/crm/leads/search',
+      headers: autorizado(tokenDono),
+      payload: { situacao: 'apagados' },
+    });
+    expect(busca.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    expect(pesquisarLeads).not.toHaveBeenCalled();
+
+    const exportacao = await app.inject({
+      method: 'POST',
+      url: '/crm/export',
+      headers: autorizado(tokenDono),
+      payload: { colunas: ['nome'], filtro: { situacao: 'lixeira' } },
+    });
+    expect(exportacao.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    expect(exportarLeads).not.toHaveBeenCalled();
+  });
+});
+
+describe('Atividades e histórico (M6, flag crm.atividades)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.atividades' }];
+  const ATIVIDADE = '00000000-0000-0000-0000-0000000000a1';
+  const TAMANHO_HISTORICO = 20;
+  const TAMANHO_HISTORICO_EXCESSIVO = 500;
+
+  it('sem a flag → 403 nas atividades e no histórico', async () => {
+    for (const url of [`/crm/leads/${LEAD}/atividades`, `/crm/leads/${LEAD}/historico`]) {
+      const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+      expect(resposta.statusCode, url).toBe(HTTP_STATUS.FORBIDDEN);
+      expect(resposta.json().error.details).toEqual({ featureKey: 'crm.atividades' });
+    }
+  });
+
+  it('tipos de atividade só com crm.atividades (sem crm.listas)', async () => {
+    const sem = await app.inject({ method: 'GET', url: '/crm/atividades/tipos', headers: autorizado(tokenOperador) });
+    expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG); // só crm.atividades
+    await encerrarCache(); // a 1ª chamada guardou "sem flag" no cache
+    const com = await app.inject({ method: 'GET', url: '/crm/atividades/tipos', headers: autorizado(tokenOperador) });
+    expect(com.statusCode).toBe(HTTP_STATUS.OK);
+    expect(com.json().data).toEqual([{ key: 'ligacao', label: 'Ligação', ativo: true }]);
+  });
+
+  it('OPERADOR registra (201, autor do token), edita e remove', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const criada = await app.inject({
+      method: 'POST',
+      url: `/crm/leads/${LEAD}/atividades`,
+      headers: autorizado(tokenOperador),
+      payload: { tipo: 'ligacao', titulo: '  Ligar  ', concluida: true },
+    });
+    expect(criada.statusCode).toBe(HTTP_STATUS.CREATED);
+    expect(registrarAtividade).toHaveBeenCalledWith(TENANT, LEAD, { tipo: 'ligacao', titulo: 'Ligar', concluida: true }, 'u-op');
+
+    const editada = await app.inject({
+      method: 'PUT',
+      url: `/crm/leads/${LEAD}/atividades/${ATIVIDADE}`,
+      headers: autorizado(tokenOperador),
+      payload: { concluida: false, agendadaPara: '2026-10-20T13:00:00Z' },
+    });
+    expect(editada.statusCode).toBe(HTTP_STATUS.OK);
+    expect(editarAtividade).toHaveBeenCalledWith(TENANT, LEAD, ATIVIDADE, {
+      concluida: false,
+      agendadaPara: new Date('2026-10-20T13:00:00Z'),
+    });
+
+    await app.inject({ method: 'DELETE', url: `/crm/leads/${LEAD}/atividades/${ATIVIDADE}`, headers: autorizado(tokenOperador) });
+    expect(removerAtividade).toHaveBeenCalledWith(TENANT, LEAD, ATIVIDADE);
+  });
+
+  it('validação: sem título, campo extra, edição vazia ou id inválido → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const casos = [
+      ['POST', `/crm/leads/${LEAD}/atividades`, { tipo: 'ligacao' }],
+      ['POST', `/crm/leads/${LEAD}/atividades`, { tipo: 'ligacao', titulo: 'x', autorId: 'outro' }],
+      ['PUT', `/crm/leads/${LEAD}/atividades/${ATIVIDADE}`, {}],
+      ['PUT', `/crm/leads/${LEAD}/atividades/nao-e-uuid`, { titulo: 'x' }],
+    ];
+    for (const [method, url, payload] of casos) {
+      const resposta = await app.inject({ method, url, headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode, `${method} ${JSON.stringify(payload)}`).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+    expect(registrarAtividade).not.toHaveBeenCalled();
+    expect(editarAtividade).not.toHaveBeenCalled();
+  });
+
+  it('histórico paginado pela query; tamanho acima do máximo → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const ok = await app.inject({
+      method: 'GET',
+      url: `/crm/leads/${LEAD}/historico?pagina=2&tamanho=${TAMANHO_HISTORICO}`,
+      headers: autorizado(tokenOperador),
+    });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(listarHistorico).toHaveBeenCalledWith(TENANT, LEAD, { pagina: PAGINA, tamanho: TAMANHO_HISTORICO });
+
+    const excessivo = await app.inject({
+      method: 'GET',
+      url: `/crm/leads/${LEAD}/historico?tamanho=${TAMANHO_HISTORICO_EXCESSIVO}`,
+      headers: autorizado(tokenOperador),
+    });
+    expect(excessivo.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });

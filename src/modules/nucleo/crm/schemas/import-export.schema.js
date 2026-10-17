@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { ESTRATEGIAS_DUPLICATA } from '../constants.js';
+import { ESTRATEGIAS_DUPLICATA, SITUACOES_LEAD } from '../constants.js';
 import { filtroLeadsSchema } from './leads-search.schema.js';
 
 /**
@@ -38,5 +38,11 @@ export const exportarLeadsBodySchema = z.object({
   colunas: z
     .array(z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH), { required_error: 'Escolha as colunas do export' })
     .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Escolha ao menos uma coluna'),
-  filtro: filtroLeadsSchema.optional(),
+  // A lixeira não sai em planilha (M5).
+  filtro: filtroLeadsSchema
+    .refine((filtro) => filtro.situacao !== SITUACOES_LEAD.LIXEIRA, {
+      message: 'A lixeira não pode ser exportada',
+      path: ['situacao'],
+    })
+    .optional(),
 });

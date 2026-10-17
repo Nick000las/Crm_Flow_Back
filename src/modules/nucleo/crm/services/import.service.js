@@ -171,7 +171,7 @@ export async function obterStatusImportacao(tenantId, jobId) {
 }
 
 /**
- * Chamado pelo worker (`src/workers/crm-import.worker.js`), nunca por
+ * Chamado pelo worker (`src/workers/crm.worker.js`), nunca por
  * HTTP. Erro numa linha vai pro relatório sem derrubar o job; erro geral
  * (banco fora, etc.) marca `falhou`.
  *

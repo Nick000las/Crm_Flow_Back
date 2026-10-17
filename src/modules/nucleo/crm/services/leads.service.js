@@ -1,11 +1,11 @@
 import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
 import {
   buscarLeadsComFiltro,
   buscarLeadPorId,
   criarLead as criarLeadRepository,
   atualizarLead as atualizarLeadRepository,
-  removerLead as removerLeadRepository,
 } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
 import {
@@ -16,10 +16,12 @@ import {
   exigidoNaCriacao,
   obterSchemaCampos,
 } from './field-schema.service.js';
-import { montarCondicoes } from './lead-filter.service.js';
+import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
+import { diffDoLead } from './historico.service.js';
+import { identificadorDaBusca } from './layout.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
-import { CAMADA, CAMPOS_SISTEMA } from '../constants.js';
+import { CAMADA, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEAD } from '../constants.js';
 
 /**
  * Campos com regra própria de obrigatoriedade: `nome` é checado à parte e
@@ -85,19 +87,25 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   // `customFields` vai como objeto puro — é o repository quem faz o
   // `JSON.stringify` (uma vez só). Stringificar aqui também gravaria uma
   // string dupla-serializada no JSONB em vez do objeto.
-  return criarLeadRepository(tenantId, {
-    ...comCustomFieldsArmazenaveis(comListas, definicoes),
-    usuarioResponsavelId: input.usuarioResponsavelId ?? usuarioId,
-  });
+  return criarLeadRepository(
+    tenantId,
+    { ...comCustomFieldsArmazenaveis(comListas, definicoes), usuarioResponsavelId: input.usuarioResponsavelId ?? usuarioId },
+    { autorId: usuarioId ?? null },
+  );
 }
 
 /**
+ * O diff dos campos alterados vai pro histórico (M6), com `usuarioId` de
+ * autor. `ultimaInteracaoEm` só entra no diff se veio no payload — quando
+ * é a mudança de status que a atualiza, não é edição do usuário.
+ *
  * @param {string} tenantId
  * @param {string} leadId
  * @param {AtualizarLeadInput} input
+ * @param {string} [usuarioId] quem está editando (do token)
  * @returns {Promise<Lead>}
  */
-export async function atualizarLeadExistente(tenantId, leadId, entrada) {
+export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId) {
   const input = comContatoNormalizado(entrada);
   if (input.nome !== undefined && input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
@@ -122,7 +130,11 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada) {
   }
 
   await gravarTagsNovas(tenantId, tagsNovas);
-  const leadAtualizado = await atualizarLeadRepository(tenantId, leadId, comCustomFieldsArmazenaveis(comListas, definicoes));
+  const ignorar = input.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
+  const leadAtualizado = await atualizarLeadRepository(tenantId, leadId, comCustomFieldsArmazenaveis(comListas, definicoes), {
+    autorId: usuarioId ?? null,
+    montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
+  });
 
   // UPDATE ... RETURNING sem linha = id não existe (ou não é deste
   // tenant) — mesmo padrão de field-definitions.service.js, sem query
@@ -132,21 +144,6 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada) {
   }
 
   return formatarLead(leadAtualizado, schema);
-}
-
-/**
- * @param {string} tenantId
- * @param {string} leadId
- * @returns {Promise<{ removido: true }>}
- */
-export async function excluirLead(tenantId, leadId) {
-  const leadRemovido = await removerLeadRepository(tenantId, leadId);
-
-  if (!leadRemovido) {
-    throw leadNaoEncontrado();
-  }
-
-  return { removido: true };
 }
 
 /**
@@ -192,8 +189,16 @@ export async function pesquisarLeads(tenantId, input) {
  * @param {{ limite: number, offset: number }} paginacao
  */
 export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
-  const schema = await obterSchemaCampos(tenantId);
-  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema));
+  const [schema, identificador, comArquivo] = await Promise.all([
+    obterSchemaCampos(tenantId),
+    identificadorDaBusca(tenantId),
+    featureAtiva(tenantId, CRM_FEATURES.ARQUIVO),
+  ]);
+  // Arquivados e lixeira só existem com o arquivo ligado (M5).
+  if (!comArquivo && filtro.situacao && filtro.situacao !== SITUACOES_LEAD.ATIVOS) {
+    await garantirFeature(tenantId, CRM_FEATURES.ARQUIVO);
+  }
+  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema), { identificador, comArquivo });
   const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, paginacao);
 
   return {
@@ -301,7 +306,8 @@ function validarObrigatoriosNaCriacao(campos, input) {
  * contextos continua vindo; cada tela filtra pelo seu (`camposDoContexto`).
  *
  * Também aplica `formatarTelefoneBR`. `custom_fields` é gravado por `id`
- * do campo e volta por `chave` (`customFieldsParaApi`).
+ * do campo e volta por `chave` (`customFieldsParaApi`). Lead na lixeira
+ * (só na busca `situacao: lixeira`) ganha `purga_em`.
  *
  * @param {Lead} lead
  * @param {Pick<import('./field-schema.service.js').SchemaCampos, 'campos' | 'definicoes'>} schema
@@ -319,6 +325,7 @@ function formatarLead(lead, { campos, definicoes }) {
   for (const campo of CAMPOS_SISTEMA) {
     if (!ligados.has(campo.systemKey)) delete leadFormatado[campo.coluna];
   }
+  if (lead.deleted_at) leadFormatado.purga_em = dataDaPurga(lead.deleted_at);
 
   return leadFormatado;
 }

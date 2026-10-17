@@ -2,7 +2,16 @@ import { Prisma } from '@prisma/client';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, OPERADORES_POR_TIPO, TIPOS_CAMPO } from '../constants.js';
+import {
+  CAMADA,
+  CAMADA_1_CAMPOS,
+  CAMADA_2_CAMPOS,
+  DIAS_NA_LIXEIRA,
+  IDENTIFICADORES_NUMERICOS,
+  OPERADORES_POR_TIPO,
+  SITUACOES_LEAD,
+  TIPOS_CAMPO,
+} from '../constants.js';
 import { somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
 
 /** Tipos guardados como número (faixa e igualdade numérica). */
@@ -31,6 +40,7 @@ const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
  *   valorMax?: number,
  *   criadoDe?: Date,
  *   criadoAte?: Date,
+ *   situacao?: 'ativos' | 'arquivados' | 'lixeira',
  *   filtros?: FiltroCampo[],
  * }} FiltroLeads
  */
@@ -41,17 +51,72 @@ const TAMANHO_DATA_ISO = 10;
 /** Texto só com dígitos e máscara de telefone — sem letra nenhuma. */
 const PADRAO_BUSCA_TELEFONE = /^[\d\s()+.-]*\d[\d\s()+.-]*$/;
 
+/** Documento digitado com ou sem pontuação (`12.345.678/0001-90`). */
+const PADRAO_BUSCA_DOCUMENTO = /^[\d\s./-]*\d[\d\s./-]*$/;
+
 /** Telefone nativo comparado sem máscara (texto fixo, sem dado do cliente). */
 const TELEFONE_SO_DIGITOS = Prisma.raw(`regexp_replace(l.telefone, '[^0-9]', '', 'g')`);
+
+/** Milissegundos num dia — o prazo da lixeira é contado em dias corridos. */
+const MS_POR_DIA = 86_400_000;
+
+/**
+ * Quem foi excluído a partir desta data ainda está na lixeira (restaurável);
+ * antes dela, já passou do prazo e é purgado.
+ *
+ * @param {Date} [agora]
+ * @returns {Date}
+ */
+export function inicioDaLixeira(agora = new Date()) {
+  return new Date(agora.getTime() - DIAS_NA_LIXEIRA * MS_POR_DIA);
+}
+
+/**
+ * Quando um lead excluído em `excluidoEm` sai da lixeira de vez.
+ *
+ * @param {Date} excluidoEm
+ * @returns {Date}
+ */
+export function dataDaPurga(excluidoEm) {
+  return new Date(new Date(excluidoEm).getTime() + DIAS_NA_LIXEIRA * MS_POR_DIA);
+}
+
+/**
+ * Situação do lead (M5) — entra em TODA consulta montada aqui, então lead
+ * na lixeira só aparece quando pedido explicitamente (e só dentro do prazo).
+ * Sem a feature `crm.arquivo`, "ativos" inclui os arquivados: desligar a
+ * flag (kill switch) não esconde lead nenhum.
+ *
+ * @param {FiltroLeads['situacao']} situacao
+ * @param {{ comArquivo?: boolean, agora?: Date }} [opcoes]
+ * @returns {Prisma.Sql}
+ */
+export function condicaoDaSituacao(situacao = SITUACOES_LEAD.ATIVOS, { comArquivo = true, agora } = {}) {
+  if (situacao === SITUACOES_LEAD.LIXEIRA) {
+    return Prisma.sql`l.deleted_at >= ${inicioDaLixeira(agora)}`;
+  }
+  if (situacao === SITUACOES_LEAD.ARQUIVADOS) {
+    return Prisma.sql`l.deleted_at IS NULL AND l.archived_at IS NOT NULL`;
+  }
+  return comArquivo
+    ? Prisma.sql`l.deleted_at IS NULL AND l.archived_at IS NULL`
+    : Prisma.sql`l.deleted_at IS NULL`;
+}
 
 /**
  * @param {FiltroLeads} filtro
  * @param {Campo[]} campos campos ativos do tenant (`listarCamposDoTenant`) —
  *   Camada 2 desligada já não está aqui, então não dá pra filtrar por ela.
+ * @param {{
+ *   identificador?: { chave: string, camada: number, id?: string | null } | null,
+ *   comArquivo?: boolean,
+ *   agora?: Date,
+ * }} [opcoes] `identificador`: do layout do tenant (M4), também entra na
+ *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`.
  * @returns {Prisma.Sql[]}
  */
-export function montarCondicoes(filtro, campos) {
-  const condicoes = [];
+export function montarCondicoes(filtro, campos, { identificador = null, comArquivo = true, agora } = {}) {
+  const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
 
   if (filtro.busca) {
     const padrao = `%${escaparLike(filtro.busca)}%`;
@@ -61,7 +126,12 @@ export function montarCondicoes(filtro, campos) {
     const porTelefone = digitos
       ? Prisma.sql`${TELEFONE_SO_DIGITOS} LIKE ${`%${digitos}%`}`
       : Prisma.sql`l.telefone ILIKE ${padrao}`;
-    condicoes.push(Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone})`);
+    const porIdentificador = condicaoBuscaIdentificador(identificador, filtro.busca, padrao);
+    condicoes.push(
+      porIdentificador
+        ? Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone} OR ${porIdentificador})`
+        : Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone})`,
+    );
   }
   if (filtro.funilEstagioId) {
     condicoes.push(Prisma.sql`l.funil_estagio_id = ${filtro.funilEstagioId}::uuid`);
@@ -101,6 +171,33 @@ export function montarCondicoes(filtro, campos) {
   }
 
   return condicoes;
+}
+
+/**
+ * Busca pelo identificador do layout (M4.3). CNPJ/CPF: só os dígitos, com
+ * LIKE de prefixo — a mesma expressão dos índices da migration 0017, então
+ * `12.345.678/0001-90` e `12345678000190` acham o mesmo lead. Outro campo
+ * de texto: ILIKE. Nome/E-mail já estão na busca (chega `null`).
+ *
+ * @param {{ chave: string, camada: number, id?: string | null } | null} identificador
+ * @param {string} busca
+ * @param {string} padrao  `%busca%` já escapado
+ * @returns {Prisma.Sql | null}
+ */
+function condicaoBuscaIdentificador(identificador, busca, padrao) {
+  if (!identificador) return null;
+
+  if (IDENTIFICADORES_NUMERICOS.includes(identificador.chave)) {
+    const digitos = PADRAO_BUSCA_DOCUMENTO.test(busca) ? somenteDigitos(busca) : '';
+    if (!digitos) return null;
+    const coluna = Prisma.raw(`regexp_replace(l.${CAMADA_2_CAMPOS[identificador.chave]}, '[^0-9]', '', 'g')`);
+    return Prisma.sql`${coluna} LIKE ${`${digitos}%`}`;
+  }
+  if (identificador.camada === CAMADA.CAMADA_3 && identificador.id) {
+    return Prisma.sql`(l.custom_fields->>${identificador.id}) ILIKE ${padrao}`;
+  }
+  const coluna = CAMADA_2_CAMPOS[identificador.chave];
+  return coluna ? Prisma.sql`${Prisma.raw(`l.${coluna}`)} ILIKE ${padrao}` : null;
 }
 
 /**
