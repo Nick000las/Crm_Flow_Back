@@ -3,7 +3,6 @@ import {
   registrarNovoLead,
   buscarLeadFormatado,
   atualizarLeadExistente,
-  excluirLead,
   pesquisarLeads,
   listarCamposDoTenant,
 } from './leads.service.js';
@@ -13,15 +12,19 @@ import {
   buscarLeadsComFiltro,
   criarLead,
   atualizarLead,
-  removerLead,
 } from '../adapters/leads.repository.js';
-import { CAMADA } from '../constants.js';
+import { CAMADA, CRM_FEATURES } from '../constants.js';
+import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
+// Layout (M4): tenant que nunca configurou (identificador = Nome).
+vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined) }));
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
 vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn() }));
+// Arquivo (M5) ligado; os testes de situação estão em arquivo.service.test.js.
+vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn().mockResolvedValue(true), garantirFeature: vi.fn() }));
 
 // Configuração da Camada 2 que o resolver devolveria (`visibilidade`); cada
 // teste define a sua. Default: nenhuma coluna de Camada 2 configurada.
@@ -50,7 +53,6 @@ vi.mock('../adapters/leads.repository.js', () => ({
   buscarLeadsComFiltro: vi.fn(),
   criarLead: vi.fn().mockResolvedValue({ id: 'lead-123' }),
   atualizarLead: vi.fn(),
-  removerLead: vi.fn(),
 }));
 
 // `leads.service.js` importa `field-definitions.service.js` direto (mesmo
@@ -156,6 +158,7 @@ describe('registrarNovoLead', () => {
     expect(criarLead).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({ customFields: { [ID_PRIORIDADE]: 'alta' } }),
+      { autorId: null }, // evento "criado" do histórico (M6)
     );
   });
 });
@@ -197,18 +200,6 @@ describe('atualizarLeadExistente', () => {
   });
 });
 
-describe('excluirLead', () => {
-  it('lança 404 quando o DELETE não encontra a linha', async () => {
-    removerLead.mockResolvedValueOnce(undefined);
-    await expect(excluirLead('tenant-1', 'lead-x')).rejects.toThrow('Lead não encontrado');
-  });
-
-  it('confirma remoção quando encontra', async () => {
-    removerLead.mockResolvedValueOnce({ id: 'lead-1' });
-    await expect(excluirLead('tenant-1', 'lead-1')).resolves.toEqual({ removido: true });
-  });
-});
-
 describe('pesquisarLeads', () => {
   const PAGINA = 2;
   const TAMANHO = 10;
@@ -230,7 +221,9 @@ describe('pesquisarLeads', () => {
     });
 
     const [, condicoes, paginacao] = buscarLeadsComFiltro.mock.calls[0];
-    expect(condicoes[0].sql).toContain('l.empresa ILIKE');
+    // 1ª condição é a situação (M5); o filtro vem depois.
+    expect(condicoes[0].sql).toContain('l.deleted_at IS NULL');
+    expect(condicoes[1].sql).toContain('l.empresa ILIKE');
     expect(paginacao).toEqual({ limite: TAMANHO, offset: TAMANHO });
     expect(resultado).toMatchObject({ total: TOTAL, pagina: PAGINA, tamanho: TAMANHO });
     expect(resultado.itens[0]).not.toHaveProperty('cpf');
@@ -246,6 +239,35 @@ describe('pesquisarLeads', () => {
       }),
     ).rejects.toThrow('"cpf" não é um campo ativo para filtro');
     expect(buscarLeadsComFiltro).not.toHaveBeenCalled();
+  });
+});
+
+describe('situação na busca (M5)', () => {
+  const TAMANHO_PAGINA = 20;
+  const PRIMEIRA_PAGINA = { pagina: 1, tamanho: TAMANHO_PAGINA };
+
+  beforeEach(() => {
+    listarVisibilidadeDoTenant.mockResolvedValue([]);
+    buscarLeadsComFiltro.mockResolvedValue({ total: 0, itens: [] });
+  });
+
+  it('sem crm.arquivo, pedir arquivados ou lixeira é 403 (garantirFeature)', async () => {
+    featureAtiva.mockResolvedValueOnce(false);
+    garantirFeature.mockRejectedValueOnce(new Error('FEATURE_NOT_ENABLED'));
+    await expect(
+      pesquisarLeads('tenant-1', { situacao: 'lixeira', paginacao: PRIMEIRA_PAGINA }),
+    ).rejects.toThrow('FEATURE_NOT_ENABLED');
+    expect(garantirFeature).toHaveBeenCalledWith('tenant-1', CRM_FEATURES.ARQUIVO);
+    expect(buscarLeadsComFiltro).not.toHaveBeenCalled();
+  });
+
+  it('lead da lixeira volta com purga_em (30 dias depois da exclusão)', async () => {
+    buscarLeadsComFiltro.mockResolvedValueOnce({
+      total: 1,
+      itens: [{ id: 'lead-1', nome: 'Ana', telefone: null, deleted_at: new Date('2026-10-01T00:00:00Z') }],
+    });
+    const { itens } = await pesquisarLeads('tenant-1', { situacao: 'lixeira', paginacao: PRIMEIRA_PAGINA });
+    expect(itens[0].purga_em).toEqual(new Date('2026-10-31T00:00:00Z'));
   });
 });
 
@@ -295,7 +317,12 @@ describe('responsável pelo lead', () => {
     buscarUsuarioAtivoDoTenant.mockResolvedValue({ id: 'usuario-2' });
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
     await atualizarLeadExistente('tenant-1', 'lead-1', { usuarioResponsavelId: 'usuario-2' });
-    expect(atualizarLead).toHaveBeenCalledWith('tenant-1', 'lead-1', { usuarioResponsavelId: 'usuario-2' });
+    expect(atualizarLead).toHaveBeenCalledWith(
+      'tenant-1',
+      'lead-1',
+      { usuarioResponsavelId: 'usuario-2' },
+      expect.objectContaining({ autorId: null, montarDiff: expect.any(Function) }),
+    );
   });
 });
 

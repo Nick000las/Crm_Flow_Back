@@ -1,10 +1,10 @@
+import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
 import {
   buscarLeadFormatado,
   registrarNovoLead,
   atualizarLeadExistente,
-  excluirLead,
   listarCamposDoTenant,
   pesquisarLeads,
 } from '../services/leads.service.js';
@@ -15,6 +15,8 @@ import {
 } from '../schemas/leads.schema.js';
 import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/leads-search.schema.js';
 import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
+import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
+import { CRM_FEATURES } from '../constants.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
@@ -62,15 +64,32 @@ export function registrarRotasLeads(app) {
   });
 
   app.put('/crm/leads/:id', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = atualizarLeadBodySchema.parse(req.body);
-    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body));
+    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body, userId));
   });
 
+  // "Excluir" é sempre lixeira (M5), com ou sem a flag: sem ela só não há
+  // tela pra restaurar, e a purga apaga depois do prazo.
   app.delete('/crm/leads/:id', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
-    return sendSuccess(reply, await excluirLead(tenantId, leadId));
+    return sendSuccess(reply, await excluirLead(tenantId, leadId, userId));
   });
+
+  // Arquivo e lixeira (M5), atrás de `crm.arquivo`. Respondem o lead formatado.
+  const comArquivo = { preHandler: [exigirFeature(CRM_FEATURES.ARQUIVO)] };
+  const acoes = [
+    ['arquivar', arquivarLead],
+    ['desarquivar', desarquivarLead],
+    ['restaurar', restaurarLead],
+  ];
+  for (const [acao, executar] of acoes) {
+    app.post(`/crm/leads/:id/${acao}`, comArquivo, async (req, reply) => {
+      const { tenantId, userId } = req.tenantContext;
+      const { id: leadId } = leadIdParamSchema.parse(req.params);
+      return sendSuccess(reply, await executar(tenantId, leadId, userId));
+    });
+  }
 }

@@ -71,13 +71,28 @@ export function exigirFeature(featureKey) {
   /** @param {import('fastify').FastifyRequest} req */
   return async (req) => {
     const tenantId = req.tenantContext?.tenantId;
-    if (!tenantId || !(await featureAtiva(tenantId, featureKey))) {
-      throw new AppError({
-        statusCode: HTTP_STATUS.FORBIDDEN,
-        code: ERROR_CODES.FEATURE_NOT_ENABLED,
-        message: 'Esta funcionalidade ainda não está disponível para a sua conta',
-        details: { featureKey },
-      });
-    }
+    if (!tenantId) throw erroFeatureDesligada(featureKey);
+    await garantirFeature(tenantId, featureKey);
   };
+}
+
+/**
+ * Mesmo 403 do `exigirFeature`, pra quando só uma parte da requisição
+ * depende da feature (ex.: um valor de filtro) — chamado no service.
+ *
+ * @param {string} tenantId
+ * @param {string} featureKey
+ */
+export async function garantirFeature(tenantId, featureKey) {
+  if (!(await featureAtiva(tenantId, featureKey))) throw erroFeatureDesligada(featureKey);
+}
+
+/** @param {string} featureKey */
+function erroFeatureDesligada(featureKey) {
+  return new AppError({
+    statusCode: HTTP_STATUS.FORBIDDEN,
+    code: ERROR_CODES.FEATURE_NOT_ENABLED,
+    message: 'Esta funcionalidade ainda não está disponível para a sua conta',
+    details: { featureKey },
+  });
 }

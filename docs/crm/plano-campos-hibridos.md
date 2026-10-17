@@ -169,7 +169,7 @@ O import e o export aceitam ainda dois extras que não são campos de formulári
 
    Os erros de **todas** as linhas são acumulados e apontam o número real da linha no Excel. Só as linhas válidas vão para o `payload` do job.
 3. **confirm:** faz uma transição condicional `pendente → processando`, para que duas confirmações não enfileirem o job duas vezes, e então enfileira. Se a fila falhar, o job volta para `pendente`.
-4. **worker** ([src/workers/crm-import.worker.js](../src/workers/crm-import.worker.js), `pnpm worker:crm`): processo separado do HTTP. Chama `processarImportacao`.
+4. **worker** ([src/workers/crm.worker.js](../../src/workers/crm.worker.js), `pnpm worker:crm`): processo separado do HTTP. Chama `processarImportacao`.
    - **Deduplicação:** procura por e-mail (sem diferenciar maiúsculas) e, se não achar, por telefone comparando só os dígitos.
    - **Estratégias:**
      - `pular` não toca no lead existente;

@@ -1,8 +1,16 @@
-import { AppError } from '#core/errors/app-error.js';
+import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { CAMADA, CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, CAMPOS_EXTRAS_PLANILHA, EXPORTACAO, TIPOS_CAMPO } from '../constants.js';
+import {
+  CAMADA,
+  CAMADA_1_CAMPOS,
+  CAMADA_2_CAMPOS,
+  CAMPOS_EXTRAS_PLANILHA,
+  EXPORTACAO,
+  SITUACOES_LEAD,
+  TIPOS_CAMPO,
+} from '../constants.js';
 import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
 import { gerarPlanilha } from './planilha.service.js';
 
@@ -23,6 +31,10 @@ const SEPARADOR_LISTA = ', ';
  * @returns {Promise<Buffer>}
  */
 export async function exportarLeads(tenantId, { colunas, filtro = {} }) {
+  // O schema da rota já barra; aqui é a garantia pra qualquer outro chamador.
+  if (filtro.situacao === SITUACOES_LEAD.LIXEIRA) {
+    throw erroDeValidacao('situacao', 'A lixeira não pode ser exportada');
+  }
   const campos = [...(await listarCamposDoTenant(tenantId)), ...CAMPOS_EXTRAS_PLANILHA];
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
 

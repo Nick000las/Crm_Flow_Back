@@ -45,6 +45,23 @@ export function listarModulosAtivos(tenantId) {
 }
 
 /**
+ * Todo tenant que já contratou o módulo, ativo ou não — pra job de
+ * manutenção que precisa rodar mesmo depois do cancelamento (ex.: a purga
+ * da lixeira do CRM, que é prazo de retenção). Sem cache: roda em worker.
+ *
+ * @param {string} moduleKey
+ * @returns {Promise<string[]>}
+ */
+export async function listarTenantsDoModulo(moduleKey) {
+  const linhas = await getAdminClient().tenantModule.findMany({
+    where: { moduleKey },
+    select: { tenantId: true },
+    orderBy: { tenantId: 'asc' },
+  });
+  return linhas.map((linha) => linha.tenantId);
+}
+
+/**
  * @param {string} tenantId
  * @param {string} moduleKey
  * @returns {Promise<boolean>}

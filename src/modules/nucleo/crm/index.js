@@ -4,13 +4,15 @@ import { registrarRotasViews } from './controllers/filter-views.controller.js';
 import { registrarRotasImportExport } from './controllers/import-export.controller.js';
 import { registrarRotasUsuarios } from './controllers/usuarios.controller.js';
 import { registrarRotasConfiguracoes } from './controllers/configuracoes.controller.js';
+import { registrarRotasLayout } from './controllers/layout.controller.js';
 import { registrarRotasListas } from './controllers/listas.controller.js';
-import { CRM_FEATURES } from './constants.js';
+import { registrarRotasAtividades } from './controllers/atividades.controller.js';
+import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
 
 /** @type {import('#core/types/module.js').Module} */
 export const crmModule = {
-  key: 'crm',
+  key: MODULO_CRM,
   name: 'CRM de Vendas',
   featureFlags: Object.values(CRM_FEATURES),
   reconciliar: reconciliarTenant,
@@ -23,6 +25,8 @@ export const crmModule = {
     registrarRotasUsuarios(app);
     registrarRotasConfiguracoes(app);
     registrarRotasListas(app);
+    registrarRotasLayout(app);
+    registrarRotasAtividades(app);
     await registrarRotasImportExport(app);
   },
 };

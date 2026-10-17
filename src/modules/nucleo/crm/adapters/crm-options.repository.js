@@ -195,14 +195,26 @@ export function excluirOpcao(tenantId, opcaoId) {
 
 /**
  * Quantos leads usam cada key de uma lista (`tags`: cada lead conta uma
- * vez por tag). Lista sem coluna no lead (tipo de atividade, até o M5)
- * não tem uso.
+ * vez por tag); no tipo de atividade, quantas atividades (M6). Lead da
+ * lixeira conta: pode ser restaurado.
  *
  * @param {string} tenantId
  * @param {string} kind
  * @returns {Promise<Map<string, number>>}
  */
 export async function contarUsos(tenantId, kind) {
+  if (kind === TIPOS_LISTA.TIPO_ATIVIDADE) {
+    const porTipo = await getTenantClient(
+      tenantId,
+      (tx) => tx.$queryRaw`
+        SELECT tipo AS key, count(*)::int AS usos
+        FROM modulo_crm.crm_activity
+        WHERE tenant_id = ${tenantId}::uuid
+        GROUP BY tipo
+      `,
+    );
+    return new Map(porTipo.map((linha) => [linha.key, linha.usos]));
+  }
   if (!COLUNA_DA_LISTA[kind]) return new Map();
 
   const linhas = await getTenantClient(tenantId, (tx) =>

@@ -7,7 +7,7 @@ import { IMPORT_FILA, IMPORTACAO } from '../constants.js';
  * ADAPTER: produtor da fila de importação (BullMQ). Enfileirar é acesso a
  * um sistema externo de dado — mesmo papel que `adapters/` cumpre pro
  * Postgres (docs/crm/plano-campos-filtros-import-export.md §3.1). O
- * consumidor é `src/workers/crm-import.worker.js`.
+ * consumidor é `src/workers/crm.worker.js`.
  *
  * A fila é criada sob demanda: o servidor HTTP sobe normalmente sem
  * `REDIS_URL`, e só a confirmação de importação falha.
