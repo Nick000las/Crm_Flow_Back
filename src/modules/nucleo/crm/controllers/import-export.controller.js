@@ -15,6 +15,7 @@ import {
 import { exportarLeads } from '../services/export.service.js';
 import {
   validarImportacaoCamposSchema,
+  confirmarImportacaoBodySchema,
   importJobIdParamSchema,
   exportarLeadsBodySchema,
 } from '../schemas/import-export.schema.js';
@@ -51,7 +52,8 @@ export async function registrarRotasImportExport(app) {
   app.post('/crm/import/:jobId/confirm', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { jobId } = importJobIdParamSchema.parse(req.params);
-    return sendSuccess(reply, await confirmarImportacao(tenantId, jobId));
+    const body = confirmarImportacaoBodySchema.parse(req.body ?? {});
+    return sendSuccess(reply, await confirmarImportacao(tenantId, jobId, body));
   });
 
   app.get('/crm/import/:jobId', apenasGestao, async (req, reply) => {

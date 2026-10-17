@@ -3,7 +3,7 @@ import { getTenantClient } from '#core/db/tenantClient.js';
 /**
  * ADAPTER: `crm_lead_event` (M6) — append-only (trigger no banco).
  *
- * @typedef {{ tipo: string, autorId?: string | null, diff?: unknown[] }} NovoEvento
+ * @typedef {{ tipo: string, autorId?: string | null, diff?: unknown[], detalhes?: Record<string, unknown> }} NovoEvento
  */
 
 /**
@@ -17,10 +17,10 @@ import { getTenantClient } from '#core/db/tenantClient.js';
  */
 export function inserirEvento(tx, tenantId, leadId, evento) {
   return tx.$executeRaw`
-    INSERT INTO modulo_crm.crm_lead_event (tenant_id, lead_id, tipo, autor_id, diff)
+    INSERT INTO modulo_crm.crm_lead_event (tenant_id, lead_id, tipo, autor_id, diff, detalhes)
     VALUES (
       ${tenantId}::uuid, ${leadId}::uuid, ${evento.tipo}, ${evento.autorId ?? null}::uuid,
-      ${JSON.stringify(evento.diff ?? [])}::jsonb
+      ${JSON.stringify(evento.diff ?? [])}::jsonb, ${JSON.stringify(evento.detalhes ?? {})}::jsonb
     )
   `;
 }
@@ -40,7 +40,7 @@ export function listarEventosDoLead(tenantId, leadId, { limite, offset }) {
       WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${leadId}::uuid
     `;
     const itens = await tx.$queryRaw`
-      SELECT e.id, e.tipo, e.autor_id, u.nome AS autor_nome, e.diff, e.created_at
+      SELECT e.id, e.tipo, e.autor_id, u.nome AS autor_nome, e.diff, e.detalhes, e.created_at
       FROM modulo_crm.crm_lead_event e
       LEFT JOIN usuarios u ON u.id = e.autor_id
       WHERE e.tenant_id = ${tenantId}::uuid AND e.lead_id = ${leadId}::uuid

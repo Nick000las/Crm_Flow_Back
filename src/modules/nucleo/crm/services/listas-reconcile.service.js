@@ -4,7 +4,7 @@ import {
   inserirOpcoes,
   tenantTemLeads,
 } from '../adapters/crm-options.repository.js';
-import { LISTAS_SEMEADAS, OPCOES_LEGADAS, OPCOES_SUGERIDAS, TIPOS_LISTA } from '../constants.js';
+import { LISTAS_SEMEADAS, OPCOES_LEGADAS, OPCOES_SUGERIDAS, SUGESTAO_DIAS_ESFRIAR, TIPOS_LISTA } from '../constants.js';
 
 /**
  * Reconciliação das listas (docs/crm/plano-configuracoes.md, M3.2):
@@ -19,6 +19,7 @@ import { LISTAS_SEMEADAS, OPCOES_LEGADAS, OPCOES_SUGERIDAS, TIPOS_LISTA } from '
  *   leads existentes continuam válidos sem nenhum UPDATE.
  * - Tenant sem lead: os padrões sugeridos pela spec.
  * - Tags: cada texto já gravado vira opção com key = label = o texto.
+ * - Status: já nascem com os dias até esfriar sugeridos (M9).
  */
 
 /**
@@ -40,7 +41,11 @@ export async function reconciliarListas(tenantId) {
     const inseridas = await inserirOpcoes(
       tenantId,
       kind,
-      padrao.map((opcao, indice) => ({ ...opcao, position: indice })),
+      padrao.map((opcao, indice) => ({
+        ...opcao,
+        position: indice,
+        ...(kind === TIPOS_LISTA.STATUS && { staleDays: SUGESTAO_DIAS_ESFRIAR[opcao.key] ?? null }),
+      })),
     );
     criadas += inseridas.length;
   }

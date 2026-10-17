@@ -13,15 +13,29 @@ import {
   criarImportJob,
   buscarImportJob,
   buscarImportJobComPayload,
+  definirAcoesDuplicata,
   transicionarStatus,
   registrarProgresso,
   marcarFalha,
 } from '../adapters/import-jobs.repository.js';
 import { enfileirarImportacao } from '../adapters/import-queue.repository.js';
-import { buscarLeadDuplicado, criarLead, atualizarLead } from '../adapters/leads.repository.js';
+import { criarLead, atualizarLead } from '../adapters/leads.repository.js';
+import { duplicadosDasLinhas, encontrarDuplicados } from './duplicidade.service.js';
+import { regrasAplicaveis } from './leads.service.js';
+import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
 
-vi.mock('./leads.service.js', () => ({ listarCamposDoTenant: vi.fn() }));
+vi.mock('./leads.service.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    listarCamposDoTenant: vi.fn(),
+    // Regras do M8: sem regra por padrão; os blocos do M8 trocam.
+    regrasAplicaveis: vi.fn().mockResolvedValue([]),
+    errosDasRegras: real.errosDasRegras,
+    leadParaApi: real.leadParaApi,
+    aplicarEdicao: real.aplicarEdicao,
+  };
+});
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   obterSchemaCampos: vi.fn().mockResolvedValue({ visibilidade: [], definicoes: [], campos: [] }),
@@ -31,6 +45,7 @@ vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
   buscarImportJob: vi.fn(),
   buscarImportJobComPayload: vi.fn(),
+  definirAcoesDuplicata: vi.fn(),
   transicionarStatus: vi.fn(),
   registrarProgresso: vi.fn(),
   marcarFalha: vi.fn(),
@@ -40,10 +55,19 @@ vi.mock('../adapters/import-queue.repository.js', () => ({
   encerrarFilaImportacao: vi.fn(),
 }));
 vi.mock('../adapters/leads.repository.js', () => ({
-  buscarLeadDuplicado: vi.fn(),
+  buscarLeadPorId: vi.fn(),
   criarLead: vi.fn(),
   atualizarLead: vi.fn(),
 }));
+// Duplicidade (M7): regras e busca têm teste próprio; aqui só o que o import faz com o resultado.
+vi.mock('./duplicidade.service.js', () => ({
+  regrasDoImport: vi.fn().mockResolvedValue([]),
+  duplicadosDasLinhas: vi.fn().mockResolvedValue([]),
+  encontrarDuplicados: vi.fn().mockResolvedValue([]),
+}));
+
+const DUPLICADO_AVISO = { id: 'lead-1', nome: 'Ana', campos: [{ campo: 'email', label: 'E-mail' }], acao: 'warn' };
+const DUPLICADO_BLOQUEIO = { ...DUPLICADO_AVISO, acao: 'block' };
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const USUARIO = '00000000-0000-0000-0000-000000000002';
@@ -112,7 +136,7 @@ describe('validarImportacao', () => {
       estrategiaDuplicata: 'pular',
     });
 
-    expect(resultado).toEqual({ jobId: JOB, totalLinhas: 1, linhasValidas: 1, erros: [] });
+    expect(resultado).toEqual({ jobId: JOB, totalLinhas: 1, linhasValidas: 1, erros: [], duplicados: [] });
     const { payload } = criarImportJob.mock.calls[0][1];
     expect(payload[0].dados).toEqual({
       nome: 'Ana',
@@ -219,6 +243,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
       id: JOB,
       status: 'processando',
       estrategia_duplicata: estrategia,
+      usuario_id: USUARIO,
       payload: [LINHA],
     });
   }
@@ -229,7 +254,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
 
   it('pular: lead existente não é tocado', async () => {
     jobCom('pular');
-    buscarLeadDuplicado.mockResolvedValue({ id: 'lead-1' });
+    encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
 
     await processarImportacao(TENANT, JOB);
 
@@ -238,9 +263,9 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(progressoFinal()).toMatchObject({ linhasIgnoradas: 1, statusFinal: 'concluido' });
   });
 
-  it('atualizar: lead existente é atualizado sem mover de estágio', async () => {
+  it('atualizar: lead existente é atualizado sem mover de estágio, com histórico do importador', async () => {
     jobCom('atualizar');
-    buscarLeadDuplicado.mockResolvedValue({ id: 'lead-1' });
+    encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
 
     await processarImportacao(TENANT, JOB);
 
@@ -248,17 +273,49 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(atualizarLead.mock.calls[0][1]).toBe('lead-1');
     expect(dados.funilEstagioId).toBeUndefined();
     expect(dados.ultimaInteracaoEm).toBeInstanceOf(Date);
+    expect(atualizarLead.mock.calls[0][3]).toMatchObject({ autorId: USUARIO, montarDiff: expect.any(Function) });
     expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
 
-  it('criar: sempre cria, sem procurar duplicado, com estágio padrão', async () => {
+  it('criar: cria mesmo com duplicado que só avisa, com estágio padrão e evento "criado"', async () => {
     jobCom('criar');
+    encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
 
     await processarImportacao(TENANT, JOB);
 
-    expect(buscarLeadDuplicado).not.toHaveBeenCalled();
     expect(criarLead.mock.calls[0][1].funilEstagioId).toBe(ESTAGIO_NOVO);
+    expect(criarLead.mock.calls[0][2]).toEqual({ autorId: USUARIO });
     expect(progressoFinal()).toMatchObject({ linhasCriadas: 1 });
+  });
+
+  it('criar onde a regra bloqueia: linha ignorada com o motivo no relatório (M7)', async () => {
+    jobCom('criar');
+    encontrarDuplicados.mockResolvedValue([DUPLICADO_BLOQUEIO]);
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(criarLead).not.toHaveBeenCalled();
+    expect(progressoFinal()).toMatchObject({
+      linhasIgnoradas: 1,
+      relatorioErro: [{ linha: LINHA_ANA, motivo: expect.stringContaining('não deixa criar outro') }],
+    });
+  });
+
+  it('a ação escolhida no Revisar vence a estratégia do job', async () => {
+    buscarImportJobComPayload.mockResolvedValue({
+      id: JOB,
+      status: 'processando',
+      estrategia_duplicata: 'pular',
+      usuario_id: USUARIO,
+      acoes: { [String(LINHA_ANA)]: 'atualizar' },
+      payload: [LINHA],
+    });
+    encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(atualizarLead).toHaveBeenCalled();
+    expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
 
   it('erro numa linha vai pro relatório sem derrubar o job', async () => {
@@ -315,5 +372,89 @@ describe('converterLinha — tipos MVP do M2', () => {
     );
     expect(erros.map((erro) => erro.coluna)).toEqual(['Contrato', 'Celular', 'Site']);
     expect(erros.every((erro) => erro.linha === LINHA_BIA)).toBe(true);
+  });
+});
+
+describe('Revisar: duplicados no validate e ações no confirm (M7)', () => {
+  const PAYLOAD = [
+    { linha: LINHA_ANA, dados: { nome: 'Ana' }, duplicata: 'warn' },
+    { linha: LINHA_BIA, dados: { nome: 'Bia' }, duplicata: 'block' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buscarImportJobComPayload.mockResolvedValue({ id: JOB, status: 'pendente', payload: PAYLOAD });
+    transicionarStatus.mockResolvedValue(true);
+    buscarImportJob.mockResolvedValue({ id: JOB, status: 'processando' });
+  });
+
+  it('grava as ações das linhas apontadas e confirma', async () => {
+    await confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' } });
+    expect(definirAcoesDuplicata).toHaveBeenCalledWith(TENANT, JOB, { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' });
+    expect(enfileirarImportacao).toHaveBeenCalled();
+  });
+
+  it('"criar" onde a regra bloqueia, ou linha não apontada → 400, sem confirmar', async () => {
+    await expect(confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_BIA)]: 'criar' } })).rejects.toThrow(
+      'não deixa criar outro',
+    );
+    await expect(confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_VAZIA)]: 'pular' } })).rejects.toThrow(
+      'não foi apontada como duplicada',
+    );
+    expect(transicionarStatus).not.toHaveBeenCalled();
+  });
+
+  it('sem ações, confirma como antes (sem ler o payload)', async () => {
+    await confirmarImportacao(TENANT, JOB);
+    expect(buscarImportJobComPayload).not.toHaveBeenCalled();
+    expect(duplicadosDasLinhas).not.toHaveBeenCalled();
+  });
+});
+
+describe('regras de obrigatoriedade no import (M8)', () => {
+  const REGRA = {
+    id: 'r1',
+    kind: 'conditional',
+    ativo: true,
+    sistema: false,
+    alvo: { id: 'f-cargo', chave: 'cargo', label: 'Cargo', tipo: 'texto', camada: CAMADA.CAMADA_2 },
+    condicao: { campo: { id: 'f-nome', chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 }, operador: 'nao_vazio' },
+    efeito: { obrigatorio: true, visivel: false },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('validate: a linha que viola uma regra vai pros erros com o motivo, e não pro job', async () => {
+    regrasAplicaveis.mockResolvedValueOnce([REGRA]);
+    const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
+
+    const resultado = await validarImportacao(TENANT, USUARIO, buffer, { mapeamento: MAPEAMENTO, estrategiaDuplicata: 'criar' });
+    expect(resultado.jobId).toBeNull();
+    expect(resultado.erros).toEqual([{ linha: LINHA_ANA, motivo: '"Cargo" é obrigatório por causa do valor de "Nome"' }]);
+    expect(criarImportJob).not.toHaveBeenCalled();
+  });
+
+  it('worker: atualizar que deixaria o lead violando a regra → linha com erro, nada gravado', async () => {
+    regrasAplicaveis.mockResolvedValueOnce([REGRA]);
+    buscarImportJobComPayload.mockResolvedValue({
+      id: JOB,
+      status: 'processando',
+      estrategia_duplicata: 'atualizar',
+      usuario_id: USUARIO,
+      acoes: {},
+      payload: [{ linha: LINHA_ANA, dados: { nome: 'Ana' } }],
+    });
+    encontrarDuplicados.mockResolvedValue([{ id: 'lead-1', nome: 'Ana', campos: [], acao: 'warn' }]);
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', cargo: null, custom_fields: {} });
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(atualizarLead).not.toHaveBeenCalled();
+    expect(registrarProgresso.mock.calls.at(-1)[2]).toMatchObject({
+      linhasComErro: 1,
+      relatorioErro: [{ linha: LINHA_ANA, motivo: expect.stringContaining('"Cargo" é obrigatório') }],
+    });
   });
 });

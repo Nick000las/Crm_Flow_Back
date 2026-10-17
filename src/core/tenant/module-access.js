@@ -62,6 +62,23 @@ export async function listarTenantsDoModulo(moduleKey) {
 }
 
 /**
+ * Tenants com o módulo ativo (não desligado, tenant não cancelado), com o
+ * fuso de cada um — pra job que fala com o usuário no horário local dele
+ * (ex.: o resumo diário do CRM às 8h). Sem cache: roda em worker.
+ *
+ * @param {string} moduleKey
+ * @returns {Promise<{ tenantId: string, fusoHorario: string }[]>}
+ */
+export async function listarTenantsAtivosDoModulo(moduleKey) {
+  const linhas = await getAdminClient().tenantModule.findMany({
+    where: { moduleKey, disabledAt: null, tenant: { canceladoEm: null } },
+    select: { tenantId: true, tenant: { select: { fusoHorario: true } } },
+    orderBy: { tenantId: 'asc' },
+  });
+  return linhas.map((linha) => ({ tenantId: linha.tenantId, fusoHorario: linha.tenant.fusoHorario }));
+}
+
+/**
  * @param {string} tenantId
  * @param {string} moduleKey
  * @returns {Promise<boolean>}

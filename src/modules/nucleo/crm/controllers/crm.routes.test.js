@@ -6,7 +6,7 @@ import { loadEnv } from '#core/config/env.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { EXPORTACAO } from '../constants.js';
+import { DIAS_ESFRIAR, EXPORTACAO } from '../constants.js';
 import { editarDefinicao } from '../services/field-definitions.service.js';
 import { atualizarOpcao, criarOpcao, listarListas } from '../services/listas.service.js';
 import { removerMeu, salvarMeu, salvarPadrao } from '../services/layout.service.js';
@@ -15,6 +15,12 @@ import { exportarLeads } from '../services/export.service.js';
 import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
 import { editarAtividade, registrarAtividade, removerAtividade } from '../services/atividades.service.js';
 import { listarHistorico } from '../services/historico.service.js';
+import { salvarRegras } from '../services/duplicidade.service.js';
+import { mesclarLeads } from '../services/mesclagem.service.js';
+import { criarRegra, editarRegra, removerRegra } from '../services/regras.service.js';
+import { salvarInatividade } from '../services/inatividade.service.js';
+import { checarDuplicados } from '../services/leads.service.js';
+import { confirmarImportacao } from '../services/import.service.js';
 import { previsualizarImportacao } from '../services/import.service.js';
 import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configuracoes-campos.service.js';
@@ -38,6 +44,7 @@ vi.mock('../services/leads.service.js', () => ({
   buscarLeadFormatado: vi.fn(),
   registrarNovoLead: vi.fn(),
   atualizarLeadExistente: vi.fn(),
+  checarDuplicados: vi.fn().mockResolvedValue({ duplicados: [] }),
   listarCamposDoTenant: vi.fn(),
   pesquisarLeads: vi.fn(),
 }));
@@ -67,6 +74,21 @@ vi.mock('../services/atividades.service.js', () => ({
   editarAtividade: vi.fn().mockResolvedValue({ id: 'at' }),
   removerAtividade: vi.fn().mockResolvedValue({ removido: true }),
 }));
+vi.mock('../services/duplicidade.service.js', () => ({
+  listarRegras: vi.fn().mockResolvedValue({ regras: [], configurado: false }),
+  salvarRegras: vi.fn().mockResolvedValue({ regras: [], configurado: true }),
+}));
+vi.mock('../services/inatividade.service.js', () => ({
+  listarInatividade: vi.fn().mockResolvedValue([]),
+  salvarInatividade: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../services/regras.service.js', () => ({
+  listarRegras: vi.fn().mockResolvedValue([]),
+  criarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
+  editarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
+  removerRegra: vi.fn().mockResolvedValue({ removido: true }),
+}));
+vi.mock('../services/mesclagem.service.js', () => ({ mesclarLeads: vi.fn().mockResolvedValue({ id: 'lead' }) }));
 vi.mock('../services/historico.service.js', () => ({ listarHistorico: vi.fn().mockResolvedValue({ itens: [] }) }));
 vi.mock('../services/arquivo.service.js', () => ({
   arquivarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
@@ -604,5 +626,198 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       headers: autorizado(tokenOperador),
     });
     expect(excessivo.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.duplicidade' }];
+  const OUTRO_LEAD = '00000000-0000-0000-0000-0000000000b2';
+  const LINHA = 12;
+
+  it('regras: sem a flag 403; OPERADOR lê mas não grava; DONO grava; campo repetido → 400', async () => {
+    const sem = await app.inject({ method: 'GET', url: '/crm/configuracoes/duplicidade', headers: autorizado(tokenDono) });
+    expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache();
+    const leitura = await app.inject({ method: 'GET', url: '/crm/configuracoes/duplicidade', headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
+    const regras = [{ campo: 'cnpj', acao: 'block', ativo: true }];
+    const operador = await app.inject({
+      method: 'PUT',
+      url: '/crm/configuracoes/duplicidade',
+      headers: autorizado(tokenOperador),
+      payload: { regras },
+    });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    const dono = await app.inject({ method: 'PUT', url: '/crm/configuracoes/duplicidade', headers: autorizado(tokenDono), payload: { regras } });
+    expect(dono.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarRegras).toHaveBeenCalledWith(TENANT, regras);
+
+    const repetido = await app.inject({
+      method: 'PUT',
+      url: '/crm/configuracoes/duplicidade',
+      headers: autorizado(tokenDono),
+      payload: { regras: [...regras, { campo: 'cnpj', acao: 'warn', ativo: false }] },
+    });
+    expect(repetido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('mesclar: OPERADOR → 403 (antes da flag); DONO com a flag → 200 com o autor', async () => {
+    const payload = { principalId: LEAD, secundarioId: OUTRO_LEAD, escolhas: { nome: 'secundario' } };
+    const operador = await app.inject({ method: 'POST', url: '/crm/leads/merge', headers: autorizado(tokenOperador), payload });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const dono = await app.inject({ method: 'POST', url: '/crm/leads/merge', headers: autorizado(tokenDono), payload });
+    expect(dono.statusCode).toBe(HTTP_STATUS.OK);
+    expect(mesclarLeads).toHaveBeenCalledWith(TENANT, payload, 'u-dono');
+
+    const escolhaInvalida = await app.inject({
+      method: 'POST',
+      url: '/crm/leads/merge',
+      headers: autorizado(tokenDono),
+      payload: { ...payload, escolhas: { nome: 'os-dois' } },
+    });
+    expect(escolhaInvalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('checagem ao vivo não exige a flag nem salva; campo extra → 400', async () => {
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/crm/leads/duplicados',
+      headers: autorizado(tokenOperador),
+      payload: { email: 'ana@x.com', leadId: LEAD },
+    });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(checarDuplicados).toHaveBeenCalledWith(TENANT, { email: 'ana@x.com', leadId: LEAD });
+
+    const extra = await app.inject({ method: 'POST', url: '/crm/leads/duplicados', headers: autorizado(tokenOperador), payload: { nome: 'x' } });
+    expect(extra.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('confirmar import aceita as ações por linha; ação inválida → 400', async () => {
+    const JOB_ID = '00000000-0000-0000-0000-0000000000c3';
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/crm/import/${JOB_ID}/confirm`,
+      headers: autorizado(tokenDono),
+      payload: { acoes: { [String(LINHA)]: 'atualizar' } },
+    });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(confirmarImportacao).toHaveBeenCalledWith(TENANT, JOB_ID, { acoes: { [String(LINHA)]: 'atualizar' } });
+
+    const invalida = await app.inject({
+      method: 'POST',
+      url: `/crm/import/${JOB_ID}/confirm`,
+      headers: autorizado(tokenDono),
+      payload: { acoes: { [String(LINHA)]: 'mesclar' } },
+    });
+    expect(invalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('Regras de campo (M8, flag crm.regras)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.regras' }];
+  const CAMPO = '00000000-0000-0000-0000-0000000000d1';
+  const OUTRO_CAMPO = '00000000-0000-0000-0000-0000000000d2';
+  const REGRA = '00000000-0000-0000-0000-0000000000d3';
+  const POR_STATUS = { kind: 'required_from_status', campoId: CAMPO, condicao: { categorias: ['perdido'] } };
+
+  it('sem a flag 403; OPERADOR lê mas não cria; DONO cria (201)', async () => {
+    const sem = await app.inject({ method: 'GET', url: '/crm/configuracoes/regras', headers: autorizado(tokenOperador) });
+    expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache();
+    const leitura = await app.inject({ method: 'GET', url: '/crm/configuracoes/regras', headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
+    const operador = await app.inject({ method: 'POST', url: '/crm/configuracoes/regras', headers: autorizado(tokenOperador), payload: POR_STATUS });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    const dono = await app.inject({ method: 'POST', url: '/crm/configuracoes/regras', headers: autorizado(tokenDono), payload: POR_STATUS });
+    expect(dono.statusCode).toBe(HTTP_STATUS.CREATED);
+    expect(criarRegra).toHaveBeenCalledWith(TENANT, POR_STATUS);
+  });
+
+  it('forma do body: tipo desconhecido, categoria inválida, operador fora do vocabulário ou campo extra → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const invalidos = [
+      { ...POR_STATUS, kind: 'required' },
+      { ...POR_STATUS, condicao: { categorias: ['fechado'] } },
+      { kind: 'conditional', campoId: CAMPO, condicao: { campoId: OUTRO_CAMPO, operador: 'parecido' }, efeito: { obrigatorio: true } },
+      { ...POR_STATUS, efeito: { obrigatorio: true } }, // efeito só existe na condicional
+    ];
+    for (const payload of invalidos) {
+      const resposta = await app.inject({ method: 'POST', url: '/crm/configuracoes/regras', headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode, JSON.stringify(payload)).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+    expect(criarRegra).not.toHaveBeenCalled();
+  });
+
+  it('editar (parcial) e excluir passam o id; edição vazia → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await app.inject({ method: 'PUT', url: `/crm/configuracoes/regras/${REGRA}`, headers: autorizado(tokenDono), payload: { ativo: false } });
+    expect(editarRegra).toHaveBeenCalledWith(TENANT, REGRA, { ativo: false });
+
+    const vazia = await app.inject({ method: 'PUT', url: `/crm/configuracoes/regras/${REGRA}`, headers: autorizado(tokenDono), payload: {} });
+    expect(vazia.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+
+    await app.inject({ method: 'DELETE', url: `/crm/configuracoes/regras/${REGRA}`, headers: autorizado(tokenDono) });
+    expect(removerRegra).toHaveBeenCalledWith(TENANT, REGRA);
+  });
+});
+
+describe('Inatividade (M9, flag crm.inatividade)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.inatividade' }];
+  const URL = '/crm/configuracoes/inatividade';
+  const DIA_FRACIONADO = 1.5;
+
+  it('sem a flag 403; OPERADOR lê mas não grava; DONO grava', async () => {
+    const sem = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache();
+    const leitura = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
+    const payload = { status: { novo: DIAS_ESFRIAR.MIN, proposta: null } };
+    const operador = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenOperador), payload });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    const dono = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload });
+    expect(dono.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarInatividade).toHaveBeenCalledWith(TENANT, payload);
+  });
+
+  it('forma do body: mapa vazio, dias fora de 1–365, fracionado ou texto → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const invalidos = [
+      { status: {} },
+      { status: { novo: DIAS_ESFRIAR.MIN - 1 } },
+      { status: { novo: DIAS_ESFRIAR.MAX + 1 } },
+      { status: { novo: DIA_FRACIONADO } },
+      { status: { novo: String(DIAS_ESFRIAR.MIN) } },
+      {},
+    ];
+    for (const payload of invalidos) {
+      const resposta = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode, JSON.stringify(payload)).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+    expect(salvarInatividade).not.toHaveBeenCalled();
+  });
+
+  it('a busca aceita `esfriando` e recusa valor que não é booleano', async () => {
+    const resposta = await app.inject({
+      method: 'POST',
+      url: '/crm/leads/search',
+      headers: autorizado(tokenOperador),
+      payload: { esfriando: 'sim' },
+    });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });

@@ -1,4 +1,4 @@
-import { AppError } from '#core/errors/app-error.js';
+import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarEstagiosPorTenant } from '../adapters/funil-estagios.repository.js';
@@ -6,13 +6,16 @@ import {
   criarImportJob,
   buscarImportJob,
   buscarImportJobComPayload,
+  definirAcoesDuplicata,
   transicionarStatus,
   registrarProgresso,
   marcarFalha,
 } from '../adapters/import-jobs.repository.js';
 import { enfileirarImportacao, encerrarFilaImportacao } from '../adapters/import-queue.repository.js';
-import { buscarLeadDuplicado, criarLead, atualizarLead } from '../adapters/leads.repository.js';
+import { buscarLeadPorId, criarLead, atualizarLead } from '../adapters/leads.repository.js';
 import {
+  ACOES_DUPLICIDADE,
+  ACOES_IMPORT_DUPLICATA,
   CAMADA,
   CAMADA_2_COLUNA_PARA_CAMPO,
   CAMADA_2_METADADOS,
@@ -21,11 +24,13 @@ import {
   IMPORT_JOB_STATUS,
   IMPORTACAO,
 } from '../constants.js';
+import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
 import { customFieldsParaArmazenamento, exigidoNaCriacao, obterSchemaCampos } from './field-schema.service.js';
-import { listarCamposDoTenant } from './leads.service.js';
+import { diffDoLead } from './historico.service.js';
+import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { lerPlanilha } from './planilha.service.js';
-import { converterCelula, somenteDigitos, valorAusente } from './tipos-campo.service.js';
+import { converterCelula, valorAusente } from './tipos-campo.service.js';
 
 /**
  * SERVICE: importação de leads por planilha
@@ -81,7 +86,10 @@ export async function previsualizarImportacao(tenantId, buffer) {
  * @param {Buffer} buffer
  * @param {{ mapeamento: Record<string, string>, estrategiaDuplicata: string }} opcoes
  *   `mapeamento` é `{ colunaDaPlanilha: chaveDoCampo }`.
- * @returns {Promise<{ jobId: string | null, totalLinhas: number, linhasValidas: number, erros: ErroDeLinha[] }>}
+ * Também aponta, no passo Revisar (M7), as linhas que parecem com leads
+ * que já existem (`duplicados`), pelas regras de duplicidade do tenant.
+ *
+ * @returns {Promise<{ jobId: string | null, totalLinhas: number, linhasValidas: number, erros: ErroDeLinha[], duplicados: object[] }>}
  */
 export async function validarImportacao(tenantId, usuarioId, buffer, { mapeamento, estrategiaDuplicata }) {
   const [{ colunas, linhas }, campos, estagios] = await Promise.all([
@@ -94,32 +102,52 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
   validarMapeamento(mapeamento, colunas, campos, campoPorChave);
 
   const estagioPorNome = new Map(estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]));
+  // Regras do M8: a linha é avaliada como lead novo (o Revisar mostra a violação).
+  const schema = await obterSchemaCampos(tenantId);
+  const regrasCampos = await regrasAplicaveis(tenantId, schema);
 
   /** @type {ErroDeLinha[]} */
   const erros = [];
   const payload = [];
   for (const linha of linhas) {
     const resultado = converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome);
+    const violacoes = resultado.erros.length > 0 ? [] : errosDasRegras(schema, regrasCampos, resultado.dados);
     if (resultado.erros.length > 0) {
       erros.push(...resultado.erros);
+    } else if (violacoes.length > 0) {
+      erros.push(...violacoes.map((violacao) => ({ linha: linha.numero, motivo: violacao.mensagem })));
     } else {
       payload.push({ linha: linha.numero, dados: resultado.dados });
     }
   }
 
   if (payload.length === 0) {
-    return { jobId: null, totalLinhas: linhas.length, linhasValidas: 0, erros };
+    return { jobId: null, totalLinhas: linhas.length, linhasValidas: 0, erros, duplicados: [] };
   }
 
-  const { id: jobId } = await criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, payload });
-  return { jobId, totalLinhas: linhas.length, linhasValidas: payload.length, erros };
+  const duplicados = await duplicadosDasLinhas(tenantId, payload, await regrasDoImport(tenantId));
+  // A ação da regra fica na linha: o confirm não deixa "criar" onde bloqueia.
+  const acaoPorLinha = new Map(duplicados.map((duplicado) => [duplicado.linha, duplicado.acao]));
+  const payloadMarcado = payload.map((item) =>
+    acaoPorLinha.has(item.linha) ? { ...item, duplicata: acaoPorLinha.get(item.linha) } : item,
+  );
+
+  const { id: jobId } = await criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, payload: payloadMarcado });
+  return { jobId, totalLinhas: linhas.length, linhasValidas: payload.length, erros, duplicados };
 }
 
 /**
+ * `acoes` (M7, opcional): o que fazer com cada linha duplicada apontada no
+ * validate — `{ "<linha>": "pular" | "atualizar" | "criar" }`. Linha sem
+ * ação segue a `estrategiaDuplicata` do job. "criar" onde a regra bloqueia → 400.
+ *
  * @param {string} tenantId
  * @param {string} jobId
+ * @param {{ acoes?: Record<string, string> }} [opcoes]
  */
-export async function confirmarImportacao(tenantId, jobId) {
+export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
+  if (acoes && Object.keys(acoes).length > 0) await gravarAcoes(tenantId, jobId, acoes);
+
   const transicionou = await transicionarStatus(
     tenantId,
     jobId,
@@ -150,6 +178,31 @@ export async function confirmarImportacao(tenantId, jobId) {
   }
 
   return obterStatusImportacao(tenantId, jobId);
+}
+
+/**
+ * @param {string} tenantId
+ * @param {string} jobId
+ * @param {Record<string, string>} acoes
+ */
+async function gravarAcoes(tenantId, jobId, acoes) {
+  const job = await buscarImportJobComPayload(tenantId, jobId);
+  if (!job) await obterStatusImportacao(tenantId, jobId); // 404
+  const duplicataPorLinha = new Map(
+    job.payload.filter((item) => item.duplicata).map((item) => [String(item.linha), item.duplicata]),
+  );
+
+  for (const [linha, acao] of Object.entries(acoes)) {
+    const duplicata = duplicataPorLinha.get(linha);
+    if (!duplicata) {
+      throw erroDeValidacao('acoes', `A linha ${linha} não foi apontada como duplicada`);
+    }
+    if (acao === ACOES_IMPORT_DUPLICATA.CRIAR && duplicata === ACOES_DUPLICIDADE.BLOQUEAR) {
+      throw erroDeValidacao('acoes', `A linha ${linha} repete um lead existente e a regra não deixa criar outro`);
+    }
+  }
+  // Só grava com o job pendente; já confirmado cai no 409 da transição logo depois.
+  await definirAcoesDuplicata(tenantId, jobId, acoes);
 }
 
 /**
@@ -194,24 +247,38 @@ export async function processarImportacao(tenantId, jobId) {
   try {
     // O payload guarda `customFields` por `chave` (validado no request);
     // as definições de AGORA dão o `id` com que ele é gravado.
-    const [[estagioPadrao], { definicoes }] = await Promise.all([
+    const [[estagioPadrao], schema, regras] = await Promise.all([
       buscarEstagiosPorTenant(tenantId),
       obterSchemaCampos(tenantId),
+      regrasDoImport(tenantId),
     ]);
+    const { definicoes } = schema;
+    const regrasCampos = await regrasAplicaveis(tenantId, schema);
+    const acoes = job.acoes ?? {};
 
     for (const item of job.payload) {
       try {
-        const dados = reviverDatas(item.dados);
+        const dadosApi = reviverDatas(item.dados);
+        const dados = { ...dadosApi };
         if (dados.customFields !== undefined) {
           dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
         }
-        const resultado = await importarLinha(
-          tenantId,
-          dados,
-          job.estrategia_duplicata,
-          { estagioPadraoId: estagioPadrao?.id ?? null, responsavelPadraoId: job.usuario_id },
-        );
+        const { resultado, motivo } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
+          estagioPadraoId: estagioPadrao?.id ?? null,
+          responsavelPadraoId: job.usuario_id,
+          regras,
+          // Atualizar um existente: regras do M8 contra o lead resultante.
+          validarAtualizacao: async (leadId) => {
+            if (regrasCampos.length === 0) return null;
+            const atual = await buscarLeadPorId(tenantId, leadId);
+            const [violacao] = atual
+              ? errosDasRegras(schema, regrasCampos, aplicarEdicao(leadParaApi(atual, schema), dadosApi))
+              : [];
+            return violacao?.mensagem ?? null;
+          },
+        });
         progresso[resultado] += 1;
+        if (motivo) progresso.relatorioErro.push({ linha: item.linha, motivo });
       } catch (erro) {
         progresso.linhasComErro += 1;
         progresso.relatorioErro.push({ linha: item.linha, motivo: motivoDoErro(erro) });
@@ -236,36 +303,62 @@ export function encerrarImportacao() {
 }
 
 /**
+ * Duplicado (M7) = lead que casa com alguma regra ativa, conferido de novo
+ * aqui (pega também a linha repetida dentro da própria planilha, criada
+ * logo antes). Com duplicado: `pular` ignora, `atualizar` atualiza o mais
+ * antigo, `criar` cria — menos quando a regra bloqueia: aí a linha é
+ * ignorada com o motivo no relatório. Quem importou é o autor no histórico.
+ *
  * @param {string} tenantId
- * @param {Record<string, unknown>} dados
- * @param {string} estrategia `pular` | `atualizar` | `criar`
- * @param {{ estagioPadraoId: string | null, responsavelPadraoId: string }} padroes
- *   aplicados só em lead novo — quem importou vira o responsável
- * @returns {Promise<'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas'>}
+ * @param {Record<string, unknown>} dadosDaPlanilha
+ * @param {string} acao `pular` | `atualizar` | `criar`
+ * @param {{
+ *   estagioPadraoId: string | null,
+ *   responsavelPadraoId: string,
+ *   regras: import('./duplicidade.service.js').RegraDuplicidade[],
+ *   validarAtualizacao?: (leadId: string) => Promise<string | null>,
+ * }} contexto  estágio e responsável padrão só em lead novo — quem importou vira o
+ *   responsável; `validarAtualizacao` devolve o motivo se a atualização violar uma regra (M8)
+ * @returns {Promise<{ resultado: 'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas' | 'linhasComErro', motivo?: string }>}
  */
-async function importarLinha(tenantId, dadosDaPlanilha, estrategia, { estagioPadraoId, responsavelPadraoId }) {
+async function importarLinha(
+  tenantId,
+  dadosDaPlanilha,
+  acao,
+  { estagioPadraoId, responsavelPadraoId, regras, validarAtualizacao = async () => null },
+) {
   const dados = await comTagsResolvidas(tenantId, dadosDaPlanilha);
-  if (estrategia !== 'criar') {
-    const existente = await buscarLeadDuplicado(tenantId, {
-      email: /** @type {string | undefined} */ (dados.email),
-      telefoneDigitos: dados.telefone ? somenteDigitos(String(dados.telefone)) : null,
-    });
+  const historico = { autorId: responsavelPadraoId };
+  const [existente] = await encontrarDuplicados(tenantId, dados, { regras });
 
-    if (existente) {
-      if (estrategia === 'pular') return 'linhasIgnoradas';
+  if (existente) {
+    if (acao === ACOES_IMPORT_DUPLICATA.PULAR) return { resultado: 'linhasIgnoradas' };
+    if (acao === ACOES_IMPORT_DUPLICATA.ATUALIZAR) {
+      const violacao = await validarAtualizacao(existente.id);
+      if (violacao) return { resultado: 'linhasComErro', motivo: violacao };
       // Sem estágio padrão aqui de propósito: atualizar não pode mover o
       // lead de estágio só porque a planilha não tinha a coluna.
-      await atualizarLead(tenantId, existente.id, dados);
-      return 'linhasAtualizadas';
+      const ignorar = dados.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
+      await atualizarLead(tenantId, existente.id, dados, {
+        ...historico,
+        montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
+      });
+      return { resultado: 'linhasAtualizadas' };
+    }
+    if (existente.acao === ACOES_DUPLICIDADE.BLOQUEAR) {
+      return {
+        resultado: 'linhasIgnoradas',
+        motivo: `Já existe o lead "${existente.nome}" com ${existente.campos.map((campo) => campo.label).join(', ')}; a regra de duplicidade não deixa criar outro`,
+      };
     }
   }
 
-  await criarLead(tenantId, {
-    ...dados,
-    funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
-    usuarioResponsavelId: responsavelPadraoId,
-  });
-  return 'linhasCriadas';
+  await criarLead(
+    tenantId,
+    { ...dados, funilEstagioId: dados.funilEstagioId ?? estagioPadraoId, usuarioResponsavelId: responsavelPadraoId },
+    historico,
+  );
+  return { resultado: 'linhasCriadas' };
 }
 
 /**

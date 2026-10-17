@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0019 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4 (back e front), M5 e M6 em 2026-10-16 (faltam os fronts do M5 e do M6); próximo marco: M7.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9); próximo marco: M10.
 
 ## Contexto
 O CRM já tem:
@@ -410,10 +410,20 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Fase 2 da spec:** o "Nome + Empresa aproximado" (`pg_trgm`) fica atrás de um spike de extensão no Neon.
 
 **Checklist**
-- [ ] Os normalizadores têm casos com e sem 9 e com e sem +55 (teste puro).
-- [ ] `warn` deixa salvar, e `block` impede e oferece abrir o existente.
-- [ ] A mesclagem é atômica; se falhar no meio, nada muda (teste).
-- [ ] O import aplica as mesmas regras do form.
+- [x] Os normalizadores têm casos com e sem 9 e com e sem +55 (teste puro; as mesmas chaves conferidas contra as funções SQL no dev).
+- [x] `warn` deixa salvar (confirmando), e `block` impede e devolve o existente pra abrir (teste contra o banco).
+- [x] A mesclagem é atômica; se falhar no meio, nada muda (teste contra o banco: falha de FK depois de mover as atividades, e as atividades continuam no secundário).
+- [x] O import aplica as mesmas regras do form (teste contra o banco, incluindo a linha repetida dentro da planilha).
+
+**Como ficou (back, 2026-10-16):**
+- **Decisões do usuário:** "Avisar" pede confirmação antes de salvar (409 `DUPLICATE_WARNING`; salva com `ignorarDuplicados: true`); mesclar é só DONO/MASTER.
+- **Normalização no banco (migration 0020):** colunas geradas `dedup_email`, `dedup_telefone`, `dedup_cnpj`, `dedup_cpf`, com as funções IMMUTABLE `modulo_crm.chave_telefone` (só dígitos, sem 55, sem o 9 depois do DDD) e `chave_documento` (maiúsculas, só [0-9A-Z]: cobre o CNPJ alfanumérico). Índices `(tenant_id, coluna) WHERE deleted_at IS NULL`. Os normalizadores JS (`chaveTelefone`, `chaveDocumento`, `chaveEmail` em `tipos-campo.service.js`) são o espelho das funções SQL.
+- **Busca do identificador (M4):** CNPJ/CPF passam a usar `dedup_cnpj`/`dedup_cpf` com prefixo; os índices de dígitos da 0017 saíram. Com isso o CNPJ alfanumérico também é encontrado.
+- **Regras (`crm_duplicate_rule`):** uma por campo (`email`, `telefone`, `cnpj`, `cpf`), ação `warn`/`block`. Sem linha no banco: e-mail e telefone avisam, CNPJ e CPF desligados. Lixeira não conta, arquivado conta. O "Nome + Empresa aproximado" (D4, `pg_trgm`) não entrou: seria um campo novo de regra.
+- **Formulário e API:** `POST`/`PUT /crm/leads` checam depois do resto válido. No PUT, só o que muda de verdade (pela chave normalizada), sem contar o próprio lead. `POST /crm/leads/duplicados` checa sem salvar (lista vazia com a flag desligada). Candidatos em `error.details.duplicados`: `[{ id, nome, campos: [{ campo, label }], acao }]`, até 5.
+- **Import:** o validate devolve `duplicados` por linha (uma consulta pra planilha toda) e marca a linha no payload; o confirm aceita `acoes` por linha (`criar` onde bloqueia → 400). O worker confere de novo por linha, o que pega a repetição dentro da planilha; linha com bloqueio e ação `criar` é ignorada com o motivo no relatório. Sem a flag, o import usa as regras padrão (o dedup de antes, agora com e sem o 9). O import passou a gravar `criado`/`atualizado` no histórico, com quem importou de autor (pendência do M6).
+- **Mesclagem (`POST /crm/leads/merge`):** uma transação só. Trava os dois leads (ordem de id), monta os dados (função pura `montarMesclagem`: escolha por campo; sem escolha, o do principal ou o do secundário se o principal estiver vazio; tags unidas; última interação a mais recente), move atividades e eventos, atualiza o principal com o evento `mesclado` (diff + `detalhes.leadDescartadoId`/`nomeDescartado`; `crm_lead_event.detalhes` é novo) e manda o secundário pra lixeira com `mesclado_em_id`. Restaurar o descartado → 409. Toda leitura do lead traz `mesclado_em_nome` junto do `mesclado_em_id` (pedido do front em 2026-10-17, pra lixeira mostrar "Mesclado em {nome}"). A FK `mesclado_em_id` é `ON DELETE CASCADE` (migration 0021): apagar o principal por qualquer caminho leva o descartado junto, então um lead mesclado nunca fica com `mesclado_em_id` nulo (com SET NULL, o descartado viraria um lead comum restaurável e vazio).
+- **Rotas:** `GET`/`PUT /crm/configuracoes/duplicidade` (leitura qualquer papel, escrita DONO/MASTER) e `POST /crm/leads/merge` (DONO/MASTER), atrás de `crm.duplicidade`; `POST /crm/leads/duplicados` e o `ignorarDuplicados` não dependem da flag.
 
 ### M8. Obrigatoriedade por status e condicional (flag `crm.regras`)
 **Objetivo:** "Status = Perdido exige Motivo" e regras do tipo "se A = X, B fica visível e/ou obrigatório".
@@ -424,9 +434,19 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **8.4** Seed da regra `category=lost → motivo_perda obrigatório`, desligável.
 
 **Checklist**
-- [ ] Teste de que uma edição parcial que muda só o status para "lost" sem motivo dá 400.
-- [ ] O import reporta a linha que viola uma regra.
-- [ ] A função pura do front e o Zod do back concordam (mesmos casos de teste nos dois lados).
+- [x] Teste de que uma edição parcial que muda só o status para "lost" sem motivo dá 400 (unidade e contra o banco).
+- [x] O import reporta a linha que viola uma regra (validate: nos `erros` da linha; worker: atualização que violaria vai pro relatório e não grava).
+- [ ] A função pura do front e o avaliador do back concordam: os casos estão em `src/modules/nucleo/crm/testing/regras.casos.json` (17 casos, o back roda todos); falta o front rodar os mesmos.
+
+**Como ficou (back, 2026-10-17):**
+- **Decisões do usuário:** "obrigatório a partir de um status" = conjunto de status e/ou categorias (não depende da ordem dos status); uma condição por regra (pra "A ou C", duas regras pro mesmo campo).
+- **Schema (migration 0022):** `crm_field_rule` já existia vazia desde a 0012 (filha de `crm_field`, FK composta com o tenant); ganhou `effect`, `system_key` (unique parcial) e `updated_at`, e o CHECK de `kind` ficou só com `required_from_status` e `conditional` (o "sempre obrigatório" é o `is_required` do M2). Nomes de coluna em inglês, como a 0012.
+- **Formato:** `required_from_status` → `condition = { status?, categorias? }`, efeito sempre obrigatório; `conditional` → `condition = { campoId, operador, valor? }` com os operadores do filtro (validados pelo mesmo `montarCondicoes`), `effect = { obrigatorio?, visivel? }`. O alvo é `field_id` (o `id` de `crm_field`, mesma referência do layout).
+- **Avaliação (`regras-campos.service.js`, puro):** obrigatório = alguma regra com `obrigatorio` casa; oculto = o campo tem regra com `visivel` e nenhuma casa (só aparece quando...); oculto nunca é obrigatório. Contra o lead RESULTANTE: criação = payload; edição = lead atual + payload; import = a linha (validate) ou o lead mesclado (worker, ao atualizar). **Desvio do texto do plano:** em vez de gerar um Zod com `superRefine`, uma função pura de validação — mesmo efeito, no mesmo padrão de `validarObrigatoriosNaCriacao`, e é a mesma função que o front espelha.
+- **Regra semeada:** "categoria perdido → Motivo da perda obrigatório" (`system_key = motivo_perda_em_perdido`), pelo passo de reconcile `regras-padrao` e de forma preguiçosa na leitura do schema. Liga/desliga, não exclui (409). Só vale com o Motivo da perda ligado (Camada 2): regra cujo alvo ou campo da condição está desligado ou excluído some.
+- **Cache:** as regras moram no mesmo cache do schema (`crm:campos:<tenant>`); toda escrita de regra invalida.
+- **Flag `crm.regras` desligada:** nada é aplicado, nem a regra semeada (comportamento de antes).
+- **Rotas (`controllers/regras.controller.js`), atrás de `crm.regras`:** `GET /crm/configuracoes/regras` (qualquer papel — o formulário usa) e `POST`/`PUT /:id`/`DELETE /:id` (DONO/MASTER). **Ajuste do plano:** `GET /crm/leads/fields` NÃO ganhou `regras` (mudaria a resposta de lista pra objeto e quebraria o contrato); o formulário lê `GET /crm/configuracoes/regras`.
 
 ### M9. Lead esfriando (flag `crm.inatividade`)
 **Objetivo:** dias até esfriar por status, com indicador, filtro, view e notificação.
@@ -442,9 +462,20 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - Job diário às 8h no fuso do tenant (M0.3).
 
 **Checklist**
-- [ ] Teste do cálculo com relógio falso: limite, pausa por atividade agendada e reset por interação.
-- [ ] O job é idempotente e não gera notificação duplicada no mesmo dia.
-- [ ] O filtro "Esfriando" e o indicador batem com o cálculo do back.
+- [x] Teste do cálculo com relógio falso: limite, pausa por atividade agendada e reset por interação (contra o banco, `agora` como parâmetro).
+- [x] O job é idempotente e não gera notificação duplicada no mesmo dia (unique `chave_dedup` com a data local; teste contra o banco roda duas vezes).
+- [x] O filtro "Esfriando" e o indicador batem com o cálculo do back (mesma expressão SQL; o front não calcula, só mostra `esfriando_desde`).
+
+**Como ficou (back, 2026-10-17):**
+- **Decisões do usuário:** calcular na leitura (sem `stale_since` gravado nem job de recálculo); resumo diário por usuário ("Você tem N leads esfriando"); os esfriando sem responsável (ou com responsável desativado) vão num resumo à parte pros DONOs ativos. D5 fechada: notificação no core.
+- **Desvios do plano/spec:** (1) **nada é gravado no lead** — `esfriando_desde` sai de uma expressão SQL única (`adapters/crm-inatividade.sql.js`), usada pela leitura, pelo filtro e pelo job; mudar o relógio, os dias ou uma atividade vale na próxima leitura. (2) **Sem `crm_stale_config`**: os dias são a coluna `crm_option.stale_days` (só status; NULL = desligado), que segue o ciclo de vida da opção.
+- **Regra:** base = `GREATEST(COALESCE(ultima_interacao_em, created_at), maior agendada_para de atividade em aberto)`; esfria em base + dias. Atividade agendada pausa até a data dela; vencida e não concluída conta dali. Reset = o que já mexe em `ultima_interacao_em` (status, atividade concluída — D1). Arquivado/lixeira nunca esfria.
+- **Seed:** sugestões da spec (novo 1, em contato 3, qualificado 5, proposta 7, negociação 7; ganho/perdido desligados) — pela migration 0023 nos tenants existentes e pelo reconcile das listas nos novos. Status criado pelo DONO nasce desligado.
+- **Flag `crm.inatividade` desligada:** a expressão nem entra na query (`esfriando_desde: null`), `esfriando: true` na busca → 403, a view do sistema some e o job pula o tenant.
+- **Filtro e view:** `esfriando: true` no filtro (busca, export, views salvas). A view "Esfriando" é do sistema (`id: 'esfriando'`, `sistema: true`), não fica no banco e vem primeiro em `GET /crm/filter-views`.
+- **Config:** `GET /crm/configuracoes/inatividade` (qualquer papel) e `PUT` (DONO/MASTER) com `{ status: { <key>: dias | null } }`, dias 1–365; dias em status ganho/perdido → 400.
+- **Notificações (core):** tabela `public.notificacoes` (RLS + GRANT explícito ao `app_tenant`), `#core/notificacoes` (`criarNotificacoes` idempotente por `chave_dedup`) e rotas `GET /notificacoes`, `POST /notificacoes/:id/lida`, `POST /notificacoes/lidas` (só as do usuário do token).
+- **Job:** `crm-manutencao`, de hora em hora (`notificar-esfriando`); em cada tenant com o CRM ativo e a flag ligada, só a partir das 8h no fuso do tenant; chave `crm.esfriando:<data local>`. O worker despacha os jobs da fila pelo nome.
 
 ### M10. Edição em massa, exportação aprimorada e primeiro nome (flag `crm.massa`)
 - **10.1** Checkbox na tabela e uma barra de ações: Status, Responsável, Tags e Origem (depois, campos personalizados).
@@ -544,7 +575,7 @@ Pendente/decisão do usuário: órfãos no dev (2 leads, 4 estágios sem tenant;
 - **D2 (M1):** o contrato HTTP continua com `chave` e só o armazenamento usa `id`? Recomendado: sim.
 - ~~**D3 (M3):** adotar ou não a FK composta, depois do spike no Neon.~~ **Fechada em 2026-10-15:** não adotada (ver M3, "Como ficou").
 - **D4 (M7):** `pg_trgm` disponível no plano do Neon, para o "Nome + Empresa aproximado".
-- **D5 (M9/M12):** a notificação in-app fica no core (servindo outros módulos) ou no CRM? Recomendado: core.
+- ~~**D5 (M9/M12):** a notificação in-app fica no core (servindo outros módulos) ou no CRM?~~ **Fechada em 2026-10-17:** core (`#core/notificacoes`, ver M9, "Como ficou").
 - **D6 (Kanban):** o identificador do layout vale nos cards do Kanban quando a integração existir. Fica fora deste plano.
 
 ## Verificação geral

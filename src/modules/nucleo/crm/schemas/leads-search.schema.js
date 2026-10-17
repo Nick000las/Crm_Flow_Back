@@ -34,6 +34,8 @@ export const filtroLeadsSchema = z.object({
       errorMap: () => ({ message: `Situação deve ser uma de: ${LISTA_SITUACOES_LEAD.join(', ')}` }),
     })
     .optional(),
+  // M9: só os leads esfriando agora. Exige `crm.inatividade`.
+  esfriando: z.boolean({ invalid_type_error: 'Esfriando deve ser verdadeiro ou falso' }).optional(),
   filtros: z
     .array(filtroCampoSchema)
     .max(BUSCA_LEADS.MAX_FILTROS, `Use no máximo ${BUSCA_LEADS.MAX_FILTROS} filtros`)

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   registrarNovoLead,
   buscarLeadFormatado,
@@ -15,6 +15,8 @@ import {
 } from '../adapters/leads.repository.js';
 import { CAMADA, CRM_FEATURES } from '../constants.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { buscarCandidatos, buscarRegras } from '../adapters/crm-duplicates.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
@@ -24,11 +26,21 @@ vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
 vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn() }));
 // Arquivo (M5) ligado; os testes de situação estão em arquivo.service.test.js.
-vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn().mockResolvedValue(true), garantirFeature: vi.fn() }));
+// Flags: todas ligadas, menos `crm.duplicidade` e `crm.inatividade`
+// (testadas nos blocos do M7 e do M9).
+vi.mock('#core/tenant/feature-flags.js', () => ({
+  featureAtiva: vi.fn(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave)),
+  garantirFeature: vi.fn(),
+}));
+vi.mock('../adapters/crm-duplicates.repository.js', () => ({ buscarRegras: vi.fn(), buscarCandidatos: vi.fn() }));
 
 // Configuração da Camada 2 que o resolver devolveria (`visibilidade`); cada
 // teste define a sua. Default: nenhuma coluna de Camada 2 configurada.
-const { listarVisibilidadeDoTenant } = vi.hoisted(() => ({ listarVisibilidadeDoTenant: vi.fn() }));
+const { listarVisibilidadeDoTenant, regrasDoTeste } = vi.hoisted(() => ({
+  listarVisibilidadeDoTenant: vi.fn(),
+  // Regras do M8 que o schema devolve (resolvidas); cada bloco define as suas.
+  regrasDoTeste: { valor: [] },
+}));
 
 
 // O service lê o schema do resolver; aqui ele é montado com as funções
@@ -43,7 +55,13 @@ vi.mock('./field-schema.service.js', async (importOriginal) => {
       const [vis, defs] = await Promise.all([listarVisibilidadeDoTenant(tenantId), definicoes(tenantId)]);
       const { opcoesSemeadas } = await import('../testing/listas.fixture.js');
       const listas = real.agruparPorLista(opcoesSemeadas());
-      return { visibilidade: vis, definicoes: defs, listas, campos: real.montarCampos(vis, defs, {}, listas) };
+      return {
+        visibilidade: vis,
+        definicoes: defs,
+        listas,
+        campos: real.montarCampos(vis, defs, {}, listas),
+        regras: regrasDoTeste.valor,
+      };
     }),
   };
 });
@@ -224,7 +242,7 @@ describe('pesquisarLeads', () => {
     // 1ª condição é a situação (M5); o filtro vem depois.
     expect(condicoes[0].sql).toContain('l.deleted_at IS NULL');
     expect(condicoes[1].sql).toContain('l.empresa ILIKE');
-    expect(paginacao).toEqual({ limite: TAMANHO, offset: TAMANHO });
+    expect(paginacao).toEqual({ limite: TAMANHO, offset: TAMANHO, inatividade: null });
     expect(resultado).toMatchObject({ total: TOTAL, pagina: PAGINA, tamanho: TAMANHO });
     expect(resultado.itens[0]).not.toHaveProperty('cpf');
     expect(resultado.itens[0].empresa).toBe('ACME');
@@ -322,6 +340,7 @@ describe('responsável pelo lead', () => {
       'lead-1',
       { usuarioResponsavelId: 'usuario-2' },
       expect.objectContaining({ autorId: null, montarDiff: expect.any(Function) }),
+      { inatividade: null },
     );
   });
 });
@@ -528,5 +547,145 @@ describe('listas configuráveis (M3)', () => {
       expect.objectContaining({ key: 'feira_2026', label: 'Feira 2026' }),
     ]);
     expect(criarLead.mock.calls[0][1].tags).toEqual(['feira_2026']);
+  });
+});
+
+describe('duplicidade no formulário (M7)', () => {
+  const ANA = { id: 'lead-ana', nome: 'Ana', campos: ['email'] };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listarVisibilidadeDoTenant.mockResolvedValue([]);
+    featureAtiva.mockImplementation(async () => true);
+    buscarRegras.mockResolvedValue([]);
+    buscarCandidatos.mockResolvedValue([ANA]);
+  });
+
+  afterEach(() => {
+    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+  });
+
+  it('criar com parecido: 409 DUPLICATE_WARNING; confirmando, salva', async () => {
+    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com' })).rejects.toMatchObject({
+      code: 'DUPLICATE_WARNING',
+    });
+    expect(criarLead).not.toHaveBeenCalled();
+
+    await registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', ignorarDuplicados: true });
+    expect(criarLead).toHaveBeenCalledTimes(1);
+    expect(criarLead.mock.calls[0][1]).not.toHaveProperty('ignorarDuplicados');
+  });
+
+  it('editar sem mudar e-mail (só a caixa) não checa; mudar checa sem contar o próprio lead', async () => {
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', email: 'ana@x.com', telefone: null });
+    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
+
+    await atualizarLeadExistente('tenant-1', 'lead-1', { email: 'ANA@x.com' });
+    expect(buscarCandidatos).not.toHaveBeenCalled();
+
+    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { email: 'bia@x.com' })).rejects.toMatchObject({
+      code: 'DUPLICATE_WARNING',
+    });
+    expect(buscarCandidatos).toHaveBeenCalledWith('tenant-1', { email: 'bia@x.com' }, 'lead-1');
+  });
+});
+
+describe('regras de obrigatoriedade (M8)', () => {
+  const MOTIVO = { id: 'f-motivo', chave: 'motivoPerda', label: 'Motivo da perda', tipo: 'selecao', camada: CAMADA.CAMADA_2 };
+  const REGRA_MOTIVO = {
+    id: 'r-motivo',
+    kind: 'required_from_status',
+    ativo: true,
+    sistema: true,
+    alvo: MOTIVO,
+    condicao: { categorias: ['perdido'] },
+    efeito: { obrigatorio: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Motivo da perda (Camada 2) ligado — sem isso a regra nem resolveria.
+    listarVisibilidadeDoTenant.mockResolvedValue([{ coluna: 'motivo_perda', visivel: true, ordem: 0, obrigatorio: false }]);
+    regrasDoTeste.valor = [REGRA_MOTIVO];
+    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
+  });
+
+  afterEach(() => {
+    regrasDoTeste.valor = [];
+  });
+
+  it('edição parcial que só muda o status pra perdido, num lead sem motivo → 400 em motivoPerda', async () => {
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: null });
+    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido' })).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      fields: { motivoPerda: ['"Motivo da perda" é obrigatório quando o status é perdido'] },
+    });
+    expect(atualizarLead).not.toHaveBeenCalled();
+  });
+
+  it('com o motivo no payload, ou já no lead, passa', async () => {
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: null });
+    await atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido', motivoPerda: 'preco' });
+
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: 'preco' });
+    await atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido' });
+    expect(atualizarLead).toHaveBeenCalledTimes(['payload', 'lead'].length);
+  });
+
+  it('criar já perdido sem motivo → 400; com a flag desligada, passa', async () => {
+    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' })).rejects.toThrow(
+      'Motivo da perda',
+    );
+
+    featureAtiva.mockImplementation(async (_tenant, chave) => chave !== 'crm.regras' && chave !== 'crm.duplicidade');
+    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' })).resolves.toBeDefined();
+    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+  });
+});
+
+describe('lead esfriando (M9)', () => {
+  const TAMANHO_PAGINA = 10;
+  const PAGINACAO = { pagina: 1, tamanho: TAMANHO_PAGINA };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listarVisibilidadeDoTenant.mockResolvedValue([]);
+    featureAtiva.mockImplementation(async (_tenant, chave) => chave !== 'crm.duplicidade');
+    buscarLeadsComFiltro.mockResolvedValue({ total: 0, itens: [] });
+  });
+
+  afterEach(() => {
+    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+  });
+
+  it('com a flag, a busca lê com o relógio e o filtro "esfriando" vira condição', async () => {
+    await pesquisarLeads('tenant-1', { esfriando: true, filtros: [], paginacao: PAGINACAO });
+
+    const [, condicoes, opcoes] = buscarLeadsComFiltro.mock.calls[0];
+    expect(opcoes.inatividade).toBeInstanceOf(Date);
+    expect(condicoes.at(-1).sql).toContain('make_interval(days => o.stale_days)');
+    expect(garantirFeature).not.toHaveBeenCalled();
+  });
+
+  it('sem a flag, nada é calculado; pedir "esfriando" confere a flag (403)', async () => {
+    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+    await pesquisarLeads('tenant-1', { filtros: [], paginacao: PAGINACAO });
+    expect(buscarLeadsComFiltro.mock.calls[0][2].inatividade).toBeNull();
+
+    garantirFeature.mockRejectedValueOnce(new Error('403'));
+    await expect(
+      pesquisarLeads('tenant-1', { esfriando: true, filtros: [], paginacao: PAGINACAO }),
+    ).rejects.toThrow('403');
+    expect(garantirFeature).toHaveBeenCalledWith('tenant-1', CRM_FEATURES.INATIVIDADE);
+  });
+
+  it('o detalhe e a edição também leem com o relógio', async () => {
+    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null, esfriando_desde: null });
+    await buscarLeadFormatado('tenant-1', 'lead-1');
+    expect(buscarLeadPorId).toHaveBeenCalledWith('tenant-1', 'lead-1', { inatividade: expect.any(Date) });
+
+    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
+    await atualizarLeadExistente('tenant-1', 'lead-1', { nome: 'Ana B' });
+    expect(atualizarLead.mock.calls[0][4]).toEqual({ inatividade: expect.any(Date) });
   });
 });

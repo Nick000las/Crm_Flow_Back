@@ -1,4 +1,4 @@
-import { erroNaoEncontrado } from '#core/errors/app-error.js';
+import { erroDeConflito, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { listarTenantsDoModulo } from '#core/tenant/module-access.js';
 import {
   definirArquivamento,
@@ -65,6 +65,7 @@ export async function excluirLead(tenantId, leadId, usuarioId) {
 
 /**
  * Restaurar dentro do prazo; depois dele, o lead não existe mais (404).
+ * Lead descartado numa mesclagem não volta (409).
  *
  * @param {string} tenantId
  * @param {string} leadId
@@ -73,7 +74,12 @@ export async function excluirLead(tenantId, leadId, usuarioId) {
  */
 export async function restaurarLead(tenantId, leadId, usuarioId, agora = new Date()) {
   const historico = { autorId: usuarioId ?? null };
-  if (!(await restaurarDaLixeira(tenantId, leadId, inicioDaLixeira(agora), historico))) throw leadNaoEncontrado();
+  const restaurado = await restaurarDaLixeira(tenantId, leadId, inicioDaLixeira(agora), historico);
+  if (!restaurado) throw leadNaoEncontrado();
+  // Descartado numa mesclagem (M7): dados e histórico já estão no outro lead.
+  if (restaurado.mescladoEmId) {
+    throw erroDeConflito('id', `Este lead foi mesclado no lead ${restaurado.mescladoEmId} e não pode ser restaurado`);
+  }
   return buscarLeadFormatado(tenantId, leadId);
 }
 

@@ -17,11 +17,13 @@ import {
   obterSchemaCampos,
 } from './field-schema.service.js';
 import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
+import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicados } from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
-import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import { validarRegras } from './regras-campos.service.js';
 import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
-import { CAMADA, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEAD } from '../constants.js';
+import { CAMADA, CAMPOS_DUPLICIDADE, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEAD, TIPOS_LISTA } from '../constants.js';
 
 /**
  * Campos com regra própria de obrigatoriedade: `nome` é checado à parte e
@@ -43,7 +45,10 @@ const CHAVES_OBRIGATORIEDADE_PROPRIA = new Set(['nome', 'email', 'telefone']);
  * @returns {Promise<Lead>}
  */
 export async function buscarLeadFormatado(tenantId, leadId) {
-  const [lead, schema] = await Promise.all([buscarLeadPorId(tenantId, leadId), obterSchemaCampos(tenantId)]);
+  const [lead, schema] = await Promise.all([
+    relogioDaInatividade(tenantId).then((inatividade) => buscarLeadPorId(tenantId, leadId, { inatividade })),
+    obterSchemaCampos(tenantId),
+  ]);
 
   if (!lead) {
     throw leadNaoEncontrado();
@@ -60,7 +65,8 @@ export async function buscarLeadFormatado(tenantId, leadId) {
  * @returns {Promise<{ id: string }>}
  */
 export async function registrarNovoLead(tenantId, entrada, usuarioId) {
-  const input = comContatoNormalizado(entrada);
+  const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
+  const input = comContatoNormalizado(semFlagDeDuplicidade);
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
@@ -73,6 +79,8 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   // Criação exige todo campo obrigatório (nativo ou personalizado) do
   // formulário de criação — edição não (ver atualizarLeadExistente).
   validarObrigatoriosNaCriacao(schema.campos, input);
+  // Regras do M8 (por status e condicionais) sobre o lead que vai nascer.
+  lancarErroDasRegras(errosDasRegras(schema, await regrasAplicaveis(tenantId, schema), input));
   // Status/origem/motivo só com opção ativa; tags viram keys (M3).
   const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input);
 
@@ -80,6 +88,12 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   // escolhido explicitamente precisa ser conferido.
   if (input.usuarioResponsavelId && input.usuarioResponsavelId !== usuarioId) {
     await validarResponsavel(tenantId, input.usuarioResponsavelId);
+  }
+
+  // Duplicidade (M7) por último: só depois do resto válido, pra o aviso não
+  // aparecer num formulário que ainda tem erro.
+  if (await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE)) {
+    await garantirSemDuplicados(tenantId, input, { ignorarDuplicados });
   }
 
   // Tag nova entra na lista só quando tudo já foi validado.
@@ -106,7 +120,8 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
  * @returns {Promise<Lead>}
  */
 export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId) {
-  const input = comContatoNormalizado(entrada);
+  const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
+  const input = comContatoNormalizado(semFlagDeDuplicidade);
   if (input.nome !== undefined && input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
@@ -119,6 +134,7 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   // edição pode fazer é LIMPAR um campo (`null`) — isso sim é checado.
   validarCustomFields(definicoes, input.customFields);
   validarLimpezaDeObrigatorios(input, schema.campos, definicoes);
+  await validarRegrasNaEdicao(tenantId, leadId, input, schema);
   await validarContatoRestante(tenantId, leadId, input);
   // Opção inativa que o lead já tinha continua aceita (só aí o lead é lido).
   const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input, () =>
@@ -128,13 +144,17 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   if (input.usuarioResponsavelId) {
     await validarResponsavel(tenantId, input.usuarioResponsavelId);
   }
+  await validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplicados);
 
   await gravarTagsNovas(tenantId, tagsNovas);
   const ignorar = input.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
-  const leadAtualizado = await atualizarLeadRepository(tenantId, leadId, comCustomFieldsArmazenaveis(comListas, definicoes), {
-    autorId: usuarioId ?? null,
-    montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
-  });
+  const leadAtualizado = await atualizarLeadRepository(
+    tenantId,
+    leadId,
+    comCustomFieldsArmazenaveis(comListas, definicoes),
+    { autorId: usuarioId ?? null, montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }) },
+    { inatividade: await relogioDaInatividade(tenantId) },
+  );
 
   // UPDATE ... RETURNING sem linha = id não existe (ou não é deste
   // tenant) — mesmo padrão de field-definitions.service.js, sem query
@@ -144,6 +164,117 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   }
 
   return formatarLead(leadAtualizado, schema);
+}
+
+/**
+ * Regras ativas do M8 — vazio com a flag `crm.regras` desligada.
+ *
+ * @param {string} tenantId
+ * @param {import('./field-schema.service.js').SchemaCampos} schema
+ */
+export async function regrasAplicaveis(tenantId, schema) {
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.REGRAS))) return [];
+  return (schema.regras ?? []).filter((regra) => regra.ativo);
+}
+
+/**
+ * Erros das regras sobre um lead no formato da API (criação, edição
+ * mesclada, linha de import).
+ *
+ * @param {import('./field-schema.service.js').SchemaCampos} schema
+ * @param {import('./regras-campos.service.js').Regra[]} regras
+ * @param {Record<string, any>} lead
+ */
+export function errosDasRegras(schema, regras, lead) {
+  if (regras.length === 0) return [];
+  const listas = schema.listas ?? {};
+  const labelDoStatus = Object.fromEntries((listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => [opcao.key, opcao.label]));
+  return validarRegras(regras, lead, { categoriaDoStatus: categoriaDoStatus(listas, lead.status), labelDoStatus });
+}
+
+/**
+ * Linha do lead (colunas, `custom_fields` por id) → formato da API, só com
+ * os campos do schema — base da edição "atual + payload".
+ *
+ * @param {Record<string, any>} linha
+ * @param {import('./field-schema.service.js').SchemaCampos} schema
+ */
+export function leadParaApi(linha, { campos, definicoes }) {
+  const lead = Object.fromEntries(
+    campos.filter((campo) => campo.coluna).map((campo) => [campo.chave, linha[campo.coluna] ?? null]),
+  );
+  lead.customFields = customFieldsParaApi(definicoes, linha.custom_fields ?? {});
+  return lead;
+}
+
+/**
+ * Lead resultante de uma edição parcial: chave omitida mantém, `null`
+ * limpa; em `customFields`, o mesmo por chave.
+ *
+ * @param {Record<string, any>} atual  formato da API
+ * @param {Record<string, any>} input
+ */
+export function aplicarEdicao(atual, input) {
+  const definidos = Object.fromEntries(Object.entries(input).filter(([, valor]) => valor !== undefined));
+  return {
+    ...atual,
+    ...definidos,
+    customFields: { ...atual.customFields, ...(input.customFields ?? {}) },
+  };
+}
+
+/** @param {{ campo: string, mensagem: string }[]} erros */
+function lancarErroDasRegras(erros) {
+  if (erros.length > 0) throw erroDeValidacao(erros[0].campo, erros[0].mensagem);
+}
+
+/**
+ * Edição (M8): as regras valem contra o lead RESULTANTE — mudar só o status
+ * pra Perdido num lead sem motivo dá 400, mesmo sem o motivo no payload.
+ *
+ * @param {string} tenantId
+ * @param {string} leadId
+ * @param {AtualizarLeadInput} input
+ * @param {import('./field-schema.service.js').SchemaCampos} schema
+ */
+async function validarRegrasNaEdicao(tenantId, leadId, input, schema) {
+  const regras = await regrasAplicaveis(tenantId, schema);
+  if (regras.length === 0) return;
+  const atual = await buscarLeadPorId(tenantId, leadId);
+  if (!atual) throw leadNaoEncontrado();
+  lancarErroDasRegras(errosDasRegras(schema, regras, aplicarEdicao(leadParaApi(atual, schema), input)));
+}
+
+/**
+ * POST /crm/leads/duplicados — o formulário pergunta enquanto o usuário
+ * digita (M7). Não salva nada; com a flag desligada, nunca há candidatos.
+ *
+ * @param {string} tenantId
+ * @param {{ leadId?: string, email?: string, telefone?: string, cnpj?: string, cpf?: string }} input
+ */
+export async function checarDuplicados(tenantId, { leadId, ...dados }) {
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return { duplicados: [] };
+  return { duplicados: await encontrarDuplicados(tenantId, dados, { ignorarId: leadId ?? null }) };
+}
+
+/**
+ * Edição: só confere o que o payload muda em e-mail/telefone/CNPJ/CPF —
+ * o lead atual só é lido quando o payload traz algum desses.
+ *
+ * @param {string} tenantId
+ * @param {string} leadId
+ * @param {AtualizarLeadInput} input
+ * @param {boolean | undefined} ignorarDuplicados
+ */
+async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplicados) {
+  const tocaDuplicidade = Object.values(CAMPOS_DUPLICIDADE).some(({ chave }) => typeof input[chave] === 'string');
+  if (!tocaDuplicidade || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return;
+
+  const atual = await buscarLeadPorId(tenantId, leadId);
+  if (!atual) throw leadNaoEncontrado();
+  const alterados = camposDeDuplicidadeAlterados(input, atual);
+  if (Object.keys(alterados).length === 0) return;
+  await garantirSemDuplicados(tenantId, alterados, { ignorarId: leadId, ignorarDuplicados });
 }
 
 /**
@@ -189,17 +320,26 @@ export async function pesquisarLeads(tenantId, input) {
  * @param {{ limite: number, offset: number }} paginacao
  */
 export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
-  const [schema, identificador, comArquivo] = await Promise.all([
+  const [schema, identificador, comArquivo, inatividade] = await Promise.all([
     obterSchemaCampos(tenantId),
     identificadorDaBusca(tenantId),
     featureAtiva(tenantId, CRM_FEATURES.ARQUIVO),
+    relogioDaInatividade(tenantId),
   ]);
   // Arquivados e lixeira só existem com o arquivo ligado (M5).
   if (!comArquivo && filtro.situacao && filtro.situacao !== SITUACOES_LEAD.ATIVOS) {
     await garantirFeature(tenantId, CRM_FEATURES.ARQUIVO);
   }
-  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema), { identificador, comArquivo });
-  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, paginacao);
+  // "Esfriando" só existe com a inatividade ligada (M9).
+  if (!inatividade && filtro.esfriando) {
+    await garantirFeature(tenantId, CRM_FEATURES.INATIVIDADE);
+  }
+  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema), {
+    identificador,
+    comArquivo,
+    agora: inatividade ?? undefined,
+  });
+  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, { ...paginacao, inatividade });
 
   return {
     itens: itens.map((lead) => formatarLead(lead, schema)),
@@ -444,6 +584,17 @@ async function validarResponsavel(tenantId, usuarioId) {
       'Escolha um usuário ativo desta conta',
     );
   }
+}
+
+/**
+ * O "agora" do lead esfriando (M9) — `null` com a flag `crm.inatividade`
+ * desligada, e aí a leitura nem calcula (`esfriando_desde: null`).
+ *
+ * @param {string} tenantId
+ * @returns {Promise<Date | null>}
+ */
+async function relogioDaInatividade(tenantId) {
+  return (await featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE)) ? new Date() : null;
 }
 
 function leadNaoEncontrado() {

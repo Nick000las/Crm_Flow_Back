@@ -90,7 +90,7 @@ export function buscarTagsDosLeads(tenantId) {
  *
  * @param {string} tenantId
  * @param {string} kind
- * @param {{ key: string, label: string, color?: string | null, category?: string | null, position: number }[]} opcoes
+ * @param {{ key: string, label: string, color?: string | null, category?: string | null, staleDays?: number | null, position: number }[]} opcoes
  * @returns {Promise<OpcaoLista[]>} só as criadas agora
  */
 export function inserirOpcoes(tenantId, kind, opcoes) {
@@ -98,15 +98,16 @@ export function inserirOpcoes(tenantId, kind, opcoes) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_option (tenant_id, kind, key, label, color, category, position)
-      SELECT ${tenantId}::uuid, ${kind}, o.key, o.label, o.color, o.category, o.position
+      INSERT INTO modulo_crm.crm_option (tenant_id, kind, key, label, color, category, stale_days, position)
+      SELECT ${tenantId}::uuid, ${kind}, o.key, o.label, o.color, o.category, o.stale_days, o.position
       FROM unnest(
         ${opcoes.map((opcao) => opcao.key)}::varchar[],
         ${opcoes.map((opcao) => opcao.label)}::varchar[],
         ${opcoes.map((opcao) => opcao.color ?? null)}::varchar[],
         ${opcoes.map((opcao) => opcao.category ?? null)}::varchar[],
+        ${opcoes.map((opcao) => opcao.staleDays ?? null)}::int[],
         ${opcoes.map((opcao) => opcao.position)}::int[]
-      ) AS o(key, label, color, category, position)
+      ) AS o(key, label, color, category, stale_days, position)
       ON CONFLICT (tenant_id, kind, key) DO NOTHING
       RETURNING ${RETORNO_OPCAO_SQL}
     `,

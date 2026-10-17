@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, TIPOS_EVENTO_LEAD } from '../constants.js';
+import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
@@ -10,15 +11,28 @@ const FIRST_RESULT_INDEX = 0;
  * filtrada) — uma lista só, pra uma coluna nova não ficar faltando em uma
  * das três. Espera `l` = leads e `f` = funil_estagios (LEFT JOIN).
  */
-const COLUNAS_LEITURA = Prisma.sql`
+const COLUNAS_BASE = Prisma.sql`
   l.id, l.nome, l.telefone, l.email, l.valor, l.funil_estagio_id,
   l.fonte_lead, l.status, l.tags, l.ultima_interacao_em,
   l.empresa, l.cargo, l.cpf, l.cnpj, l.cidade, l.uf, l.cep, l.endereco,
   l.campanha_utm, l.data_conversao, l.probabilidade_fechamento,
   l.data_prevista_fechamento, l.motivo_perda, l.lead_score, l.proximo_followup,
   l.custom_fields, l.usuario_responsavel_id, f.nome AS estagio_nome,
-  l.created_at, l.updated_at, l.archived_at, l.deleted_at
+  l.created_at, l.updated_at, l.archived_at, l.deleted_at, l.mesclado_em_id,
+  (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id) AS mesclado_em_nome
 `;
+
+/**
+ * `inatividade` = o "agora" do cálculo do lead esfriando (M9) quando a
+ * flag está ligada; sem ele, `esfriando_desde` sai `null` sem custo.
+ *
+ * @param {Date | null} [inatividade]
+ */
+function colunasLeitura(inatividade = null) {
+  return Prisma.sql`${COLUNAS_BASE}, ${colunaEsfriandoDesde(inatividade)}`;
+}
+
+const COLUNAS_LEITURA = colunasLeitura();
 
 /**
  * Chaves editáveis por `atualizarLead` → coluna real. Única fonte de nome
@@ -50,13 +64,14 @@ const COLUNAS_UUID = new Set(['funilEstagioId', 'usuarioResponsavelId']);
  *
  * @param {string} tenantId
  * @param {string} leadId
+ * @param {{ inatividade?: Date | null }} [opcoes] ver `colunasLeitura`
  * @returns {Promise<Lead | undefined>}
  */
-export function buscarLeadPorId(tenantId, leadId) {
+export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${COLUNAS_LEITURA}
+      SELECT ${colunasLeitura(inatividade)}
       FROM modulo_crm.leads l
       LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
@@ -74,10 +89,11 @@ export function buscarLeadPorId(tenantId, leadId) {
  *
  * @param {string} tenantId
  * @param {Prisma.Sql[]} condicoes
- * @param {{ limite: number, offset: number }} paginacao
+ * @param {{ limite: number, offset: number, inatividade?: Date | null }} paginacao
+ *   `inatividade`: ver `colunasLeitura`
  * @returns {Promise<{ itens: Lead[], total: number }>}
  */
-export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset }) {
+export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inatividade = null }) {
   const where = Prisma.join([Prisma.sql`l.tenant_id = ${tenantId}::uuid`, ...condicoes], ' AND ');
 
   return getTenantClient(tenantId, async (tx) => {
@@ -87,7 +103,7 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset }) {
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT ${COLUNAS_LEITURA}
+      SELECT ${colunasLeitura(inatividade)}
       FROM modulo_crm.leads l
       LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
       WHERE ${where}
@@ -95,42 +111,6 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset }) {
       LIMIT ${limite} OFFSET ${offset}
     `;
     return { itens, total: contagem.total };
-  });
-}
-
-/**
- * Deduplicação do import: procura primeiro por e-mail (case-insensitive)
- * e, se não achar, por telefone comparando só os dígitos (o telefone é
- * gravado como veio, com ou sem máscara). Lead na lixeira não conta
- * (reimportar cria de novo); arquivado conta, porque continua existindo.
- *
- * @param {string} tenantId
- * @param {{ email?: string | null, telefoneDigitos?: string | null }} chaves
- * @returns {Promise<{ id: string } | undefined>}
- */
-export function buscarLeadDuplicado(tenantId, { email, telefoneDigitos }) {
-  return getTenantClient(tenantId, async (tx) => {
-    if (email) {
-      const [porEmail] = await tx.$queryRaw`
-        SELECT id FROM modulo_crm.leads
-        WHERE tenant_id = ${tenantId}::uuid AND lower(email) = lower(${email}) AND deleted_at IS NULL
-        LIMIT 1
-      `;
-      if (porEmail) return porEmail;
-    }
-
-    if (telefoneDigitos) {
-      const [porTelefone] = await tx.$queryRaw`
-        SELECT id FROM modulo_crm.leads
-        WHERE tenant_id = ${tenantId}::uuid
-          AND regexp_replace(telefone, '[^0-9]', '', 'g') = ${telefoneDigitos}
-          AND deleted_at IS NULL
-        LIMIT 1
-      `;
-      if (porTelefone) return porTelefone;
-    }
-
-    return undefined;
   });
 }
 
@@ -188,9 +168,10 @@ export function criarLead(tenantId, dados, historico) {
  * @param {string} leadId
  * @param {AtualizarLeadInput} dados
  * @param {{ autorId?: string | null, montarDiff: (antes: Lead, depois: Lead) => unknown[] }} [historico]
+ * @param {{ inatividade?: Date | null }} [opcoes] ver `colunasLeitura` (só a linha devolvida)
  * @returns {Promise<Lead | undefined>}
  */
-export function atualizarLead(tenantId, leadId, dados, historico) {
+export function atualizarLead(tenantId, leadId, dados, historico, { inatividade = null } = {}) {
   const atribuicoes = montarAtribuicoes(dados);
   return getTenantClient(tenantId, async (tx) => {
     let antes;
@@ -214,7 +195,7 @@ export function atualizarLead(tenantId, leadId, dados, historico) {
         WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
         RETURNING *
       )
-      SELECT ${COLUNAS_LEITURA}
+      SELECT ${colunasLeitura(inatividade)}
       FROM l
       LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
     `;
@@ -345,12 +326,100 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
       SET deleted_at = NULL
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
         AND deleted_at IS NOT NULL AND deleted_at >= ${excluidoDesde}
+        AND mesclado_em_id IS NULL
       RETURNING id
     `;
-    if (restaurado && historico) {
+    if (!restaurado) {
+      // Descartado numa mesclagem (M7): os dados e o histórico já estão no outro lead.
+      const [mesclado] = await tx.$queryRaw`
+        SELECT mesclado_em_id FROM modulo_crm.leads
+        WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
+          AND deleted_at >= ${excluidoDesde} AND mesclado_em_id IS NOT NULL
+      `;
+      return mesclado ? { mescladoEmId: mesclado.mesclado_em_id } : undefined;
+    }
+    if (historico) {
       await inserirEvento(tx, tenantId, leadId, { tipo: TIPOS_EVENTO_LEAD.RESTAURADO, autorId: historico.autorId });
     }
     return restaurado;
+  });
+}
+
+/**
+ * Mesclagem (M7), tudo numa transação — se qualquer passo falhar, nada
+ * muda. Ordem:
+ * 1. trava os dois leads (ordem de id, pra duas mesclagens cruzadas não
+ *    travarem uma à outra) — os dois fora da lixeira, senão `undefined`;
+ * 2. `montar(principal, secundario)` (função pura do service) dá os dados
+ *    finais do principal;
+ * 3. atividades e eventos do secundário passam pro principal;
+ * 4. UPDATE do principal + evento `mesclado` (diff + id do descartado);
+ * 5. secundário pra lixeira com `mesclado_em_id` + evento `excluido`.
+ *
+ * @param {string} tenantId
+ * @param {{ principalId: string, secundarioId: string }} ids
+ * @param {{
+ *   autorId?: string | null,
+ *   montar: (principal: Lead, secundario: Lead) => AtualizarLeadInput,
+ *   montarDiff: (antes: Lead, depois: Lead) => unknown[],
+ * }} opcoes
+ * @returns {Promise<Lead | undefined>} o principal depois da mesclagem
+ */
+export function mesclarLeads(tenantId, { principalId, secundarioId }, { autorId = null, montar, montarDiff }) {
+  return getTenantClient(tenantId, async (tx) => {
+    const travados = await tx.$queryRaw`
+      SELECT ${COLUNAS_LEITURA}
+      FROM modulo_crm.leads l
+      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+      WHERE l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
+        AND l.id IN (${principalId}::uuid, ${secundarioId}::uuid)
+      ORDER BY l.id
+      FOR UPDATE OF l
+    `;
+    const principal = travados.find((lead) => lead.id === principalId);
+    const secundario = travados.find((lead) => lead.id === secundarioId);
+    if (!principal || !secundario) return undefined;
+
+    const dados = montar(principal, secundario);
+
+    await tx.$executeRaw`
+      UPDATE modulo_crm.crm_activity SET lead_id = ${principalId}::uuid
+      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${secundarioId}::uuid
+    `;
+    await tx.$executeRaw`
+      UPDATE modulo_crm.crm_lead_event SET lead_id = ${principalId}::uuid
+      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${secundarioId}::uuid
+    `;
+
+    const [depois] = await tx.$queryRaw`
+      WITH l AS (
+        UPDATE modulo_crm.leads
+        SET ${Prisma.join(montarAtribuicoes(dados), ', ')}
+        WHERE id = ${principalId}::uuid AND tenant_id = ${tenantId}::uuid
+        RETURNING *
+      )
+      SELECT ${COLUNAS_LEITURA}
+      FROM l
+      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+    `;
+    await inserirEvento(tx, tenantId, principalId, {
+      tipo: TIPOS_EVENTO_LEAD.MESCLADO,
+      autorId,
+      diff: montarDiff(principal, depois),
+      detalhes: { leadDescartadoId: secundarioId, nomeDescartado: secundario.nome },
+    });
+
+    await tx.$executeRaw`
+      UPDATE modulo_crm.leads
+      SET deleted_at = now(), mesclado_em_id = ${principalId}::uuid
+      WHERE id = ${secundarioId}::uuid AND tenant_id = ${tenantId}::uuid
+    `;
+    await inserirEvento(tx, tenantId, secundarioId, {
+      tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
+      autorId,
+      detalhes: { mescladoEmId: principalId },
+    });
+    return depois;
   });
 }
 

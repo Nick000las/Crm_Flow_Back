@@ -1,4 +1,5 @@
 import { AppError } from '#core/errors/app-error.js';
+import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import {
@@ -9,7 +10,7 @@ import {
 } from '../adapters/filter-views.repository.js';
 import { listarCamposDoTenant } from './leads.service.js';
 import { montarCondicoes } from './lead-filter.service.js';
-import { CONTEXTOS_VISIBILIDADE } from '../constants.js';
+import { CONTEXTOS_VISIBILIDADE, CRM_FEATURES, VIEW_ESFRIANDO } from '../constants.js';
 
 /**
  * SERVICE: views de filtro salvas (docs/crm/plano-campos-filtros-import-export.md §2.5).
@@ -21,12 +22,20 @@ import { CONTEXTOS_VISIBILIDADE } from '../constants.js';
  */
 
 /**
+ * As views do usuário. Com a inatividade ligada (M9), a view do sistema
+ * "Esfriando" vem primeiro — não fica no banco (`sistema: true`, id fixo
+ * `esfriando`), então não pode ser excluída nem renomeada.
+ *
  * @param {string} tenantId
  * @param {string} usuarioId
- * @returns {Promise<FilterView[]>}
+ * @returns {Promise<(FilterView | typeof VIEW_ESFRIANDO)[]>}
  */
-export function listarViews(tenantId, usuarioId) {
-  return buscarViewsDoUsuario(tenantId, usuarioId);
+export async function listarViews(tenantId, usuarioId) {
+  const [views, comInatividade] = await Promise.all([
+    buscarViewsDoUsuario(tenantId, usuarioId),
+    featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE),
+  ]);
+  return comInatividade ? [VIEW_ESFRIANDO, ...views] : views;
 }
 
 /**

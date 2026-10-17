@@ -1,0 +1,797 @@
+{
+  "_sobre": "Casos compartilhados entre o avaliador de regras do back (services/regras-campos.service.js, avaliarRegras) e a função pura do front (M8). Os dois lados rodam todos os casos: `regras` já vêm resolvidas (formato de GET /crm/configuracoes/regras), `lead` no formato da API (personalizado em customFields[chave]) e `contexto.categoriaDoStatus` é a categoria do status do lead. `esperado` lista as chaves em ordem alfabética.",
+  "casos": [
+    {
+      "nome": "categoria perdido exige o motivo",
+      "regras": [
+        {
+          "id": "r-motivo",
+          "kind": "required_from_status",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-motivo",
+            "chave": "motivoPerda",
+            "label": "Motivo da perda",
+            "tipo": "selecao",
+            "camada": 2
+          },
+          "condicao": {
+            "categorias": [
+              "perdido"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "status": "perdido"
+      },
+      "contexto": {
+        "categoriaDoStatus": "perdido"
+      },
+      "esperado": {
+        "obrigatorios": [
+          "motivoPerda"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "status em aberto não exige o motivo",
+      "regras": [
+        {
+          "id": "r-motivo",
+          "kind": "required_from_status",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-motivo",
+            "chave": "motivoPerda",
+            "label": "Motivo da perda",
+            "tipo": "selecao",
+            "camada": 2
+          },
+          "condicao": {
+            "categorias": [
+              "perdido"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "status": "novo"
+      },
+      "contexto": {
+        "categoriaDoStatus": "aberto"
+      },
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "regra desligada não vale",
+      "regras": [
+        {
+          "id": "r-motivo",
+          "kind": "required_from_status",
+          "ativo": false,
+          "sistema": false,
+          "alvo": {
+            "id": "f-motivo",
+            "chave": "motivoPerda",
+            "label": "Motivo da perda",
+            "tipo": "selecao",
+            "camada": 2
+          },
+          "condicao": {
+            "categorias": [
+              "perdido"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "status": "perdido"
+      },
+      "contexto": {
+        "categoriaDoStatus": "perdido"
+      },
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "por status pela key (Proposta ou Negociação)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "required_from_status",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "status": [
+              "proposta",
+              "negociacao"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "status": "negociacao"
+      },
+      "contexto": {
+        "categoriaDoStatus": "aberto"
+      },
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "lead sem status não casa regra por status",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "required_from_status",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "status": [
+              "proposta"
+            ],
+            "categorias": [
+              "aberto"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {},
+      "contexto": {
+        "categoriaDoStatus": null
+      },
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "condicional igual: Origem = Evento exige Empresa",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "igual",
+            "valor": "evento"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "evento"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "condicional igual não casa com outro valor",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "igual",
+            "valor": "evento"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "site"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "visível só quando a condição vale: escondido",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "e_um_dos",
+            "valor": [
+              "indicacao",
+              "evento"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": false,
+            "visivel": true
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "site"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": [
+          "segmento"
+        ]
+      }
+    },
+    {
+      "nome": "visível só quando a condição vale: aparece",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "e_um_dos",
+            "valor": [
+              "indicacao",
+              "evento"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": false,
+            "visivel": true
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "indicacao"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "oculto nunca é obrigatório (visível e obrigatório na mesma regra, sem casar)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "igual",
+            "valor": "evento"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": true
+          }
+        },
+        {
+          "id": "r2",
+          "kind": "required_from_status",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "categorias": [
+              "ganho"
+            ]
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "site",
+        "status": "ganho"
+      },
+      "contexto": {
+        "categoriaDoStatus": "ganho"
+      },
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": [
+          "segmento"
+        ]
+      }
+    },
+    {
+      "nome": "duas regras de visibilidade pro mesmo campo: basta uma casar (OU)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-fonte",
+              "chave": "fonteLead",
+              "label": "Origem",
+              "tipo": "selecao",
+              "camada": 1
+            },
+            "operador": "igual",
+            "valor": "evento"
+          },
+          "efeito": {
+            "obrigatorio": false,
+            "visivel": true
+          }
+        },
+        {
+          "id": "r2",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-segmento",
+            "chave": "segmento",
+            "label": "Segmento",
+            "tipo": "selecao",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-empresa",
+              "chave": "empresa",
+              "label": "Empresa",
+              "tipo": "texto",
+              "camada": 2
+            },
+            "operador": "nao_vazio"
+          },
+          "efeito": {
+            "obrigatorio": false,
+            "visivel": true
+          }
+        }
+      ],
+      "lead": {
+        "fonteLead": "site",
+        "empresa": "Acme"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "contem em seleção múltipla (tags)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-nota",
+            "chave": "nota",
+            "label": "Nota",
+            "tipo": "numero",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-tags",
+              "chave": "tags",
+              "label": "Tags",
+              "tipo": "selecao_multipla",
+              "camada": 1
+            },
+            "operador": "contem",
+            "valor": "vip"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "tags": [
+          "b2b",
+          "vip"
+        ]
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "nota"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "entre em número de personalizado (dentro da faixa)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-aniv",
+            "chave": "aniversario",
+            "label": "Aniversário",
+            "tipo": "data",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-nota",
+              "chave": "nota",
+              "label": "Nota",
+              "tipo": "numero",
+              "camada": 3
+            },
+            "operador": "entre",
+            "valor": {
+              "de": 5,
+              "ate": 10
+            }
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "nota": 7
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "aniversario"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "entre em número de personalizado (fora da faixa)",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-aniv",
+            "chave": "aniversario",
+            "label": "Aniversário",
+            "tipo": "data",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-nota",
+              "chave": "nota",
+              "label": "Nota",
+              "tipo": "numero",
+              "camada": 3
+            },
+            "operador": "entre",
+            "valor": {
+              "de": 5,
+              "ate": 10
+            }
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "nota": 11
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "texto igual ignora maiúsculas e espaços nas pontas",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-nota",
+            "chave": "nota",
+            "label": "Nota",
+            "tipo": "numero",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-empresa",
+              "chave": "empresa",
+              "label": "Empresa",
+              "tipo": "texto",
+              "camada": 2
+            },
+            "operador": "igual",
+            "valor": "ACME"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "empresa": " acme "
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "nota"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "data igual compara só o dia",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-nota",
+            "chave": "nota",
+            "label": "Nota",
+            "tipo": "numero",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-aniv",
+              "chave": "aniversario",
+              "label": "Aniversário",
+              "tipo": "data",
+              "camada": 3
+            },
+            "operador": "igual",
+            "valor": "2026-10-17"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "aniversario": "2026-10-17T15:00:00.000Z"
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "nota"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "vazio casa campo ausente; outros operadores não",
+      "regras": [
+        {
+          "id": "r1",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-nota",
+            "chave": "nota",
+            "label": "Nota",
+            "tipo": "numero",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-empresa",
+              "chave": "empresa",
+              "label": "Empresa",
+              "tipo": "texto",
+              "camada": 2
+            },
+            "operador": "vazio"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        },
+        {
+          "id": "r2",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-aniv",
+            "chave": "aniversario",
+            "label": "Aniversário",
+            "tipo": "data",
+            "camada": 3
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-empresa",
+              "chave": "empresa",
+              "label": "Empresa",
+              "tipo": "texto",
+              "camada": 2
+            },
+            "operador": "contem",
+            "valor": "a"
+          },
+          "efeito": {
+            "obrigatorio": true,
+            "visivel": false
+          }
+        }
+      ],
+      "lead": {},
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "nota"
+        ],
+        "ocultos": []
+      }
+    }
+  ]
+}

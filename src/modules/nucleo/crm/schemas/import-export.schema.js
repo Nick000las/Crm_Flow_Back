@@ -30,6 +30,19 @@ export const validarImportacaoCamposSchema = z.object({
   }),
 });
 
+// POST /crm/import/:jobId/confirm (M7) — body opcional: a ação de cada
+// linha duplicada apontada no validate (`{ "12": "atualizar" }`).
+export const confirmarImportacaoBodySchema = z
+  .object({
+    acoes: z
+      .record(
+        z.string().regex(/^\d+$/, 'Informe o número da linha'),
+        z.enum(ESTRATEGIAS_DUPLICATA, { errorMap: () => ({ message: 'Ação deve ser pular, atualizar ou criar' }) }),
+      )
+      .optional(),
+  })
+  .strict();
+
 export const importJobIdParamSchema = z.object({
   jobId: z.string({ required_error: 'Informe o id da importação' }).uuid('Id de importação inválido'),
 });
