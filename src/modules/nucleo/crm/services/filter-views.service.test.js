@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { salvarView, excluirView } from './filter-views.service.js';
+import { salvarView, excluirView, listarViews } from './filter-views.service.js';
 import { listarCamposDoTenant } from './leads.service.js';
 import {
+  buscarViewsDoUsuario,
   buscarViewPorNome,
   criarView,
   removerView,
 } from '../adapters/filter-views.repository.js';
+import { featureAtiva } from '#core/tenant/feature-flags.js';
+import { VIEW_ESFRIANDO } from '../constants.js';
 
 vi.mock('./leads.service.js', () => ({ listarCamposDoTenant: vi.fn() }));
+vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
 vi.mock('../adapters/filter-views.repository.js', () => ({
   buscarViewsDoUsuario: vi.fn(),
   buscarViewPorNome: vi.fn(),
@@ -52,5 +56,22 @@ describe('excluirView', () => {
   it('404 quando a view não existe ou é de outro usuário', async () => {
     removerView.mockResolvedValue(undefined);
     await expect(excluirView(TENANT, USUARIO, 'view-x')).rejects.toThrow('View não encontrada');
+  });
+});
+
+describe('listarViews', () => {
+  const MINHA = { id: 'view-1', nome: 'Ganhos', filtros: FILTROS };
+
+  it('com a inatividade ligada (M9), a view do sistema "Esfriando" vem primeiro', async () => {
+    buscarViewsDoUsuario.mockResolvedValue([MINHA]);
+    featureAtiva.mockResolvedValue(true);
+    await expect(listarViews(TENANT, USUARIO)).resolves.toEqual([VIEW_ESFRIANDO, MINHA]);
+    expect(featureAtiva).toHaveBeenCalledWith(TENANT, 'crm.inatividade');
+  });
+
+  it('sem a flag, só as do usuário', async () => {
+    buscarViewsDoUsuario.mockResolvedValue([MINHA]);
+    featureAtiva.mockResolvedValue(false);
+    await expect(listarViews(TENANT, USUARIO)).resolves.toEqual([MINHA]);
   });
 });

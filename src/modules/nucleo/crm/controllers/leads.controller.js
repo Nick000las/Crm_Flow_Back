@@ -1,3 +1,4 @@
+import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
@@ -5,18 +6,22 @@ import {
   buscarLeadFormatado,
   registrarNovoLead,
   atualizarLeadExistente,
+  checarDuplicados,
   listarCamposDoTenant,
   pesquisarLeads,
 } from '../services/leads.service.js';
 import {
   criarLeadBodySchema,
   atualizarLeadBodySchema,
+  checarDuplicadosBodySchema,
   leadIdParamSchema,
+  mesclarLeadsBodySchema,
 } from '../schemas/leads.schema.js';
 import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/leads-search.schema.js';
 import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
 import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
-import { CRM_FEATURES } from '../constants.js';
+import { mesclarLeads } from '../services/mesclagem.service.js';
+import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
@@ -56,6 +61,26 @@ export function registrarRotasLeads(app) {
     const body = pesquisarLeadsBodySchema.parse(req.body ?? {});
     return sendSuccess(reply, await pesquisarLeads(tenantId, body));
   });
+
+  // Checagem ao vivo de duplicidade (M7) — não salva. Sem `crm.duplicidade`,
+  // responde sempre lista vazia (o form não precisa saber da flag).
+  app.post('/crm/leads/duplicados', async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const body = checarDuplicadosBodySchema.parse(req.body ?? {});
+    return sendSuccess(reply, await checarDuplicados(tenantId, body));
+  });
+
+  // Mesclagem (M7): só DONO/MASTER (as atividades mudam de lead; difícil de
+  // desfazer). Papel conferido antes da flag, como nas outras rotas de gestão.
+  app.post(
+    '/crm/leads/merge',
+    { preHandler: [requireRole(PAPEIS_GESTAO), exigirFeature(CRM_FEATURES.DUPLICIDADE)] },
+    async (req, reply) => {
+      const { tenantId, userId } = req.tenantContext;
+      const body = mesclarLeadsBodySchema.parse(req.body);
+      return sendSuccess(reply, await mesclarLeads(tenantId, body, userId));
+    },
+  );
 
   app.get('/crm/leads/:id', async (req, reply) => {
     const { tenantId } = req.tenantContext;

@@ -226,17 +226,20 @@ describe('e-mail e telefone nativos (tipos email/telefone)', () => {
 describe('busca pelo identificador do layout (M4)', () => {
   const CNPJ = { chave: 'cnpj', camada: CAMADA.CAMADA_2, id: 'id-cnpj' };
 
-  it('CNPJ com e sem pontuação geram a mesma condição (só dígitos, prefixo)', () => {
+  it('CNPJ com e sem pontuação geram a mesma condição (chave dedup_cnpj, prefixo)', () => {
     const comMascara = montarCondicoes({ busca: '12.345.678/0001-90' }, CAMPOS, { identificador: CNPJ });
     const semMascara = montarCondicoes({ busca: '12345678000190' }, CAMPOS, { identificador: CNPJ });
 
-    expect(sqlDe(comMascara)).toContain("regexp_replace(l.cnpj, '[^0-9]', '', 'g') LIKE");
+    expect(sqlDe(comMascara)).toContain('l.dedup_cnpj LIKE');
     expect(valoresDe(comMascara)).toContain('12345678000190%');
     expect(valoresDe(semMascara)).toContain('12345678000190%');
   });
 
-  it('busca com letra não tenta o documento; identificador de texto vira ILIKE', () => {
-    expect(sqlDe(montarCondicoes({ busca: 'Ana' }, CAMPOS, { identificador: CNPJ }))).not.toContain('l.cnpj');
+  it('CNPJ alfanumérico (M7): letras viram maiúsculas na chave; identificador de texto vira ILIKE', () => {
+    expect(valoresDe(montarCondicoes({ busca: '12.abc.345/01de' }, CAMPOS, { identificador: CNPJ }))).toContain(
+      '12ABC34501DE%',
+    );
+    expect(sqlDe(montarCondicoes({ busca: '---' }, CAMPOS, { identificador: CNPJ }))).not.toContain('dedup_cnpj');
 
     const empresa = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
       identificador: { chave: 'empresa', camada: CAMADA.CAMADA_2 },

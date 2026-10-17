@@ -10,10 +10,16 @@
  * - `constants/planilha.js`: importação e exportação;
  * - `constants/arquivo.js`: arquivo, lixeira e a purga agendada;
  * - `constants/historico.js`: atividades e eventos do lead;
+ * - `constants/duplicidade.js`: regras de duplicidade e mesclagem;
+ * - `constants/regras.js`: obrigatoriedade por status e condicional;
+ * - `constants/inatividade.js`: lead esfriando e o resumo diário;
  * - `constants/acesso.js`: papéis de gestão e feature flags.
  */
 export * from './constants/arquivo.js';
 export * from './constants/historico.js';
+export * from './constants/duplicidade.js';
+export * from './constants/regras.js';
+export * from './constants/inatividade.js';
 export * from './constants/campos.js';
 export * from './constants/layout.js';
 export * from './constants/listas.js';

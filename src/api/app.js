@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import { registerAuthRoutes } from '#api/routes/auth.routes.js';
 import { registerHealthRoutes } from '#api/routes/health.routes.js';
 import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
+import { registerNotificacoesRoutes } from '#api/routes/notificacoes.routes.js';
 import { MODULES } from '#api/modules.js';
 import { registerJwt } from '#core/auth/plugin.js';
 import { encerrarCache } from '#core/cache/cache.js';
@@ -54,6 +55,7 @@ export async function buildApp(options = {}) {
 
   registerAuthRoutes(app);
   registerAdminTenantRoutes(app);
+  registerNotificacoesRoutes(app);
 
   for (const module of modules) {
     app.log.info?.({ module: module.key }, `Registrando módulo: ${module.name}`);

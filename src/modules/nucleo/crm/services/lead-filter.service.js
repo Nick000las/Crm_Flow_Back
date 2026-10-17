@@ -6,13 +6,15 @@ import {
   CAMADA,
   CAMADA_1_CAMPOS,
   CAMADA_2_CAMPOS,
+  CAMPOS_DUPLICIDADE,
   DIAS_NA_LIXEIRA,
   IDENTIFICADORES_NUMERICOS,
   OPERADORES_POR_TIPO,
   SITUACOES_LEAD,
   TIPOS_CAMPO,
 } from '../constants.js';
-import { somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
+import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
+import { chaveDocumento, somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
 
 /** Tipos guardados como número (faixa e igualdade numérica). */
 const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
@@ -50,9 +52,6 @@ const TAMANHO_DATA_ISO = 10;
 
 /** Texto só com dígitos e máscara de telefone — sem letra nenhuma. */
 const PADRAO_BUSCA_TELEFONE = /^[\d\s()+.-]*\d[\d\s()+.-]*$/;
-
-/** Documento digitado com ou sem pontuação (`12.345.678/0001-90`). */
-const PADRAO_BUSCA_DOCUMENTO = /^[\d\s./-]*\d[\d\s./-]*$/;
 
 /** Telefone nativo comparado sem máscara (texto fixo, sem dado do cliente). */
 const TELEFONE_SO_DIGITOS = Prisma.raw(`regexp_replace(l.telefone, '[^0-9]', '', 'g')`);
@@ -112,7 +111,8 @@ export function condicaoDaSituacao(situacao = SITUACOES_LEAD.ATIVOS, { comArquiv
  *   comArquivo?: boolean,
  *   agora?: Date,
  * }} [opcoes] `identificador`: do layout do tenant (M4), também entra na
- *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`.
+ *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`; `agora` também
+ *   é o relógio do filtro `esfriando` (M9 — a flag é conferida por quem chama).
  * @returns {Prisma.Sql[]}
  */
 export function montarCondicoes(filtro, campos, { identificador = null, comArquivo = true, agora } = {}) {
@@ -151,6 +151,9 @@ export function montarCondicoes(filtro, campos, { identificador = null, comArqui
   if (filtro.criadoAte) {
     condicoes.push(Prisma.sql`l.created_at <= ${new Date(filtro.criadoAte)}`);
   }
+  if (filtro.esfriando) {
+    condicoes.push(condicaoEsfriando(agora ?? new Date()));
+  }
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
 
@@ -188,10 +191,12 @@ function condicaoBuscaIdentificador(identificador, busca, padrao) {
   if (!identificador) return null;
 
   if (IDENTIFICADORES_NUMERICOS.includes(identificador.chave)) {
-    const digitos = PADRAO_BUSCA_DOCUMENTO.test(busca) ? somenteDigitos(busca) : '';
-    if (!digitos) return null;
-    const coluna = Prisma.raw(`regexp_replace(l.${CAMADA_2_CAMPOS[identificador.chave]}, '[^0-9]', '', 'g')`);
-    return Prisma.sql`${coluna} LIKE ${`${digitos}%`}`;
+    // Mesma chave da duplicidade (M7): sem pontuação, maiúscula — cobre o
+    // CNPJ alfanumérico. Só [0-9A-Z]: não sobra curinga de LIKE pra escapar.
+    const chave = chaveDocumento(busca);
+    if (!chave) return null;
+    const coluna = Prisma.raw(`l.${CAMPOS_DUPLICIDADE[identificador.chave].coluna}`);
+    return Prisma.sql`${coluna} LIKE ${`${chave}%`}`;
   }
   if (identificador.camada === CAMADA.CAMADA_3 && identificador.id) {
     return Prisma.sql`(l.custom_fields->>${identificador.id}) ILIKE ${padrao}`;

@@ -1,4 +1,5 @@
 import { getTenantClient } from '#core/db/tenantClient.js';
+import { ROLES } from '#shared/constants/index.js';
 
 const FIRST_RESULT_INDEX = 0;
 
@@ -39,5 +40,23 @@ export function listarUsuariosAtivosDoTenant(tenantId) {
       WHERE tenant_id = ${tenantId}::uuid AND ativo = true
       ORDER BY nome
     `,
+  );
+}
+
+/**
+ * DONOs ativos do tenant — recebem o resumo dos leads esfriando sem
+ * responsável (M9).
+ *
+ * @param {string} tenantId
+ * @returns {Promise<string[]>}
+ */
+export function listarDonosAtivosDoTenant(tenantId) {
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT id FROM usuarios
+      WHERE tenant_id = ${tenantId}::uuid AND ativo = true AND role = ${ROLES.DONO}
+      ORDER BY id
+    `.then((rows) => rows.map((row) => row.id)),
   );
 }

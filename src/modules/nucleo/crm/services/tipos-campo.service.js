@@ -72,6 +72,49 @@ export function normalizarTelefone(texto) {
   return valido ? digitos : null;
 }
 
+/**
+ * Chaves de duplicidade (M7) — espelho em JS das funções SQL
+ * `modulo_crm.chave_telefone`/`chave_documento` e da coluna `dedup_email`
+ * (migration 0020). Mudar um lado sem o outro quebra a comparação.
+ */
+// Fixo ou celular com o 55 na frente.
+const TAMANHOS_COM_DDI = new Set([
+  BRAZIL_PHONE.LANDLINE_LENGTH + DDI_BRASIL.length,
+  BRAZIL_PHONE.MOBILE_LENGTH + DDI_BRASIL.length,
+]);
+const INDICE_NONO_DIGITO = BRAZIL_PHONE.AREA_CODE_LENGTH;
+const NONO_DIGITO = '9';
+
+/** @param {unknown} valor */
+export function chaveEmail(valor) {
+  return typeof valor === 'string' ? valor.trim().toLowerCase() || null : null;
+}
+
+/**
+ * Só dígitos, sem DDI 55 e sem o 9 depois do DDD: "(11) 98765-4321",
+ * "+55 11 98765-4321" e o antigo "11 8765-4321" dão a mesma chave.
+ *
+ * @param {unknown} valor
+ */
+export function chaveTelefone(valor) {
+  if (typeof valor !== 'string') return null;
+  let digitos = somenteDigitos(valor);
+  if (TAMANHOS_COM_DDI.has(digitos.length) && digitos.startsWith(DDI_BRASIL)) digitos = digitos.slice(DDI_BRASIL.length);
+  if (digitos.length === BRAZIL_PHONE.MOBILE_LENGTH && digitos[INDICE_NONO_DIGITO] === NONO_DIGITO) {
+    digitos = digitos.slice(0, INDICE_NONO_DIGITO) + digitos.slice(INDICE_NONO_DIGITO + 1);
+  }
+  return digitos || null;
+}
+
+/**
+ * CNPJ (inclusive o alfanumérico) e CPF: maiúsculas, só [0-9A-Z].
+ *
+ * @param {unknown} valor
+ */
+export function chaveDocumento(valor) {
+  return typeof valor === 'string' ? valor.replace(/[^0-9A-Za-z]/g, '').toUpperCase() || null : null;
+}
+
 /** @param {string} texto */
 function urlValida(texto) {
   try {

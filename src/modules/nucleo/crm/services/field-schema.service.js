@@ -1,5 +1,6 @@
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
+import { buscarRegrasDoTenant, semearRegrasDoSistema } from '../adapters/crm-field-rules.repository.js';
 import { buscarOpcoesDoTenant } from '../adapters/crm-options.repository.js';
 import {
   CAMADA,
@@ -12,10 +13,12 @@ import {
   CONTEXTOS_VISIBILIDADE,
   LISTA_CONTEXTOS_VISIBILIDADE,
   LISTAS_SEMEADAS,
+  REGRAS_DO_SISTEMA,
   TIPOS_LISTA,
 } from '../constants.js';
 import { reconciliarCampos } from './campos-reconcile.service.js';
 import { reconciliarListas } from './listas-reconcile.service.js';
+import { resolverRegras } from './regras-campos.service.js';
 
 /**
  * Resolver do schema efetivo de campos (docs/crm/plano-configuracoes.md,
@@ -34,8 +37,10 @@ import { reconciliarListas } from './listas-reconcile.service.js';
  *   o que a configuração do tenant muda num campo, por `chave` (M2)
  * @typedef {import('../adapters/crm-options.repository.js').OpcaoLista} OpcaoLista
  * @typedef {Record<string, OpcaoLista[]>} Listas  opções por `kind` (M3), inclusive as inativas
- * @typedef {{ visibilidade: FieldVisibility[], definicoes: FieldDefinition[], sobreposicoes?: Record<string, Sobreposicao>, listas?: Listas }} BaseSchema
- * @typedef {BaseSchema & { listas: Listas, campos: ReturnType<typeof montarCampos> }} SchemaCampos
+ * @typedef {import('../adapters/crm-field-rules.repository.js').RegraLinha} RegraLinha
+ * @typedef {{ visibilidade: FieldVisibility[], definicoes: FieldDefinition[], sobreposicoes?: Record<string, Sobreposicao>, listas?: Listas, regras?: RegraLinha[] }} BaseSchema
+ * @typedef {BaseSchema & { listas: Listas, campos: ReturnType<typeof montarCampos>, regras: import('./regras-campos.service.js').Regra[] }} SchemaCampos
+ *   `regras` (M8): todas, inclusive as desligadas — quem avalia ignora `ativo: false`
  */
 
 /** Toda escrita de configuração invalida — o TTL só cobre invalidação perdida. */
@@ -66,17 +71,18 @@ const chaveCache = (tenantId) => `crm:campos:${tenantId}`;
  * @returns {Promise<SchemaCampos>}
  */
 export async function obterSchemaCampos(tenantId) {
-  const { visibilidade, definicoes, sobreposicoes, listas = {} } = await lerComCache(
+  const { visibilidade, definicoes, sobreposicoes, listas = {}, regras = [] } = await lerComCache(
     chaveCache(tenantId),
     TTL_CACHE_SEGUNDOS,
     () => carregarSchema(tenantId),
   );
-  return { visibilidade, definicoes, listas, campos: montarCampos(visibilidade, definicoes, sobreposicoes, listas) };
+  const campos = montarCampos(visibilidade, definicoes, sobreposicoes, listas);
+  return { visibilidade, definicoes, listas, campos, regras: resolverRegras(regras, campos) };
 }
 
 /**
- * Chamado depois de toda escrita de configuração de campo ou de lista (e
- * do reconcile).
+ * Chamado depois de toda escrita de configuração de campo, de lista ou de
+ * regra (e do reconcile).
  *
  * @param {string} tenantId
  */
@@ -90,7 +96,37 @@ export function invalidarSchemaCampos(tenantId) {
  */
 async function carregarSchema(tenantId) {
   const [linhas, opcoes] = await Promise.all([garantirCamposSistema(tenantId), garantirListas(tenantId)]);
-  return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes) };
+  // Regras depois dos campos: a semente aponta pro campo do sistema (M8).
+  const regras = await garantirRegras(tenantId);
+  return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes), regras };
+}
+
+/**
+ * Passo de reconcile (M8): semeia as regras do sistema que faltarem.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<number>} quantas foram criadas
+ */
+export function reconciliarRegras(tenantId) {
+  return semearRegrasDoSistema(tenantId, REGRAS_DO_SISTEMA);
+}
+
+/**
+ * Regras do tenant, semeando antes as do sistema que faltarem (ex.: Perdido
+ * exige Motivo). Regra do sistema não pode ser excluída, só desligada —
+ * então "faltar" só acontece em tenant que ainda não foi semeado.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<RegraLinha[]>}
+ */
+export async function garantirRegras(tenantId) {
+  const regras = await buscarRegrasDoTenant(tenantId);
+  const semeadas = new Set(regras.map((regra) => regra.system_key).filter(Boolean));
+  const faltando = REGRAS_DO_SISTEMA.filter((regra) => !semeadas.has(regra.systemKey));
+  if (faltando.length === 0) return regras;
+
+  const criadas = await semearRegrasDoSistema(tenantId, faltando);
+  return criadas > 0 ? buscarRegrasDoTenant(tenantId) : regras;
 }
 
 /**

@@ -51,6 +51,16 @@ CREATE TABLE modulo_crm.leads (
   archived_at TIMESTAMP,
   deleted_at TIMESTAMP,
 
+  -- Duplicidade (M7, migration 0020): chaves normalizadas, geradas pelo
+  -- banco (modulo_crm.chave_telefone / chave_documento), e o lead em que
+  -- este foi mesclado (descartado: na lixeira, sem restaurar).
+  dedup_email TEXT GENERATED ALWAYS AS (NULLIF(lower(btrim(email)), '')) STORED,
+  dedup_telefone TEXT GENERATED ALWAYS AS (modulo_crm.chave_telefone(telefone)) STORED,
+  dedup_cnpj TEXT GENERATED ALWAYS AS (modulo_crm.chave_documento(cnpj)) STORED,
+  dedup_cpf TEXT GENERATED ALWAYS AS (modulo_crm.chave_documento(cpf)) STORED,
+  -- CASCADE (migration 0021): o descartado sai junto com o principal.
+  mesclado_em_id UUID REFERENCES modulo_crm.leads(id) ON DELETE CASCADE,
+
   CONSTRAINT chk_leads_email_ou_telefone CHECK (email IS NOT NULL OR telefone IS NOT NULL)
 );
 
@@ -67,6 +77,10 @@ CREATE INDEX idx_leads_tenant_estagio ON modulo_crm.leads(tenant_id, funil_estag
 CREATE INDEX idx_leads_arquivados ON modulo_crm.leads(tenant_id, archived_at)
   WHERE archived_at IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_leads_lixeira ON modulo_crm.leads(tenant_id, deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_leads_dedup_email ON modulo_crm.leads(tenant_id, dedup_email) WHERE deleted_at IS NULL;
+CREATE INDEX idx_leads_dedup_telefone ON modulo_crm.leads(tenant_id, dedup_telefone) WHERE deleted_at IS NULL;
+CREATE INDEX idx_leads_dedup_cnpj ON modulo_crm.leads(tenant_id, dedup_cnpj text_pattern_ops) WHERE deleted_at IS NULL;
+CREATE INDEX idx_leads_dedup_cpf ON modulo_crm.leads(tenant_id, dedup_cpf text_pattern_ops) WHERE deleted_at IS NULL;
 CREATE INDEX idx_funil_estagios_tenant_order ON modulo_crm.funil_estagios(tenant_id, "order");
 
 -- Campos customizados: a configuração mora em `crm_field` (bloco da

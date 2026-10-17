@@ -20,6 +20,11 @@ import { CAMPOS_SISTEMA } from '../constants.js';
 // mockado; cache zerado a cada teste.
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
+// Regras (M8): tenant sem regra (a do sistema já semeada).
+vi.mock('../adapters/crm-field-rules.repository.js', () => ({
+  buscarRegrasDoTenant: vi.fn().mockResolvedValue([{ id: 'r', system_key: 'motivo_perda_em_perdido' }]),
+  semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
+}));
 vi.mock('../adapters/crm-fields.repository.js', () => ({
   buscarCamposDoTenant: vi.fn(),
   buscarPersonalizadoAtivoPorChave: vi.fn().mockResolvedValue(undefined),

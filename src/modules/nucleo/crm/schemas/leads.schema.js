@@ -57,6 +57,10 @@ const usuarioResponsavelIdSchema = z
  *
  * @param {Record<string, z.ZodTypeAny>} campos
  */
+// M7: o usuário viu o aviso de possível duplicado (409 DUPLICATE_WARNING)
+// e confirmou. Não destrava `block`.
+const ignorarDuplicados = z.boolean({ invalid_type_error: 'Informe se deve ignorar duplicados' }).optional();
+
 function aceitandoNull(campos) {
   return Object.fromEntries(Object.entries(campos).map(([chave, schema]) => [chave, schema.nullable()]));
 }
@@ -84,6 +88,7 @@ export const criarLeadBodySchema = z
     customFields: z.record(z.unknown()).optional(),
     // Omitido → o próprio usuário que está criando (ver leads.service.js).
     usuarioResponsavelId: usuarioResponsavelIdSchema.optional(),
+    ignorarDuplicados,
     ...camposCamada1,
     ...camposCamada2,
   })
@@ -113,9 +118,35 @@ export const atualizarLeadBodySchema = z.object({
   valor: z.number({ invalid_type_error: 'Informe um valor válido' }).nullable().optional(),
   usuarioResponsavelId: usuarioResponsavelIdSchema.nullable().optional(),
   customFields: z.record(z.unknown()).optional(),
+  ignorarDuplicados,
   ...aceitandoNull(camposCamada1),
   ...aceitandoNull(camposCamada2),
 });
+
+// POST /crm/leads/merge (M7) — `escolhas`: por chave da API (inclusive a do
+// personalizado), de qual lead vem o valor. Sem escolha: o do principal,
+// ou o do secundário se o do principal estiver vazio.
+export const mesclarLeadsBodySchema = z
+  .object({
+    principalId: z.string({ required_error: 'Informe o lead que fica' }).uuid('Id de lead inválido'),
+    secundarioId: z.string({ required_error: 'Informe o lead que será descartado' }).uuid('Id de lead inválido'),
+    escolhas: z
+      .record(z.enum(['principal', 'secundario'], { errorMap: () => ({ message: 'Escolha "principal" ou "secundario"' }) }))
+      .optional(),
+  })
+  .strict();
+
+// POST /crm/leads/duplicados — checagem ao vivo do formulário (não salva).
+// `leadId` = o lead em edição (fica de fora dos candidatos).
+export const checarDuplicadosBodySchema = z
+  .object({
+    leadId: z.string().uuid('Id de lead inválido').optional(),
+    email: z.string().optional(),
+    telefone: z.string().optional(),
+    cnpj: z.string().optional(),
+    cpf: z.string().optional(),
+  })
+  .strict();
 
 export const leadIdParamSchema = z.object({
   id: z.string({ required_error: 'Informe o id do lead' }).uuid('Id de lead inválido'),

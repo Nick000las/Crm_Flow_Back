@@ -54,17 +54,37 @@ export function buscarImportJob(tenantId, jobId) {
  *
  * @param {string} tenantId
  * @param {string} jobId
- * @returns {Promise<{ id: string, status: string, estrategia_duplicata: string, payload: object[], usuario_id: string } | undefined>}
+ * @returns {Promise<{ id: string, status: string, estrategia_duplicata: string, payload: object[], usuario_id: string, acoes: Record<string, string> } | undefined>}
  */
 export function buscarImportJobComPayload(tenantId, jobId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id, status, estrategia_duplicata, payload, usuario_id
+      SELECT id, status, estrategia_duplicata, payload, usuario_id, acoes
       FROM modulo_crm.import_jobs
       WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
+}
+
+/**
+ * Ações escolhidas no Revisar pras linhas duplicadas (M7) — só enquanto o
+ * job está `pendente` (antes de confirmar).
+ *
+ * @param {string} tenantId
+ * @param {string} jobId
+ * @param {Record<string, string>} acoes  { "<linha>": "pular" | "atualizar" | "criar" }
+ * @returns {Promise<boolean>} se gravou (job existe e está pendente)
+ */
+export async function definirAcoesDuplicata(tenantId, jobId, acoes) {
+  const linhas = await getTenantClient(
+    tenantId,
+    (tx) => tx.$executeRaw`
+      UPDATE modulo_crm.import_jobs SET acoes = ${JSON.stringify(acoes)}::jsonb
+      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid AND status = ${IMPORT_JOB_STATUS.PENDENTE}
+    `,
+  );
+  return linhas > 0;
 }
 
 /**

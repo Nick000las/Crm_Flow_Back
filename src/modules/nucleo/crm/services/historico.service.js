@@ -111,6 +111,7 @@ export async function listarHistorico(tenantId, leadId, { pagina, tamanho }) {
       tipo: evento.tipo,
       autor: evento.autor_id ? { id: evento.autor_id, nome: evento.autor_nome } : null,
       criadoEm: evento.created_at,
+      detalhes: evento.detalhes ?? {},
       diff: (evento.diff ?? []).map(descrever).filter(Boolean),
     })),
     total,

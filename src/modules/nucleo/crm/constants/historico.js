@@ -10,6 +10,8 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
   DESARQUIVADO: 'desarquivado',
   EXCLUIDO: 'excluido',
   RESTAURADO: 'restaurado',
+  // M7: o lead recebeu os dados de outro (o descartado vai pra lixeira).
+  MESCLADO: 'mesclado',
 });
 
 /**
