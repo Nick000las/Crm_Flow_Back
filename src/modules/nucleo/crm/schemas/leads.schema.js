@@ -6,7 +6,7 @@ import { BRAZIL_PHONE, TEXT_LIMITS } from '#shared/constants/index.js';
 // (regra "pelo menos um dos dois" é validada no service, contra o objeto
 // completo — não dá pra expressar "A ou B obrigatório" por campo isolado).
 /** @param {string} mensagem */
-const opcaoDeLista = (mensagem) =>
+export const opcaoDeLista = (mensagem) =>
   z.string({ invalid_type_error: mensagem }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem).optional();
 
 const camposCamada1 = {
@@ -23,6 +23,9 @@ const camposCamada1 = {
     .array(z.string({ invalid_type_error: 'Tag inválida' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'))
     .optional(),
   ultimaInteracaoEm: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
+  // M10: omitido (ou vazio) → a primeira palavra do nome; `null` na edição
+  // volta ao derivado. Ver primeiro-nome.service.js.
+  primeiroNome: z.string({ invalid_type_error: 'Informe um primeiro nome válido' }).trim().optional(),
 };
 
 // Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar (ver
@@ -46,7 +49,7 @@ const camposCamada2 = {
   proximoFollowup: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
 };
 
-const usuarioResponsavelIdSchema = z
+export const usuarioResponsavelIdSchema = z
   .string({ invalid_type_error: 'Informe um responsável válido' })
   .uuid('Informe um responsável válido');
 

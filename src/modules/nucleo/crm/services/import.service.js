@@ -30,6 +30,7 @@ import { diffDoLead } from './historico.service.js';
 import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { lerPlanilha } from './planilha.service.js';
+import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { converterCelula, valorAusente } from './tipos-campo.service.js';
 
 /**
@@ -339,7 +340,11 @@ async function importarLinha(
       // Sem estágio padrão aqui de propósito: atualizar não pode mover o
       // lead de estágio só porque a planilha não tinha a coluna.
       const ignorar = dados.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
-      await atualizarLead(tenantId, existente.id, dados, {
+      const comPrimeiroNome = comPrimeiroNomeNaEdicao(
+        dados,
+        precisaDoLeadAtual(dados) ? await buscarLeadPorId(tenantId, existente.id) : null,
+      );
+      await atualizarLead(tenantId, existente.id, comPrimeiroNome, {
         ...historico,
         montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
       });
@@ -355,7 +360,11 @@ async function importarLinha(
 
   await criarLead(
     tenantId,
-    { ...dados, funilEstagioId: dados.funilEstagioId ?? estagioPadraoId, usuarioResponsavelId: responsavelPadraoId },
+    {
+      ...comPrimeiroNomeNaCriacao(dados),
+      funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
+      usuarioResponsavelId: responsavelPadraoId,
+    },
     historico,
   );
   return { resultado: 'linhasCriadas' };

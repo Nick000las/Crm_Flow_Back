@@ -363,8 +363,9 @@ describe('edição limpando campos (null)', () => {
   });
 
   it('não busca o lead atual quando nada de contato é limpo', async () => {
-    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Bia', telefone: null });
-    await atualizarLeadExistente('tenant-1', 'lead-1', { nome: 'Bia' });
+    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Bia', telefone: null, cargo: 'Gerente' });
+    // `nome` não: mudar o nome lê o lead pra decidir o primeiro nome (M10).
+    await atualizarLeadExistente('tenant-1', 'lead-1', { cargo: 'Gerente' });
     expect(buscarLeadPorId).not.toHaveBeenCalled();
   });
 

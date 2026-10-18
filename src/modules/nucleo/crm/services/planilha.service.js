@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { IMPORTACAO } from '../constants.js';
+import { EXPORTACAO, IMPORTACAO } from '../constants.js';
 
 /**
  * SERVICE: leitura/escrita de .xlsx, sem regra de negócio de lead — só
@@ -90,6 +90,42 @@ export async function gerarPlanilha(cabecalho, linhas) {
   }
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+/**
+ * CSV pro Excel pt-BR (M10): `;`, BOM UTF-8, CRLF, número com vírgula
+ * decimal e data `dd/mm/aaaa` — o Excel abre com acento e reconhece
+ * número e data. Mesmos valores do .xlsx (`valorParaPlanilha`).
+ *
+ * @param {string[]} cabecalho
+ * @param {unknown[][]} linhas
+ * @returns {Buffer}
+ */
+export function gerarCsv(cabecalho, linhas) {
+  const texto = [cabecalho, ...linhas]
+    .map((linha) => linha.map(celulaCsv).join(EXPORTACAO.CSV_SEPARADOR))
+    .join(EXPORTACAO.CSV_QUEBRA_LINHA);
+  return Buffer.from(`${EXPORTACAO.CSV_BOM}${texto}${EXPORTACAO.CSV_QUEBRA_LINHA}`, 'utf8');
+}
+
+// Texto que o Excel leria como fórmula (CSV injection): vai com um apóstrofo na frente.
+const INICIO_DE_FORMULA = /^[=+\-@\t\r]/;
+const PRECISA_DE_ASPAS = /[";\r\n]/;
+
+/** @param {unknown} valor */
+function celulaCsv(valor) {
+  if (valor === null || valor === undefined) return '';
+  let texto;
+  if (valor instanceof Date) {
+    // UTC, como o .xlsx grava a data.
+    texto = Number.isNaN(valor.getTime()) ? '' : valor.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  } else if (typeof valor === 'number') {
+    texto = String(valor).replace('.', ',');
+  } else {
+    texto = String(valor);
+    if (INICIO_DE_FORMULA.test(texto)) texto = `'${texto}`;
+  }
+  return PRECISA_DE_ASPAS.test(texto) ? `"${texto.replaceAll('"', '""')}"` : texto;
 }
 
 /**

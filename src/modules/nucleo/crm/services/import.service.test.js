@@ -125,6 +125,13 @@ describe('previsualizarImportacao', () => {
     expect(resultado.campos.map((campo) => campo.chave)).toContain('funilEstagio');
     expect(criarImportJob).not.toHaveBeenCalled();
   });
+
+  // M10.4: o passo Mapear oferece os personalizados (Camada 3) como destino.
+  it('campos mapeáveis incluem os personalizados', async () => {
+    const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
+    const { campos } = await previsualizarImportacao(TENANT, buffer);
+    expect(campos).toContainEqual(expect.objectContaining({ chave: 'segmento', camada: CAMADA.CAMADA_3 }));
+  });
 });
 
 describe('validarImportacao', () => {
@@ -266,6 +273,8 @@ describe('processarImportacao — estratégias de duplicata', () => {
   it('atualizar: lead existente é atualizado sem mover de estágio, com histórico do importador', async () => {
     jobCom('atualizar');
     encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
+    // Primeiro nome editado à mão: o nome da planilha não o sobrescreve (M10).
+    buscarLeadPorId.mockResolvedValueOnce({ id: 'lead-1', nome: 'Ana Souza', primeiro_nome: 'Aninha' });
 
     await processarImportacao(TENANT, JOB);
 
@@ -273,6 +282,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(atualizarLead.mock.calls[0][1]).toBe('lead-1');
     expect(dados.funilEstagioId).toBeUndefined();
     expect(dados.ultimaInteracaoEm).toBeInstanceOf(Date);
+    expect(dados.primeiroNome).toBeUndefined();
     expect(atualizarLead.mock.calls[0][3]).toMatchObject({ autorId: USUARIO, montarDiff: expect.any(Function) });
     expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
@@ -284,6 +294,8 @@ describe('processarImportacao — estratégias de duplicata', () => {
     await processarImportacao(TENANT, JOB);
 
     expect(criarLead.mock.calls[0][1].funilEstagioId).toBe(ESTAGIO_NOVO);
+    // M10: sem a coluna, o primeiro nome sai do nome.
+    expect(criarLead.mock.calls[0][1].primeiroNome).toBe('Ana');
     expect(criarLead.mock.calls[0][2]).toEqual({ autorId: USUARIO });
     expect(progressoFinal()).toMatchObject({ linhasCriadas: 1 });
   });

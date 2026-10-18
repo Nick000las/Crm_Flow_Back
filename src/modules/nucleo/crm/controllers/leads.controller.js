@@ -21,6 +21,8 @@ import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/lea
 import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
 import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
 import { mesclarLeads } from '../services/mesclagem.service.js';
+import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
+import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 
 /**
@@ -81,6 +83,14 @@ export function registrarRotasLeads(app) {
       return sendSuccess(reply, await mesclarLeads(tenantId, body, userId));
     },
   );
+
+  // Edição em massa (M10): qualquer papel, como o PUT de um lead. Responde
+  // 200 com o relatório por lead mesmo se alguns falharem.
+  app.patch('/crm/leads/bulk', { preHandler: [exigirFeature(CRM_FEATURES.MASSA)] }, async (req, reply) => {
+    const { tenantId, userId } = req.tenantContext;
+    const body = editarEmMassaBodySchema.parse(req.body);
+    return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId));
+  });
 
   app.get('/crm/leads/:id', async (req, reply) => {
     const { tenantId } = req.tenantContext;

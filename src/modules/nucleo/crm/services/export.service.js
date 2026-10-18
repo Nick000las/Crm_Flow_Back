@@ -1,18 +1,24 @@
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
+import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   CAMADA,
   CAMADA_1_CAMPOS,
   CAMADA_2_CAMPOS,
   CAMPOS_EXTRAS_PLANILHA,
+  CAMPOS_SO_EXPORTACAO,
+  CRM_FEATURES,
   EXPORTACAO,
+  FORMATOS_EXPORTACAO,
   SITUACOES_LEAD,
   TIPOS_CAMPO,
 } from '../constants.js';
+import { obterLayout } from './layout.service.js';
 import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
-import { gerarPlanilha } from './planilha.service.js';
+import { gerarCsv, gerarPlanilha } from './planilha.service.js';
 
 /**
  * SERVICE: export síncrono — gera o .xlsx no próprio request e o
@@ -26,17 +32,29 @@ const SEPARADOR_LISTA = ', ';
 
 /**
  * @param {string} tenantId
- * @param {{ colunas: string[], filtro?: import('./lead-filter.service.js').FiltroLeads }} input
- *   `colunas` são chaves de `GET /crm/leads/fields` (+ `valor`/`funilEstagio`), na ordem desejada.
+ * @param {{
+ *   colunas?: string[],
+ *   filtro?: import('./lead-filter.service.js').FiltroLeads,
+ *   formato?: 'xlsx' | 'csv',
+ * }} input
+ *   `colunas` são chaves de `GET /crm/leads/fields` (+ `valor`/`funilEstagio`/
+ *   `usuarioResponsavelId`/`createdAt`), na ordem desejada. Sem elas (M10,
+ *   `crm.massa`), as da tabela do usuário: o identificador e as colunas do
+ *   layout efetivo. `csv` também exige `crm.massa`.
+ * @param {string} [usuarioId]  dono do layout das colunas padrão
  * @returns {Promise<Buffer>}
  */
-export async function exportarLeads(tenantId, { colunas, filtro = {} }) {
+export async function exportarLeads(tenantId, { colunas, filtro = {}, formato = FORMATOS_EXPORTACAO.XLSX }, usuarioId) {
   // O schema da rota já barra; aqui é a garantia pra qualquer outro chamador.
   if (filtro.situacao === SITUACOES_LEAD.LIXEIRA) {
     throw erroDeValidacao('situacao', 'A lixeira não pode ser exportada');
   }
-  const campos = [...(await listarCamposDoTenant(tenantId)), ...CAMPOS_EXTRAS_PLANILHA];
+  if (formato === FORMATOS_EXPORTACAO.CSV) {
+    await garantirFeature(tenantId, CRM_FEATURES.MASSA);
+  }
+  const campos = [...(await listarCamposDoTenant(tenantId)), ...CAMPOS_EXTRAS_PLANILHA, ...CAMPOS_SO_EXPORTACAO];
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
+  colunas ??= await colunasPadrao(tenantId, usuarioId);
 
   const desconhecidas = colunas.filter((chave) => !campoPorChave.has(chave));
   if (desconhecidas.length > 0) {
@@ -61,20 +79,43 @@ export async function exportarLeads(tenantId, { colunas, filtro = {} }) {
   }
 
   const camposExportados = colunas.map((chave) => /** @type {CampoExportavel} */ (campoPorChave.get(chave)));
-  return gerarPlanilha(
-    camposExportados.map((campo) => campo.label),
-    itens.map((lead) => camposExportados.map((campo) => valorParaPlanilha(lead, campo))),
-  );
+  const responsaveis = colunas.includes('usuarioResponsavelId')
+    ? new Map((await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.id, usuario.nome]))
+    : new Map();
+  const cabecalho = camposExportados.map((campo) => campo.label);
+  const linhas = itens.map((lead) => camposExportados.map((campo) => valorParaPlanilha(lead, campo, { responsaveis })));
+  return formato === FORMATOS_EXPORTACAO.CSV ? gerarCsv(cabecalho, linhas) : gerarPlanilha(cabecalho, linhas);
+}
+
+/**
+ * Colunas padrão (M10): as da tabela do usuário — o identificador (sempre a
+ * 1ª coluna) e as do layout efetivo. Sem `crm.massa`, segue obrigatório
+ * escolher (comportamento de antes).
+ *
+ * @param {string} tenantId
+ * @param {string | undefined} usuarioId
+ * @returns {Promise<string[]>}
+ */
+async function colunasPadrao(tenantId, usuarioId) {
+  if (!usuarioId || !(await featureAtiva(tenantId, CRM_FEATURES.MASSA))) {
+    throw erroDeValidacao('colunas', 'Escolha as colunas do export');
+  }
+  const { efetivo } = await obterLayout(tenantId, usuarioId);
+  return [efetivo.identificador, ...efetivo.colunas].filter(Boolean).map((item) => item.chave);
 }
 
 /**
  * @param {Record<string, any>} lead já formatado (Camada 2 desligada removida)
  * @param {CampoExportavel} campo
+ * @param {{ responsaveis?: Map<string, string> }} [contexto]  id → nome dos
+ *   usuários ativos; responsável desativado sai vazio
  */
-export function valorParaPlanilha(lead, campo) {
+export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}) {
   let valor;
   if (campo.chave === 'valor') valor = lead.valor;
   else if (campo.chave === 'funilEstagio') valor = lead.estagio_nome;
+  else if (campo.chave === 'usuarioResponsavelId') valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
+  else if (campo.chave === 'createdAt') valor = lead.created_at;
   else if (campo.camada === CAMADA.CAMADA_3) valor = lead.custom_fields?.[campo.chave];
   else valor = lead[CAMADA_1_CAMPOS[campo.chave] ?? CAMADA_2_CAMPOS[campo.chave]];
 

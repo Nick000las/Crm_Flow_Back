@@ -27,6 +27,7 @@ CREATE TABLE modulo_crm.leads (
   status VARCHAR,           -- key de crm_option (kind status), M3
   tags VARCHAR[],
   ultima_interacao_em TIMESTAMP,
+  primeiro_nome VARCHAR,     -- derivado do nome e editável, M10
 
   -- Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar
   -- (configuração em modulo_crm.crm_field + crm_field_visibility).

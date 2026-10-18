@@ -12,7 +12,7 @@ const FIRST_RESULT_INDEX = 0;
  * das três. Espera `l` = leads e `f` = funil_estagios (LEFT JOIN).
  */
 const COLUNAS_BASE = Prisma.sql`
-  l.id, l.nome, l.telefone, l.email, l.valor, l.funil_estagio_id,
+  l.id, l.nome, l.primeiro_nome, l.telefone, l.email, l.valor, l.funil_estagio_id,
   l.fonte_lead, l.status, l.tags, l.ultima_interacao_em,
   l.empresa, l.cargo, l.cpf, l.cnpj, l.cidade, l.uf, l.cep, l.endereco,
   l.campanha_utm, l.data_conversao, l.probabilidade_fechamento,
@@ -130,14 +130,14 @@ export function criarLead(tenantId, dados, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const criado = await tx.$queryRaw`
       INSERT INTO modulo_crm.leads (
-        tenant_id, nome, telefone, funil_estagio_id, custom_fields, valor, usuario_responsavel_id,
+        tenant_id, nome, primeiro_nome, telefone, funil_estagio_id, custom_fields, valor, usuario_responsavel_id,
         email, fonte_lead, status, tags, ultima_interacao_em,
         empresa, cargo, cpf, cnpj, cidade, uf, cep, endereco,
         campanha_utm, data_conversao, probabilidade_fechamento,
         data_prevista_fechamento, motivo_perda, lead_score, proximo_followup
       )
       VALUES (
-        ${tenantId}::uuid, ${dados.nome}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid,
+        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid,
         ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.status ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
         ${dados.empresa ?? null}, ${dados.cargo ?? null}, ${dados.cpf ?? null}, ${dados.cnpj ?? null}, ${dados.cidade ?? null}, ${dados.uf ?? null}, ${dados.cep ?? null}, ${dados.endereco ?? null},
         ${dados.campanhaUtm ?? null}, ${dados.dataConversao ?? null}, ${dados.probabilidadeFechamento ?? null},

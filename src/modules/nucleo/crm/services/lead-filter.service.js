@@ -38,6 +38,7 @@ const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
  *   busca?: string,
  *   funilEstagioId?: string,
  *   usuarioResponsavelId?: string,
+ *   semResponsavel?: boolean,
  *   valorMin?: number,
  *   valorMax?: number,
  *   criadoDe?: Date,
@@ -136,8 +137,24 @@ export function montarCondicoes(filtro, campos, { identificador = null, comArqui
   if (filtro.funilEstagioId) {
     condicoes.push(Prisma.sql`l.funil_estagio_id = ${filtro.funilEstagioId}::uuid`);
   }
+  if (filtro.usuarioResponsavelId && filtro.semResponsavel) {
+    const mensagem = 'Use "sem responsável" ou um responsável, não os dois';
+    throw new AppError({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      code: ERROR_CODES.VALIDATION_ERROR,
+      message: mensagem,
+      fields: { semResponsavel: [mensagem] },
+    });
+  }
   if (filtro.usuarioResponsavelId) {
     condicoes.push(Prisma.sql`l.usuario_responsavel_id = ${filtro.usuarioResponsavelId}::uuid`);
+  }
+  if (filtro.semResponsavel) {
+    // Mesmo critério de `contarEsfriandoPorResponsavel`: responsável
+    // desativado conta como sem responsável.
+    condicoes.push(
+      Prisma.sql`NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)`,
+    );
   }
   if (filtro.valorMin !== undefined) {
     condicoes.push(Prisma.sql`l.valor >= ${filtro.valorMin}`);

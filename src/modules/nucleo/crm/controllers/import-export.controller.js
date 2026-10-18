@@ -4,7 +4,7 @@ import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendSuccess } from '#shared/http/response.js';
-import { EXPORTACAO, IMPORTACAO, PAPEIS_GESTAO } from '../constants.js';
+import { EXPORTACAO, FORMATOS_EXPORTACAO, IMPORTACAO, PAPEIS_GESTAO } from '../constants.js';
 import {
   previsualizarImportacao,
   validarImportacao,
@@ -63,13 +63,14 @@ export async function registrarRotasImportExport(app) {
   });
 
   app.post('/crm/export', apenasGestao, async (req, reply) => {
-    const { tenantId } = req.tenantContext;
-    const body = exportarLeadsBodySchema.parse(req.body);
-    const planilha = await exportarLeads(tenantId, body);
+    const { tenantId, userId } = req.tenantContext;
+    const body = exportarLeadsBodySchema.parse(req.body ?? {});
+    const arquivo = await exportarLeads(tenantId, body, userId);
+    const csv = body.formato === FORMATOS_EXPORTACAO.CSV;
     return reply
-      .header('Content-Type', EXPORTACAO.CONTENT_TYPE)
-      .header('Content-Disposition', `attachment; filename="${EXPORTACAO.NOME_ARQUIVO}"`)
-      .send(planilha);
+      .header('Content-Type', csv ? EXPORTACAO.CONTENT_TYPE_CSV : EXPORTACAO.CONTENT_TYPE)
+      .header('Content-Disposition', `attachment; filename="${csv ? EXPORTACAO.NOME_ARQUIVO_CSV : EXPORTACAO.NOME_ARQUIVO}"`)
+      .send(arquivo);
   });
 }
 

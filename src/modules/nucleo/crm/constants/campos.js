@@ -121,6 +121,9 @@ export const CAMPOS_CAMADA_1 = Object.freeze([
   { chave: 'status', label: 'Status', tipo: 'selecao', obrigatorio: false, ordem: 4, lista: TIPOS_LISTA.STATUS },
   { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', obrigatorio: false, ordem: 5, lista: TIPOS_LISTA.TAG },
   { chave: 'ultimaInteracaoEm', label: 'Última interação', tipo: 'data', obrigatorio: false, ordem: 6 },
+  // M10: derivado do Nome (primeira palavra) e editável — personaliza
+  // mensagens. No fim da lista pra não mexer na ordem padrão dos outros.
+  { chave: 'primeiroNome', label: 'Primeiro nome', tipo: 'texto', obrigatorio: false, ordem: 7 },
 ]);
 
 /**
@@ -136,6 +139,7 @@ export const CAMADA_1_CAMPOS = Object.freeze({
   status: 'status',
   tags: 'tags',
   ultimaInteracaoEm: 'ultima_interacao_em',
+  primeiroNome: 'primeiro_nome',
 });
 
 /**
@@ -155,6 +159,7 @@ const CAPACIDADES_CAMADA_1 = Object.freeze({
   status: { canHide: false, canMakeOptional: true, canRename: true },
   tags: { canHide: true, canMakeOptional: true, canRename: true },
   ultimaInteracaoEm: { canHide: true, canMakeOptional: true, canRename: true },
+  primeiroNome: { canHide: true, canMakeOptional: true, canRename: true },
 });
 
 /** Personalizado: o tenant criou, o tenant decide tudo. */
@@ -243,4 +248,12 @@ export const BUSCA_LEADS = Object.freeze({
   TAMANHO_PADRAO: 50,
   TAMANHO_MAXIMO: 200,
   MAX_FILTROS: 20,
+});
+
+/**
+ * Edição em massa (M10, `PATCH /crm/leads/bulk`): o mesmo teto da página
+ * da busca — o front marca os leads dentro de uma página.
+ */
+export const EDICAO_EM_MASSA = Object.freeze({
+  MAX_LEADS: 200,
 });
