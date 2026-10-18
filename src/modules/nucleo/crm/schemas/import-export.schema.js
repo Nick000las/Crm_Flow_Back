@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { ESTRATEGIAS_DUPLICATA, SITUACOES_LEAD } from '../constants.js';
+import { ESTRATEGIAS_DUPLICATA, FORMATOS_EXPORTACAO, LISTA_FORMATOS_EXPORTACAO, SITUACOES_LEAD } from '../constants.js';
 import { filtroLeadsSchema } from './leads-search.schema.js';
 
 /**
@@ -48,9 +48,18 @@ export const importJobIdParamSchema = z.object({
 });
 
 export const exportarLeadsBodySchema = z.object({
+  // Omitidas (M10, `crm.massa`): as colunas da tabela do usuário — o service
+  // resolve pelo layout; sem a flag, continua obrigatório escolher.
   colunas: z
-    .array(z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH), { required_error: 'Escolha as colunas do export' })
-    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Escolha ao menos uma coluna'),
+    .array(z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH))
+    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Escolha ao menos uma coluna')
+    .optional(),
+  // `csv` (M10) exige `crm.massa`.
+  formato: z
+    .enum(/** @type {[string, ...string[]]} */ ([...LISTA_FORMATOS_EXPORTACAO]), {
+      errorMap: () => ({ message: `Formato deve ser um de: ${LISTA_FORMATOS_EXPORTACAO.join(', ')}` }),
+    })
+    .default(FORMATOS_EXPORTACAO.XLSX),
   // A lixeira não sai em planilha (M5).
   filtro: filtroLeadsSchema
     .refine((filtro) => filtro.situacao !== SITUACOES_LEAD.LIXEIRA, {

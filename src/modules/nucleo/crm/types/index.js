@@ -12,6 +12,7 @@
  * @property {string | null} status
  * @property {string[] | null} tags
  * @property {string | null} ultima_interacao_em
+ * @property {string | null} primeiro_nome derivado do nome e editável (M10)
  */
 
 /**
@@ -61,6 +62,7 @@
  * @property {string} [status]
  * @property {string[]} [tags]
  * @property {Date} [ultimaInteracaoEm]
+ * @property {string} [primeiroNome] omitido → derivado do nome (primeiro-nome.service.js)
  * @property {string} [empresa]
  * @property {string} [cargo]
  * @property {string} [cpf]
@@ -97,6 +99,7 @@
  * @property {string} [status]
  * @property {string[]} [tags]
  * @property {Date} [ultimaInteracaoEm]
+ * @property {string | null} [primeiroNome] `null` → volta ao derivado do nome
  * @property {string} [empresa]
  * @property {string} [cargo]
  * @property {string} [cpf]

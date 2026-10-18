@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { condicaoDaSituacao, dataDaPurga, inicioDaLixeira, montarCondicoes } from './lead-filter.service.js';
 import { CAMADA } from '../constants.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 
 const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
@@ -52,6 +53,17 @@ describe('montarCondicoes', () => {
     expect(sql).toContain('l.lead_score >=');
     expect(sql).toContain('l.lead_score <=');
     expect(valoresDe(condicoes)).toEqual(['ganho', SCORE_MINIMO, SCORE_MAXIMO]);
+  });
+
+  it('semResponsavel: sem responsável ou com responsável desativado', () => {
+    const sql = sqlDe(montarCondicoes({ semResponsavel: true }, CAMPOS));
+    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)');
+  });
+
+  it('semResponsavel junto com usuarioResponsavelId é 400', () => {
+    expect(() =>
+      montarCondicoes({ semResponsavel: true, usuarioResponsavelId: '00000000-0000-0000-0000-000000000001' }, CAMPOS),
+    ).toThrow(expect.objectContaining({ statusCode: HTTP_STATUS.BAD_REQUEST, fields: { semResponsavel: [expect.any(String)] } }));
   });
 
   it('valor malicioso continua sendo parâmetro, nunca SQL', () => {

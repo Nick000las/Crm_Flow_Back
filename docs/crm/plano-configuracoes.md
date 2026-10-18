@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9); próximo marco: M10.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10 no back em 2026-10-18 (migration 0024 ainda não aplicada; falta o front); próximo marco: M11.
 
 ## Contexto
 O CRM já tem:
@@ -485,7 +485,18 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **10.3** "Primeiro nome": campo do sistema derivado do Nome e editável, para personalizar mensagens.
 - **10.4** Confirmar que o passo Mapear lista os campos personalizados como destino (já lista; cobrir com teste).
 
-**Checklist:** o relatório da edição em massa traz o resultado parcial; o CSV abre corretamente no Excel pt-BR (separador `;` e BOM UTF-8); o primeiro nome é derivado e editável.
+**Checklist**
+- [x] O relatório da edição em massa traz o resultado parcial (teste com um lead atualizado, um barrado por regra do M8, um inexistente e um sem mudança).
+- [x] O CSV sai no formato do Excel pt-BR (separador `;`, BOM UTF-8, vírgula decimal; teste do conteúdo). *(abrir no Excel de verdade fica pro smoke)*
+- [x] O primeiro nome é derivado e editável (teste puro das regras e do import).
+- [x] O passo Mapear lista os personalizados como destino (teste em `import.service.test.js`).
+
+**Como ficou (back, 2026-10-18):**
+- **Decisões do usuário:** edição em massa pra qualquer papel (como o PUT de um lead); tags por adicionar/remover; seleção por lista de ids; o primeiro nome segue o Nome enquanto não foi editado à mão.
+- **Edição em massa (`PATCH /crm/leads/bulk`, atrás de `crm.massa`):** `{ ids (1–200, sem repetir), alteracoes: { status?, fonteLead?, usuarioResponsavelId? (null tira), tags?: { adicionar?, remover? } } }`, com ao menos uma alteração. Lead a lead, em sequência, pelo mesmo `atualizarLeadExistente` do PUT: opção ativa, responsável ativo, regras do M8 contra o lead resultante, histórico e `ultima_interacao_em` ao mudar o status. Só o que muda em cada lead entra; lead sem mudança sai `inalterado` (sem evento). Tags: as do lead menos as removidas (casadas por key, nome ou slug, `buscadorDeTags`) mais as adicionadas; texto novo vira tag como no formulário. Resposta 200 sempre: `{ total, atualizados, inalterados, falhas, resultados: [{ id, ok, inalterado?, erro?: { statusCode, code, message, fields? } }] }`. Erro que não é de negócio sai genérico (`INTERNAL_ERROR`), sem detalhe de banco. Cada lead tem as suas transações: não é tudo-ou-nada.
+- **Export (`POST /crm/export`):** `formato: xlsx | csv` (padrão xlsx) e `colunas` opcional. Sem `colunas`, saem as da tabela do usuário: o identificador e as colunas do layout efetivo (M4). Com isso o export passou a aceitar `usuarioResponsavelId` (nome do responsável ativo; desativado sai vazio) e `createdAt`, só no export (não viram destino do import). CSV: `;`, BOM UTF-8, CRLF, vírgula decimal, data `dd/mm/aaaa` (UTC, como o .xlsx) e apóstrofo na frente de texto que começa com `= + - @` (CSV injection). **Flag `crm.massa` desligada:** `csv` → 403 e `colunas` continua obrigatória (400). "Herdar a view" é do front: ele já manda os filtros da view; o back só resolve as colunas.
+- **Primeiro nome (migration 0024):** `leads.primeiro_nome` (coluna comum, editável), com backfill = a primeira palavra do nome, sem mexer em `updated_at` (trigger desligado durante o UPDATE). Campo do sistema na Camada 1 (`primeiroNome`, no fim da ordem padrão; pode ocultar, renomear e tornar obrigatório), semeado pelo reconcile. Regra em `services/primeiro-nome.service.js` (pura), usada pelo formulário e pelo import: criação sem ele → derivado; mudar o nome rederiva só se o atual ainda era o derivado do nome antigo; `null`/vazio volta ao derivado. **Desvio:** sem flag — é um campo do sistema comum, gravado sempre (como os eventos do M6).
+- **Mapear (10.4):** já listava os personalizados; agora tem teste.
 
 ### M11. Tipos de campo avançados e enriquecimento por CNPJ (flag `crm.cnpj`)
 - **11.1 Tipos "Depois" da spec:**

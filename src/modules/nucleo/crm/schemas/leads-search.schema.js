@@ -24,6 +24,9 @@ export const filtroLeadsSchema = z.object({
   busca: z.string({ invalid_type_error: 'Informe um texto de busca válido' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
   funilEstagioId: z.string().uuid('Informe um estágio de funil válido').optional(),
   usuarioResponsavelId: z.string().uuid('Informe um responsável válido').optional(),
+  // Sem responsável, ou com o responsável desativado — o mesmo critério do
+  // resumo `crm.esfriando_sem_responsavel`. Não combina com `usuarioResponsavelId`.
+  semResponsavel: z.boolean({ invalid_type_error: 'Sem responsável deve ser verdadeiro ou falso' }).optional(),
   valorMin: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
   valorMax: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
   criadoDe: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),

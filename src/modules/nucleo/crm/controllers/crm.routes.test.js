@@ -25,6 +25,7 @@ import { previsualizarImportacao } from '../services/import.service.js';
 import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configuracoes-campos.service.js';
 import { listarCamposDoTenant } from '../services/leads.service.js';
+import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -87,6 +88,9 @@ vi.mock('../services/regras.service.js', () => ({
   criarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   editarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   removerRegra: vi.fn().mockResolvedValue({ removido: true }),
+}));
+vi.mock('../services/leads-bulk.service.js', () => ({
+  editarLeadsEmMassa: vi.fn().mockResolvedValue({ total: 1, atualizados: 1, inalterados: 0, falhas: 0, resultados: [] }),
 }));
 vi.mock('../services/mesclagem.service.js', () => ({ mesclarLeads: vi.fn().mockResolvedValue({ id: 'lead' }) }));
 vi.mock('../services/historico.service.js', () => ({ listarHistorico: vi.fn().mockResolvedValue({ itens: [] }) }));
@@ -819,5 +823,42 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
       payload: { esfriando: 'sim' },
     });
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('Edição em massa e export (M10, flag crm.massa)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.massa' }];
+  const payload = { ids: [LEAD], alteracoes: { status: 'ganho', tags: { adicionar: ['vip'] } } };
+
+  it('bulk: sem a flag 403; OPERADOR com a flag → 200 com o autor', async () => {
+    const sem = await app.inject({ method: 'PATCH', url: '/crm/leads/bulk', headers: autorizado(tokenOperador), payload });
+    expect(sem.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache();
+    const ok = await app.inject({ method: 'PATCH', url: '/crm/leads/bulk', headers: autorizado(tokenOperador), payload });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(editarLeadsEmMassa).toHaveBeenCalledWith(TENANT, payload, 'u-op');
+  });
+
+  it('bulk: sem alteração ou id inválido → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    for (const corpo of [{ ids: [LEAD], alteracoes: {} }, { ids: ['x'], alteracoes: { status: 'ganho' } }]) {
+      const resposta = await app.inject({ method: 'PATCH', url: '/crm/leads/bulk', headers: autorizado(tokenDono), payload: corpo });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+    expect(editarLeadsEmMassa).not.toHaveBeenCalled();
+  });
+
+  it('export csv: cabeçalhos de CSV; sem colunas chega ao service (colunas da tabela)', async () => {
+    exportarLeads.mockResolvedValue(Buffer.from('csv'));
+    const csv = await app.inject({ method: 'POST', url: '/crm/export', headers: autorizado(tokenDono), payload: { formato: 'csv' } });
+    expect(csv.statusCode).toBe(HTTP_STATUS.OK);
+    expect(csv.headers['content-type']).toBe(EXPORTACAO.CONTENT_TYPE_CSV);
+    expect(csv.headers['content-disposition']).toContain(EXPORTACAO.NOME_ARQUIVO_CSV);
+    expect(exportarLeads).toHaveBeenCalledWith(TENANT, { formato: 'csv' }, 'u-dono');
+
+    const invalido = await app.inject({ method: 'POST', url: '/crm/export', headers: autorizado(tokenDono), payload: { formato: 'pdf' } });
+    expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });

@@ -130,7 +130,7 @@ export function montarNotificacoesDoDia(contagens, donos, data) {
         tipo: TIPO_SEM_RESPONSAVEL,
         titulo: `${leadsNoPlural(semResponsavel)} sem responsável esfriando`,
         corpo: 'Defina um responsável para que alguém acompanhe esses leads.',
-        dados: { rota: ROTA, filtro: { esfriando: true }, total: semResponsavel },
+        dados: { rota: ROTA, filtro: { esfriando: true, semResponsavel: true }, total: semResponsavel },
         chaveDedup: `${TIPO_SEM_RESPONSAVEL}:${data}`,
       });
     }

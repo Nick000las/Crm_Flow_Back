@@ -243,6 +243,24 @@ export async function resolverOpcoesDoLead(listas, input, carregarAtual = async 
 }
 
 /**
+ * Tag existente que casa com o texto: pela key, pelo label (sem diferenciar
+ * maiúscula) ou pelo slug. Também usado pra "remover tag" da edição em
+ * massa (M10), que não cria nada.
+ *
+ * @param {OpcaoLista[]} tags
+ * @returns {(texto: string) => OpcaoLista | undefined}
+ */
+export function buscadorDeTags(tags) {
+  const porKey = new Map(tags.map((tag) => [tag.key, tag]));
+  const porLabel = new Map(tags.map((tag) => [tag.label.trim().toLowerCase(), tag]));
+  return (bruto) => {
+    const texto = bruto.trim();
+    const slug = slugify(texto);
+    return porKey.get(texto) ?? porLabel.get(texto.toLowerCase()) ?? (slug ? porKey.get(slug) : undefined);
+  };
+}
+
+/**
  * Tag digitada → key: casa com a key, com o label (sem diferenciar
  * maiúscula) ou com o slug de uma tag existente; senão vira tag nova.
  *
@@ -251,9 +269,8 @@ export async function resolverOpcoesDoLead(listas, input, carregarAtual = async 
  * @param {() => Promise<Record<string, unknown> | undefined>} leadAtual
  */
 async function resolverTags(tags, textos, leadAtual) {
-  const porKey = new Map(tags.map((tag) => [tag.key, tag]));
-  const porLabel = new Map(tags.map((tag) => [tag.label.trim().toLowerCase(), tag]));
-  const usadas = new Set(porKey.keys());
+  const encontrar = buscadorDeTags(tags);
+  const usadas = new Set(tags.map((tag) => tag.key));
   /** @type {string[]} */
   const keys = [];
   /** @type {{ key: string, label: string }[]} */
@@ -263,7 +280,7 @@ async function resolverTags(tags, textos, leadAtual) {
     const texto = bruto.trim();
     if (!texto) continue;
     const slug = slugify(texto);
-    const existente = porKey.get(texto) ?? porLabel.get(texto.toLowerCase()) ?? (slug ? porKey.get(slug) : undefined);
+    const existente = encontrar(texto);
 
     if (existente) {
       const tagsDoLead = /** @type {string[] | undefined} */ ((await leadAtual())?.tags);

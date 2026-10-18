@@ -32,8 +32,29 @@ export const IMPORTACAO = Object.freeze({
   TIMEOUT_ENFILEIRAR_MS: 5_000,
 });
 
+/**
+ * Colunas que só o export conhece (M10): as referências fixas do layout
+ * que não são mapeáveis no import. Com elas, as colunas padrão (as da
+ * tabela do usuário) saem inteiras.
+ */
+export const CAMPOS_SO_EXPORTACAO = Object.freeze([
+  { chave: 'usuarioResponsavelId', label: 'Responsável', tipo: 'texto', obrigatorio: false },
+  { chave: 'createdAt', label: 'Criado em', tipo: 'data', obrigatorio: false },
+]);
+
+export const FORMATOS_EXPORTACAO = Object.freeze({ XLSX: 'xlsx', CSV: 'csv' });
+
+export const LISTA_FORMATOS_EXPORTACAO = Object.freeze(Object.values(FORMATOS_EXPORTACAO));
+
 export const EXPORTACAO = Object.freeze({
   MAX_LINHAS: 10_000,
   NOME_ARQUIVO: 'leads.xlsx',
   CONTENT_TYPE: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // CSV pro Excel pt-BR (M10): `;` (a vírgula é o decimal), BOM pra ele
+  // ler UTF-8 (acentos) e CRLF.
+  NOME_ARQUIVO_CSV: 'leads.csv',
+  CONTENT_TYPE_CSV: 'text/csv; charset=utf-8',
+  CSV_SEPARADOR: ';',
+  CSV_QUEBRA_LINHA: '\r\n',
+  CSV_BOM: '﻿',
 });

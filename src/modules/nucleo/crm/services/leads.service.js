@@ -21,6 +21,7 @@ import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicado
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
 import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { validarRegras } from './regras-campos.service.js';
 import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
 import { CAMADA, CAMPOS_DUPLICIDADE, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEAD, TIPOS_LISTA } from '../constants.js';
@@ -66,7 +67,7 @@ export async function buscarLeadFormatado(tenantId, leadId) {
  */
 export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
-  const input = comContatoNormalizado(semFlagDeDuplicidade);
+  const input = comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade));
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
@@ -121,10 +122,15 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
  */
 export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId) {
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
-  const input = comContatoNormalizado(semFlagDeDuplicidade);
-  if (input.nome !== undefined && input.nome.trim().length === 0) {
+  const normalizado = comContatoNormalizado(semFlagDeDuplicidade);
+  if (normalizado.nome !== undefined && normalizado.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
+  // Primeiro nome (M10): segue o nome enquanto não foi editado à mão.
+  const input = comPrimeiroNomeNaEdicao(
+    normalizado,
+    precisaDoLeadAtual(normalizado) ? await buscarLeadPorId(tenantId, leadId) : null,
+  );
 
   const schema = await obterSchemaCampos(tenantId);
   const { definicoes } = schema;

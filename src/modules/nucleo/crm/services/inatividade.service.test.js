@@ -107,6 +107,7 @@ describe('montarNotificacoesDoDia', () => {
         usuarioId: DONO,
         tipo: 'crm.esfriando_sem_responsavel',
         titulo: '1 lead sem responsável esfriando',
+        dados: { rota: '/crm/leads', filtro: { esfriando: true, semResponsavel: true }, total: 1 },
         chaveDedup: 'crm.esfriando_sem_responsavel:2026-10-17',
       }),
     ]);

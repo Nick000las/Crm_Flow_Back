@@ -93,6 +93,8 @@ export function parseCorsOrigins(value) {
   if (value === '*') return '*';
   return value
     .split(',')
-    .map((origin) => origin.trim())
+    // Header Origin do navegador nunca tem barra final; sem isso,
+    // "http://localhost:5173/" no .env nunca casa e o CORS bloqueia tudo.
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 }
