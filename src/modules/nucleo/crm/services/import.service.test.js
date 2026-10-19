@@ -24,6 +24,10 @@ import { duplicadosDasLinhas, encontrarDuplicados } from './duplicidade.service.
 import { regrasAplicaveis } from './leads.service.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
+
+// M11b: enriquecimento por CNPJ tem teste próprio; aqui só o gancho do lote.
+vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
 
 vi.mock('./leads.service.js', async (importOriginal) => {
   const real = await importOriginal();
@@ -468,5 +472,27 @@ describe('regras de obrigatoriedade no import (M8)', () => {
       linhasComErro: 1,
       relatorioErro: [{ linha: LINHA_ANA, motivo: expect.stringContaining('"Cargo" é obrigatório') }],
     });
+  });
+});
+
+describe('enriquecimento por CNPJ no fim do lote (M11b)', () => {
+  it('uma leva só, com os leads gravados que têm CNPJ', async () => {
+    buscarImportJobComPayload.mockResolvedValue({
+      id: JOB,
+      status: 'processando',
+      estrategia_duplicata: 'criar',
+      usuario_id: USUARIO,
+      payload: [
+        { linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', cnpj: '11222333000181', customFields: {} } },
+        { linha: LINHA_BIA, dados: { nome: 'Bia', email: 'bia@x.com', customFields: {} } },
+      ],
+    });
+    encontrarDuplicados.mockResolvedValue([]);
+    criarLead.mockResolvedValueOnce({ id: 'lead-ana' }).mockResolvedValueOnce({ id: 'lead-bia' });
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(agendarEnriquecimento).toHaveBeenCalledTimes(1);
+    expect(agendarEnriquecimento).toHaveBeenCalledWith(TENANT, [{ leadId: 'lead-ana', cnpj: '11222333000181' }]);
   });
 });

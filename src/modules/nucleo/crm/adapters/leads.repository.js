@@ -167,7 +167,12 @@ export function criarLead(tenantId, dados, historico) {
  * @param {string} tenantId
  * @param {string} leadId
  * @param {AtualizarLeadInput} dados
- * @param {{ autorId?: string | null, montarDiff: (antes: Lead, depois: Lead) => unknown[] }} [historico]
+ * @param {{
+ *   autorId?: string | null,
+ *   montarDiff: (antes: Lead, depois: Lead) => unknown[],
+ *   tipo?: string,
+ *   detalhes?: Record<string, unknown>,
+ * }} [historico]  `tipo` padrão `atualizado` (o enriquecimento por CNPJ grava `enriquecido`)
  * @param {{ inatividade?: Date | null }} [opcoes] ver `colunasLeitura` (só a linha devolvida)
  * @returns {Promise<Lead | undefined>}
  */
@@ -203,7 +208,12 @@ export function atualizarLead(tenantId, leadId, dados, historico, { inatividade 
     if (historico && depois) {
       const diff = historico.montarDiff(antes, depois);
       if (diff.length > 0) {
-        await inserirEvento(tx, tenantId, leadId, { tipo: TIPOS_EVENTO_LEAD.ATUALIZADO, autorId: historico.autorId, diff });
+        await inserirEvento(tx, tenantId, leadId, {
+          tipo: historico.tipo ?? TIPOS_EVENTO_LEAD.ATUALIZADO,
+          autorId: historico.autorId,
+          diff,
+          detalhes: historico.detalhes,
+        });
       }
     }
     return depois;

@@ -153,3 +153,30 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
     expect(buscarLeadsFiltrados).not.toHaveBeenCalled();
   });
 });
+
+describe('valorParaPlanilha — tipos do M11', () => {
+  const USUARIO = '00000000-0000-0000-0000-0000000000aa';
+  const campo = (chave, tipo, camada = CAMADA.CAMADA_3) => ({ chave, label: chave, tipo, camada });
+
+  it('documentos com máscara (nativos e personalizados)', () => {
+    const lead = { cpf: '52998224725', cnpj: '12ABC34501DE35', custom_fields: { cep: '01310100' } };
+    expect(valorParaPlanilha(lead, campo('cpf', 'cpf', CAMADA.CAMADA_2))).toBe('529.982.247-25');
+    expect(valorParaPlanilha(lead, campo('cnpj', 'cnpj', CAMADA.CAMADA_2))).toBe('12.ABC.345/01DE-35');
+    expect(valorParaPlanilha(lead, campo('cep', 'cep'))).toBe('01310-100');
+  });
+
+  it('endereço e período numa linha; usuário pelo nome', () => {
+    const lead = {
+      custom_fields: {
+        entrega: { cep: '01310100', logradouro: 'Av. Paulista', numero: '1000', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'SP' },
+        viagem: { de: '2026-02-01', ate: '2026-02-10' },
+        consultor: USUARIO,
+      },
+    };
+    expect(valorParaPlanilha(lead, campo('entrega', 'endereco'))).toBe(
+      'Av. Paulista, 1000 - Bela Vista, São Paulo/SP, CEP 01310-100',
+    );
+    expect(valorParaPlanilha(lead, campo('viagem', 'intervalo_datas'))).toBe('01/02/2026 – 10/02/2026');
+    expect(valorParaPlanilha(lead, campo('consultor', 'usuario'), { responsaveis: new Map([[USUARIO, 'Bia']]) })).toBe('Bia');
+  });
+});

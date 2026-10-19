@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10 no back em 2026-10-18 (migration 0024 ainda não aplicada; falta o front); próximo marco: M11.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10 e M11 (em duas etapas, M11a e M11b) no back em 2026-10-18 (migrations 0024 e 0025 ainda não aplicadas; faltam os fronts); próximo marco: M12.
 
 ## Contexto
 O CRM já tem:
@@ -512,7 +512,66 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - O import de 5.000 linhas enfileira os CNPJs.
 - **11.4** Configuração: ligar e desligar, modo manual (lupa) ou automático, mapeamento entre dado da Receita e campo, e se sobrescreve. Cada consulta gera um evento na timeline (M6).
 
-**Checklist:** o cache evita uma segunda chamada; o rate limit é respeitado (teste com o provedor mockado); "não sobrescrever" é respeitado; uma falha do provedor não bloqueia salvar o lead.
+**Checklist**
+- [x] O cache evita uma segunda chamada (teste com o provedor mockado; o TTL de 30 dias é conferido na leitura).
+- [x] O rate limit é respeitado: limiter do BullMQ no worker (`opcoesDoWorkerCnpj`, testado); 429 do provedor volta pra fila. *(o throttling em si é do BullMQ; conferir no smoke com Redis)*
+- [x] "Não sobrescrever" é respeitado (só preenche o vazio; teste do job).
+- [x] Uma falha do provedor não bloqueia salvar o lead (fila e provedor fora do ar testados; a lupa responde 503 e o formulário segue).
+
+**Decisões do usuário (2026-10-18):** entregar em duas etapas (M11a tipos, M11b CNPJ); CPF/CNPJ/CEP nativos passam a usar os tipos novos só nas escritas novas; só BrasilAPI por enquanto (adapter pronto pra um pago); a lupa mostra os dados e o usuário aplica no formulário.
+
+**Como ficou (M11a, back, 2026-10-18):** tipos novos, sem migration (`crm_field.type` não tem CHECK) e **sem flag** (como os tipos MVP do M2).
+- **Formato gravado:**
+  - `cpf`: 11 dígitos, com dígito verificador; todos iguais é recusado.
+  - `cnpj`: 14 caracteres `[0-9A-Z]` (`chaveDocumento`), DV do CNPJ alfanumérico (caractere = ASCII − 48, pesos 2–9); cobre o numérico.
+  - `cep`: 8 dígitos (CEP não tem DV).
+  - `hora`: `HH:MM`.
+  - `usuario`: uuid de usuário ativo do tenant; o service confere numa consulta só, e só se o payload tiver algum.
+  - `intervalo_datas`: `{ de, ate }` em `AAAA-MM-DD`, de ≤ ate.
+  - `endereco`: objeto com as partes de `PARTES_ENDERECO` (cep, logradouro, numero, complemento, bairro, cidade, uf), só as preenchidas e nessa ordem (sem diff falso no histórico).
+- **Validadores e máscaras genéricos** em `#shared`: `cpfValido`/`cnpjValido` (`#shared/validators`), `formatarCpf`/`formatarCnpj`/`formatarCep` (`#shared/formatters`), constantes em `BRAZIL_DOCUMENTS`.
+- **Nativos (Camada 2):** `cpf`, `cnpj` e `cep` mudaram de `texto` pros tipos novos. Formulário e PUT validam e gravam sem máscara (400 no campo); o import usa a mesma conversão por tipo. Lead antigo com máscara fica como está até ser editado.
+- **Filtro:**
+  - CPF/CNPJ nativos usam `dedup_cpf`/`dedup_cnpj` (já normalizadas, cobrem linha antiga); CEP compara só os dígitos.
+  - Operadores: hora tem `igual`/`entre` (cast pra `time`); intervalo só `entre` (= sobreposição); endereço `contem` procura nos valores das partes (`jsonb_each_text`), não no nome das chaves; usuário tem `igual`/`e_um_dos`.
+  - Objeto vazio conta como vazio.
+- **Regras do M8:** o avaliador compara do mesmo jeito; 5 casos novos em `testing/regras.casos.json` (o front roda os mesmos).
+- **Import:** documento em célula numérica recupera o zero da frente; hora aceita `14:30`, fração do dia do Excel ou célula de hora; período `dd/mm/aaaa - dd/mm/aaaa` (ou `a`/`até`; uma data só = um dia); usuário pelo nome (sem diferenciar maiúscula); endereço numa célula vai inteiro pro logradouro.
+- **Export:** máscara de CPF/CNPJ/CEP; endereço numa linha; período `dd/mm/aaaa – dd/mm/aaaa`; usuário pelo nome.
+- **Fora do escopo:** o identificador do layout continua só com personalizado de texto.
+
+**Como ficou (M11b, back, 2026-10-18):** enriquecimento por CNPJ, atrás de `crm.cnpj`. Migration 0025 **ainda não aplicada**.
+- **Schema (migration 0025):**
+  - `crm_cnpj_cache`, **global**: sem `tenant_id` nem RLS, de propósito (dado público; o mesmo CNPJ em dois tenants custa uma chamada). Guarda `cnpj` (PK), `status` (`ok`/`nao_encontrado`), `dados` no formato do CRM, `provedor` e `consultado_em`. TTL de 30 dias conferido na leitura. A exceção está documentada na migration e travada em `rls-coverage.test.js` (a tabela tem que continuar sem `tenant_id`).
+  - `crm_cnpj_config`: uma linha por tenant, com RLS. Guarda `ativo`, `modo` (`manual`/`automatico`), `sobrescrever` e `mapeamento` (dado da Receita → `id` do campo). Sem linha = padrão: ligado, manual, sem sobrescrever; razão social → Empresa, município → Cidade, UF, CEP, endereço → Endereço, só os campos ativos no tenant.
+- **Provedor (`adapters/cnpj-brasilapi.provider.js`):**
+  - Primeira chamada HTTP externa do repo: `fetch` nativo, timeout de 5 s.
+  - 404 → `nao_encontrado` (vai pro cache); 429, 5xx e erro de rede → erro transitório.
+  - CNPJ alfanumérico → `nao_suportado` sem chamar (a BrasilAPI só aceita numérico); não vai pro cache.
+  - Um provedor pago entra como outro adapter com a mesma forma `{ nome, consultar }`.
+- **Lupa (`GET /crm/cnpj/:cnpj`):**
+  - Qualquer papel. Devolve `{ cnpj, status, dados, sugestao: [{ campoReceita, chave, label, camada, valor }] }`.
+  - O valor da sugestão já vem no tipo do destino: endereço como objeto no tipo `endereco` e numa linha em campo de texto; telefone e CEP sem máscara. Valor que não passa no tipo fica de fora.
+  - Não grava no lead: o front preenche e o usuário salva (evento `atualizado` normal). **Desvio:** a consulta manual não gera evento próprio.
+  - Provedor fora do ar → 503 `EXTERNAL_SERVICE_UNAVAILABLE` (código novo em `ERROR_CODES`). DV errado → 400.
+  - `ativo: false` nas configurações também desliga a lupa (403 `FORBIDDEN`, sem consultar o provedor).
+  - A lupa não tem rate limit próprio (só o worker tem): uso em excesso vira 429 do provedor, que a lupa devolve como 503.
+  - Cada item da `sugestao` traz também o `tipo` do campo de destino.
+- **Automático (modo `automatico`):**
+  - O que dispara: criar lead com CNPJ, PUT que manda `cnpj`, e import (uma leva no fim do lote). O CNPJ é o nativo da Camada 2; personalizado do tipo `cnpj` não dispara.
+  - Enfileira na fila `crm-cnpj` (`jobId` tenant:lead:cnpj, 3 tentativas com espera exponencial). Erro de fila ou Redis ausente é engolido: **salvar o lead nunca falha por causa disso**.
+  - Worker: `limiter` do BullMQ (padrão 3 por segundo; env `CNPJ_LIMITE_MAX`/`CNPJ_LIMITE_JANELA_MS`), um job por vez.
+  - O job confere de novo flag, modo e lead (pula se o CNPJ mudou), consulta (cache primeiro) e aplica com `atualizarLead`, autor nulo e evento `enriquecido` (`detalhes: { cnpj, provedor }`).
+  - Sem `sobrescrever`, só preenche campo vazio. As regras do M8 não são aplicadas aqui: é preenchimento do sistema, não edição do usuário.
+  - E-mail e telefone nativos respeitam a duplicidade (M7): campo que cairia num bloqueio fica de fora, e o resto é gravado. Aviso passa, porque o sistema não tem como confirmar (mesmo critério do import com `criar`).
+  - Data nativa é gravada como `Date`, como no import.
+  - Erro que não é transitório vira `UnrecoverableError` (falha uma vez, sem repetir à toa).
+  - `jobId` com `_`, não `:`: o BullMQ só tolera `:` em id por compatibilidade.
+- **Config (`GET`/`PUT /crm/configuracoes/cnpj`):**
+  - Leitura qualquer papel; escrita DONO/MASTER, com o papel conferido antes da flag.
+  - O `GET` traz `camposReceita` (o que a Receita entrega e os tipos de campo que aceitam cada dado).
+  - O `PUT` recusa destino inativo, de tipo incompatível ou repetido.
+- **Flag desligada:** rotas 403, nada é enfileirado e o worker pula o tenant.
 
 **Marco da Fase 2:** dados limpos na entrada (duplicidade, regras e CNPJ), a operação diária (esfriando e edição em massa) e a base de atividades e eventos.
 

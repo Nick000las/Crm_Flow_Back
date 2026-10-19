@@ -213,11 +213,11 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', () => {
     await salvarPadrao(tenantId, usuarioId, padrao);
     const { id: leadId } = await registrarNovoLead(
       tenantId,
-      { nome: 'Acme', email: 'acme@smoke.test', cnpj: '12.345.678/0001-90', empresa: 'Acme SA', cidade: 'Joinville' },
+      { nome: 'Acme', email: 'acme@smoke.test', cnpj: '11.222.333/0001-81', empresa: 'Acme SA', cidade: 'Joinville' },
       usuarioId,
     );
 
-    for (const busca of ['12.345.678/0001-90', '12345678000190', '12.345']) {
+    for (const busca of ['11.222.333/0001-81', '11222333000181', '11.222']) {
       const resultado = await pesquisarLeads(tenantId, { busca, paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA } });
       expect(resultado.itens.map((lead) => lead.id), busca).toEqual([leadId]);
     }

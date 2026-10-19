@@ -32,4 +32,20 @@ describeWithDatabase('Cobertura de RLS multi-tenant', () => {
     }
     expect(tabelasSemRLS).toHaveLength(0);
   });
+
+  // Exceções documentadas: tabelas globais de dado público, sem `tenant_id`
+  // nem RLS de propósito (passam no teste acima por não ter `tenant_id`).
+  // Este teste trava a exceção: se alguém puser dado de tenant nelas, falha.
+  const TABELAS_GLOBAIS = [
+    // M11b: cache da Receita por CNPJ, compartilhado entre tenants (migration 0025).
+    { schema: 'modulo_crm', tabela: 'crm_cnpj_cache' },
+  ];
+
+  it.each(TABELAS_GLOBAIS)('tabela global $schema.$tabela continua sem tenant_id', async ({ schema, tabela }) => {
+    const colunas = await prisma.$queryRaw`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = ${schema} AND table_name = ${tabela} AND column_name = 'tenant_id'
+    `;
+    expect(colunas).toHaveLength(0);
+  });
 });

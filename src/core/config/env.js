@@ -57,6 +57,11 @@ const envSchema = z.object({
   // Fila de importação do CRM (BullMQ). Opcional no bootstrap: sem ela o
   // servidor sobe normal e só POST /crm/import/:jobId/confirm responde 503.
   REDIS_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
+  // Rate limit do worker na consulta de CNPJ (CRM, M11b): no máximo
+  // CNPJ_LIMITE_MAX consultas a cada CNPJ_LIMITE_JANELA_MS. Sem elas, o
+  // padrão do módulo.
+  CNPJ_LIMITE_MAX: z.coerce.number().int().positive().optional(),
+  CNPJ_LIMITE_JANELA_MS: z.coerce.number().int().positive().optional(),
 }).superRefine((data, ctx) => {
   // Falha rápido em vez de deixar getTenantClient() conectar com URL vazia
   // e reintroduzir o bypass de RLS por acidente de configuração.

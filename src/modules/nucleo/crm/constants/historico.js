@@ -12,6 +12,8 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
   RESTAURADO: 'restaurado',
   // M7: o lead recebeu os dados de outro (o descartado vai pra lixeira).
   MESCLADO: 'mesclado',
+  // M11b: dados da Receita aplicados pelo enriquecimento automático (autor nulo).
+  ENRIQUECIDO: 'enriquecido',
 });
 
 /**
