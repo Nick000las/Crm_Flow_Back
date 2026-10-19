@@ -25,6 +25,8 @@ export const ERROR_CODES = Object.freeze({
   FEATURE_NOT_ENABLED: 'FEATURE_NOT_ENABLED',
   EMAIL_UNAVAILABLE: 'EMAIL_UNAVAILABLE',
   QUEUE_UNAVAILABLE: 'QUEUE_UNAVAILABLE',
+  // Serviço de terceiro (ex. consulta de CNPJ, M11b) fora do ar ou lento.
+  EXTERNAL_SERVICE_UNAVAILABLE: 'EXTERNAL_SERVICE_UNAVAILABLE',
   RESOURCE_CONFLICT: 'RESOURCE_CONFLICT',
   // CRM (M7): lead parecido já existe. WARNING = pode salvar confirmando
   // (`ignorarDuplicados: true`); BLOCKED = não pode.

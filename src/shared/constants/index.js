@@ -53,6 +53,28 @@ export const BRAZIL_PHONE = Object.freeze({
   MOBILE_PREFIX_END: 7,
 });
 
+/**
+ * Documentos brasileiros. CNPJ inclui o alfanumérico (IN RFB 2.229/2024):
+ * 12 posições [0-9A-Z] + 2 dígitos verificadores, cada caractere valendo
+ * o código ASCII − 48 no cálculo (0–9 = 0–9, A = 17 … Z = 42).
+ */
+export const BRAZIL_DOCUMENTS = Object.freeze({
+  CPF_LENGTH: 11,
+  CNPJ_LENGTH: 14,
+  CEP_LENGTH: 8,
+  CHECK_DIGITS: 2,
+  MODULO: 11,
+  /** Resto abaixo disso → dígito 0. */
+  MIN_REMAINDER: 2,
+  CPF_FIRST_WEIGHT: 10,
+  CNPJ_MAX_WEIGHT: 9,
+  CNPJ_MIN_WEIGHT: 2,
+  CHAR_OFFSET: 48,
+  CPF_MASK: /^(\d{3})(\d{3})(\d{3})(\d{2})$/,
+  CNPJ_MASK: /^([0-9A-Z]{2})([0-9A-Z]{3})([0-9A-Z]{3})([0-9A-Z]{4})(\d{2})$/,
+  CEP_MASK: /^(\d{5})(\d{3})$/,
+});
+
 export const CURRENCY = Object.freeze({
   CENTS_PER_UNIT: 100,
 });

@@ -26,6 +26,7 @@ import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configuracoes-campos.service.js';
 import { listarCamposDoTenant } from '../services/leads.service.js';
 import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
+import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -88,6 +89,12 @@ vi.mock('../services/regras.service.js', () => ({
   criarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   editarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   removerRegra: vi.fn().mockResolvedValue({ removido: true }),
+}));
+vi.mock('../services/cnpj.service.js', () => ({
+  consultarParaLupa: vi.fn().mockResolvedValue({ cnpj: '11222333000181', status: 'ok', dados: {}, sugestao: [] }),
+  listarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'manual' }),
+  salvarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'automatico' }),
+  encerrarEnriquecimento: vi.fn(),
 }));
 vi.mock('../services/leads-bulk.service.js', () => ({
   editarLeadsEmMassa: vi.fn().mockResolvedValue({ total: 1, atualizados: 1, inalterados: 0, falhas: 0, resultados: [] }),
@@ -859,6 +866,44 @@ describe('Edição em massa e export (M10, flag crm.massa)', () => {
     expect(exportarLeads).toHaveBeenCalledWith(TENANT, { formato: 'csv' }, 'u-dono');
 
     const invalido = await app.inject({ method: 'POST', url: '/crm/export', headers: autorizado(tokenDono), payload: { formato: 'pdf' } });
+    expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('Enriquecimento por CNPJ (M11b, flag crm.cnpj)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.cnpj' }];
+  const CAMPO = '00000000-0000-0000-0000-00000000e001';
+  const config = { ativo: true, modo: 'automatico', sobrescrever: false, mapeamento: { razaoSocial: CAMPO } };
+
+  it('sem a flag: lupa e config → 403', async () => {
+    for (const url of ['/crm/cnpj/11222333000181', '/crm/configuracoes/cnpj']) {
+      const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+      expect(resposta.json().error.code, url).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+    }
+  });
+
+  it('lupa: qualquer papel, com a flag', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const resposta = await app.inject({ method: 'GET', url: '/crm/cnpj/11.222.333%2F0001-81', headers: autorizado(tokenOperador) });
+    expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
+    expect(consultarParaLupa).toHaveBeenCalledWith(TENANT, '11.222.333/0001-81');
+  });
+
+  it('config: OPERADOR não grava (antes da flag); DONO grava; campo desconhecido → 400', async () => {
+    const operador = await app.inject({ method: 'PUT', url: '/crm/configuracoes/cnpj', headers: autorizado(tokenOperador), payload: config });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const dono = await app.inject({ method: 'PUT', url: '/crm/configuracoes/cnpj', headers: autorizado(tokenDono), payload: config });
+    expect(dono.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarConfigCnpj).toHaveBeenCalledWith(TENANT, config);
+
+    const invalido = await app.inject({
+      method: 'PUT',
+      url: '/crm/configuracoes/cnpj',
+      headers: autorizado(tokenDono),
+      payload: { ...config, mapeamento: { capitalSocial: CAMPO } },
+    });
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });

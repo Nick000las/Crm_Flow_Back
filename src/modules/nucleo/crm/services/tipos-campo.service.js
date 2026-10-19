@@ -1,6 +1,6 @@
-import { BRAZIL_PHONE } from '#shared/constants/index.js';
-import { emailSchema } from '#shared/validators/index.js';
-import { TIPOS_CAMPO, TIPOS_LISTA } from '../constants.js';
+import { BRAZIL_DOCUMENTS, BRAZIL_PHONE } from '#shared/constants/index.js';
+import { cnpjValido, cpfValido, emailSchema, uuidSchema } from '#shared/validators/index.js';
+import { PARTES_ENDERECO, TAMANHO_UF, TIPOS_CAMPO, TIPOS_LISTA } from '../constants.js';
 
 /**
  * Regras por tipo de campo (docs/crm/plano-configuracoes.md, M2.3) —
@@ -15,7 +15,13 @@ import { TIPOS_CAMPO, TIPOS_LISTA } from '../constants.js';
  * - `telefone`: só dígitos, sem DDI 55 (10 ou 11 dígitos);
  * - `numero`/`monetario`: number (`monetario` em reais, até 2 casas);
  * - `data`: string ISO; `booleano`: boolean;
- * - `selecao`: uma das opções; `selecao_multipla`: lista de opções.
+ * - `selecao`: uma das opções; `selecao_multipla`: lista de opções;
+ * - M11: `cpf`/`cep`: só dígitos (11/8); `cnpj`: 14 caracteres [0-9A-Z]
+ *   (inclui o alfanumérico); `hora`: `HH:MM`; `usuario`: uuid de usuário
+ *   ativo (o "é ativo" é conferido no service, que tem acesso a dado);
+ *   `intervalo_datas`: `{ de, ate }` (`AAAA-MM-DD`, de ≤ ate);
+ *   `endereco`: objeto com as partes de `PARTES_ENDERECO`, nessa ordem, só
+ *   as preenchidas.
  */
 
 export const LIMITE_TEXTO_LONGO = 10_000;
@@ -27,6 +33,17 @@ const PROTOCOLOS_URL = new Set(['http:', 'https:']);
 const PADRAO_DATA_BR = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 const VALORES_VERDADEIROS = new Set(['sim', 's', 'true', 'verdadeiro', '1', 'x', 'yes']);
 const VALORES_FALSOS = new Set(['não', 'nao', 'n', 'false', 'falso', '0', 'no']);
+const PADRAO_HORA = /^(\d{1,2}):(\d{2})(?::\d{2})?$/;
+const PADRAO_DIA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const TAMANHO_DIA_ISO = 10;
+const HORAS_NO_DIA = 24;
+const MINUTOS_NA_HORA = 60;
+const MINUTOS_NO_DIA = HORAS_NO_DIA * MINUTOS_NA_HORA;
+const DIGITOS_HORA = 2;
+const DATAS_NO_INTERVALO = 2;
+// "01/02/2026 - 10/02/2026", "01/02/2026 a 10/02/2026", "… até …".
+const SEPARADOR_INTERVALO = /\s+(?:-|–|a|até)\s+/i;
+const PADRAO_UF = new RegExp(`^[A-Z]{${TAMANHO_UF}}$`);
 
 /** @param {string} texto */
 export function somenteDigitos(texto) {
@@ -40,7 +57,90 @@ export function somenteDigitos(texto) {
  * @param {unknown} valor
  */
 export function valorAusente(valor) {
-  return valor === undefined || valor === null || valor === '' || (Array.isArray(valor) && valor.length === 0);
+  if (valor === undefined || valor === null || valor === '') return true;
+  if (Array.isArray(valor)) return valor.length === 0;
+  // Endereço / intervalo (M11): objeto sem nenhuma parte preenchida.
+  if (objetoSimples(valor)) return Object.values(/** @type {object} */ (valor)).every(valorAusente);
+  return false;
+}
+
+/** @param {unknown} valor */
+function objetoSimples(valor) {
+  return typeof valor === 'object' && valor !== null && !Array.isArray(valor) && !(valor instanceof Date);
+}
+
+/** @param {number} numero */
+function doisDigitos(numero) {
+  return String(numero).padStart(DIGITOS_HORA, '0');
+}
+
+/** @param {string} texto @returns {string | null} */
+export function normalizarCpf(texto) {
+  const digitos = somenteDigitos(texto);
+  return cpfValido(digitos) ? digitos : null;
+}
+
+/** @param {string} texto @returns {string | null} */
+export function normalizarCnpj(texto) {
+  const chave = chaveDocumento(texto);
+  return chave && cnpjValido(chave) ? chave : null;
+}
+
+/** @param {string} texto @returns {string | null} */
+export function normalizarCep(texto) {
+  const digitos = somenteDigitos(texto);
+  return digitos.length === BRAZIL_DOCUMENTS.CEP_LENGTH ? digitos : null;
+}
+
+/** `9:05`, `09:05` ou `09:05:30` → `09:05`. @param {string} texto @returns {string | null} */
+export function normalizarHora(texto) {
+  const partes = PADRAO_HORA.exec(texto.trim());
+  if (!partes) return null;
+  const [horas, minutos] = [Number(partes[1]), Number(partes[2])];
+  if (horas >= HORAS_NO_DIA || minutos >= MINUTOS_NA_HORA) return null;
+  return `${doisDigitos(horas)}:${partes[2]}`;
+}
+
+/** @param {unknown} valor */
+function diaIsoValido(valor) {
+  return (
+    typeof valor === 'string' && PADRAO_DIA_ISO.test(valor.slice(0, TAMANHO_DIA_ISO)) && !Number.isNaN(Date.parse(valor))
+  );
+}
+
+/** @param {unknown} valor */
+function intervaloValido(valor) {
+  if (!objetoSimples(valor)) return false;
+  const { de, ate, ...resto } = /** @type {Record<string, unknown>} */ (valor);
+  if (Object.keys(resto).length > 0 || !diaIsoValido(de) || !diaIsoValido(ate)) return false;
+  return String(de).slice(0, TAMANHO_DIA_ISO) <= String(ate).slice(0, TAMANHO_DIA_ISO);
+}
+
+/** @param {unknown} valor */
+function enderecoValido(valor) {
+  if (!objetoSimples(valor)) return false;
+  return Object.entries(/** @type {Record<string, unknown>} */ (valor)).every(([parte, conteudo]) => {
+    if (!PARTES_ENDERECO.includes(parte)) return false;
+    if (conteudo === null || conteudo === undefined || conteudo === '') return true;
+    if (typeof conteudo !== 'string') return false;
+    if (parte === 'cep') return normalizarCep(conteudo) !== null;
+    if (parte === 'uf') return PADRAO_UF.test(conteudo.trim().toUpperCase());
+    return true;
+  });
+}
+
+/** Partes preenchidas, na ordem de `PARTES_ENDERECO`. @param {Record<string, unknown>} endereco */
+function normalizarEndereco(endereco) {
+  /** @type {Record<string, string>} */
+  const normalizado = {};
+  for (const parte of PARTES_ENDERECO) {
+    const conteudo = typeof endereco[parte] === 'string' ? endereco[parte].trim() : '';
+    if (!conteudo) continue;
+    if (parte === 'cep') normalizado.cep = normalizarCep(conteudo) ?? conteudo;
+    else if (parte === 'uf') normalizado.uf = conteudo.toUpperCase();
+    else normalizado[parte] = conteudo;
+  }
+  return normalizado;
 }
 
 /**
@@ -52,7 +152,12 @@ export function valorAusente(valor) {
  * @param {string} texto
  */
 export function textoDeBusca(tipo, texto) {
-  if (tipo === TIPOS_CAMPO.TELEFONE) return somenteDigitos(texto) || texto;
+  if (tipo === TIPOS_CAMPO.TELEFONE || tipo === TIPOS_CAMPO.CPF || tipo === TIPOS_CAMPO.CEP) {
+    return somenteDigitos(texto) || texto;
+  }
+  if (tipo === TIPOS_CAMPO.CNPJ) return chaveDocumento(texto) ?? texto;
+  if (tipo === TIPOS_CAMPO.HORA) return normalizarHora(texto) ?? texto;
+  if (tipo === TIPOS_CAMPO.USUARIO) return texto.toLowerCase();
   if (tipo === TIPOS_CAMPO.EMAIL) return texto.trim().toLowerCase();
   return texto;
 }
@@ -166,6 +271,20 @@ export function valorValidoParaTipo(tipo, valor, opcoes) {
       return typeof valor === 'string' && emailSchema.safeParse(valor.trim()).success;
     case TIPOS_CAMPO.URL:
       return typeof valor === 'string' && urlValida(valor.trim());
+    case TIPOS_CAMPO.CPF:
+      return typeof valor === 'string' && normalizarCpf(valor) !== null;
+    case TIPOS_CAMPO.CNPJ:
+      return typeof valor === 'string' && normalizarCnpj(valor) !== null;
+    case TIPOS_CAMPO.CEP:
+      return typeof valor === 'string' && normalizarCep(valor) !== null;
+    case TIPOS_CAMPO.HORA:
+      return typeof valor === 'string' && normalizarHora(valor) !== null;
+    case TIPOS_CAMPO.USUARIO:
+      return uuidSchema.safeParse(valor).success;
+    case TIPOS_CAMPO.INTERVALO_DATAS:
+      return intervaloValido(valor);
+    case TIPOS_CAMPO.ENDERECO:
+      return enderecoValido(valor);
     default:
       return false;
   }
@@ -179,8 +298,26 @@ export function valorValidoParaTipo(tipo, valor, opcoes) {
  * @param {unknown} valor
  */
 export function normalizarValorDoTipo(tipo, valor) {
+  if (objetoSimples(valor)) {
+    const objeto = /** @type {Record<string, unknown>} */ (valor);
+    if (tipo === TIPOS_CAMPO.ENDERECO) return normalizarEndereco(objeto);
+    if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
+      return { de: String(objeto.de).slice(0, TAMANHO_DIA_ISO), ate: String(objeto.ate).slice(0, TAMANHO_DIA_ISO) };
+    }
+    return valor;
+  }
   if (typeof valor !== 'string') return valor;
   switch (tipo) {
+    case TIPOS_CAMPO.CPF:
+      return normalizarCpf(valor) ?? valor;
+    case TIPOS_CAMPO.CNPJ:
+      return normalizarCnpj(valor) ?? valor;
+    case TIPOS_CAMPO.CEP:
+      return normalizarCep(valor) ?? valor;
+    case TIPOS_CAMPO.HORA:
+      return normalizarHora(valor) ?? valor;
+    case TIPOS_CAMPO.USUARIO:
+      return valor.toLowerCase();
     case TIPOS_CAMPO.TELEFONE:
       return normalizarTelefone(valor) ?? valor;
     case TIPOS_CAMPO.EMAIL:
@@ -197,7 +334,8 @@ export function normalizarValorDoTipo(tipo, valor) {
  * import só decide pra onde o valor vai). Erro vira mensagem pro
  * relatório, nunca exceção — o relatório junta todas as linhas.
  *
- * @param {{ tipo: string, label: string, opcoes?: readonly string[] | null }} campo
+ * @param {{ tipo: string, label: string, opcoes?: readonly string[] | null, usuarios?: Map<string, string> }} campo
+ *   `usuarios` (tipo `usuario`): nome em minúsculas → id dos usuários ativos
  * @param {string | number | boolean | Date} bruto  nunca `null` aqui
  * @returns {{ valor: unknown } | { erro: string }}
  */
@@ -255,6 +393,34 @@ export function converterCelula(campo, bruto) {
         : { erro: `E-mail inválido em "${campo.label}": "${texto}"` };
     case TIPOS_CAMPO.URL:
       return urlValida(texto) ? { valor: texto } : { erro: `"${campo.label}" espera um link (http/https)` };
+    // Documento em célula numérica perde o zero da frente (CEP 1310100).
+    case TIPOS_CAMPO.CPF: {
+      const cpf = normalizarCpf(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CPF_LENGTH));
+      return cpf ? { valor: cpf } : { erro: `CPF inválido em "${campo.label}": "${texto}"` };
+    }
+    case TIPOS_CAMPO.CNPJ: {
+      const cnpj = normalizarCnpj(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CNPJ_LENGTH));
+      return cnpj ? { valor: cnpj } : { erro: `CNPJ inválido em "${campo.label}": "${texto}"` };
+    }
+    case TIPOS_CAMPO.CEP: {
+      const cep = normalizarCep(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CEP_LENGTH));
+      return cep ? { valor: cep } : { erro: `CEP inválido em "${campo.label}": "${texto}"` };
+    }
+    case TIPOS_CAMPO.HORA: {
+      const hora = converterHora(bruto, texto);
+      return hora ? { valor: hora } : { erro: `"${campo.label}" espera uma hora (hh:mm)` };
+    }
+    case TIPOS_CAMPO.INTERVALO_DATAS: {
+      const intervalo = converterIntervalo(bruto, texto);
+      return intervalo ? { valor: intervalo } : { erro: `"${campo.label}" espera um período (dd/mm/aaaa - dd/mm/aaaa)` };
+    }
+    case TIPOS_CAMPO.ENDERECO:
+      // Uma célula só não dá pra separar em partes: vai inteira no logradouro.
+      return { valor: { logradouro: texto } };
+    case TIPOS_CAMPO.USUARIO: {
+      const id = campo.usuarios?.get(texto.toLowerCase());
+      return id ? { valor: id } : { erro: `"${texto}" não é um usuário ativo (em "${campo.label}")` };
+    }
     default:
       return { erro: `Tipo de campo "${campo.tipo}" não suportado` };
   }
@@ -285,6 +451,46 @@ function converterNumero(texto) {
   const limpo = texto.replace(/\s/g, '');
   const normalizado = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
   return normalizado.length > 0 ? Number(normalizado) : Number.NaN;
+}
+
+/**
+ * @param {string | number | boolean | Date} bruto
+ * @param {string} texto
+ * @param {number} tamanho
+ */
+function comZerosAEsquerda(bruto, texto, tamanho) {
+  return typeof bruto === 'number' && Number.isInteger(bruto) ? texto.padStart(tamanho, '0') : texto;
+}
+
+/**
+ * Hora de planilha: `14:30`, fração do dia (o Excel guarda hora como
+ * número) ou `Date` (o exceljs lê célula de hora como 30/12/1899 + hora, UTC).
+ *
+ * @param {string | number | boolean | Date} bruto
+ * @param {string} texto
+ */
+function converterHora(bruto, texto) {
+  if (bruto instanceof Date) return `${doisDigitos(bruto.getUTCHours())}:${doisDigitos(bruto.getUTCMinutes())}`;
+  if (typeof bruto === 'number' && bruto >= 0 && bruto < 1) {
+    const minutos = Math.round(bruto * MINUTOS_NO_DIA) % MINUTOS_NO_DIA;
+    return `${doisDigitos(Math.floor(minutos / MINUTOS_NA_HORA))}:${doisDigitos(minutos % MINUTOS_NA_HORA)}`;
+  }
+  return normalizarHora(texto);
+}
+
+/**
+ * Período de planilha: duas datas separadas por " - ", " a " ou " até ";
+ * uma data só = um dia.
+ *
+ * @param {string | number | boolean | Date} bruto
+ * @param {string} texto
+ * @returns {{ de: string, ate: string } | null}
+ */
+function converterIntervalo(bruto, texto) {
+  const datas = bruto instanceof Date ? [bruto] : texto.split(SEPARADOR_INTERVALO).map((parte) => converterData(parte.trim()));
+  if (datas.length > DATAS_NO_INTERVALO || datas.some((data) => !data || Number.isNaN(data.getTime()))) return null;
+  const [de, ate = de] = /** @type {Date[]} */ (datas).map((data) => data.toISOString().slice(0, TAMANHO_DIA_ISO));
+  return de <= ate ? { de, ate } : null;
 }
 
 /** Aceita `dd/mm/aaaa` e ISO. @param {string} texto */

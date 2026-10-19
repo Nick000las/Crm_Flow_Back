@@ -20,7 +20,24 @@ export const TIPOS_CAMPO = Object.freeze({
   TELEFONE: 'telefone',
   EMAIL: 'email',
   URL: 'url',
+  // M11: documentos, endereço, usuário, intervalo e hora.
+  CPF: 'cpf',
+  CNPJ: 'cnpj',
+  CEP: 'cep',
+  ENDERECO: 'endereco',
+  USUARIO: 'usuario',
+  INTERVALO_DATAS: 'intervalo_datas',
+  HORA: 'hora',
 });
+
+/**
+ * Partes do tipo `endereco` (M11), nesta ordem — a ordem fixa das chaves
+ * evita diff falso no histórico (que compara por JSON).
+ */
+export const PARTES_ENDERECO = Object.freeze(['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf']);
+
+/** Tamanho da UF no endereço. */
+export const TAMANHO_UF = 2;
 
 export const FIELD_DEFINITION_TIPOS = Object.freeze(Object.values(TIPOS_CAMPO));
 
@@ -86,11 +103,13 @@ export const CAMADA_2_COLUNA_PARA_CAMPO = Object.freeze(
 export const CAMADA_2_METADADOS = Object.freeze({
   empresa: { label: 'Empresa', tipo: 'texto' },
   cargo: { label: 'Cargo', tipo: 'texto' },
-  cpf: { label: 'CPF', tipo: 'texto' },
-  cnpj: { label: 'CNPJ', tipo: 'texto' },
+  // M11: tipos de documento (validados e gravados normalizados nas escritas
+  // novas; lead antigo com máscara fica como está até ser editado).
+  cpf: { label: 'CPF', tipo: 'cpf' },
+  cnpj: { label: 'CNPJ', tipo: 'cnpj' },
   cidade: { label: 'Cidade', tipo: 'texto' },
   uf: { label: 'UF', tipo: 'texto' },
-  cep: { label: 'CEP', tipo: 'texto' },
+  cep: { label: 'CEP', tipo: 'cep' },
   endereco: { label: 'Endereço', tipo: 'texto' },
   campanha_utm: { label: 'Campanha (UTM)', tipo: 'texto' },
   data_conversao: { label: 'Data de conversão', tipo: 'data' },
@@ -242,6 +261,14 @@ export const OPERADORES_POR_TIPO = Object.freeze({
   telefone: ['igual', 'contem', 'vazio', 'nao_vazio'],
   email: ['igual', 'contem', 'e_um_dos', 'vazio', 'nao_vazio'],
   url: ['igual', 'contem', 'vazio', 'nao_vazio'],
+  cpf: ['igual', 'contem', 'vazio', 'nao_vazio'],
+  cnpj: ['igual', 'contem', 'vazio', 'nao_vazio'],
+  cep: ['igual', 'contem', 'vazio', 'nao_vazio'],
+  endereco: ['contem', 'vazio', 'nao_vazio'],
+  usuario: ['igual', 'e_um_dos', 'vazio', 'nao_vazio'],
+  // `entre` no intervalo = os dois intervalos se sobrepõem.
+  intervalo_datas: ['entre', 'vazio', 'nao_vazio'],
+  hora: ['igual', 'entre', 'vazio', 'nao_vazio'],
 });
 
 export const BUSCA_LEADS = Object.freeze({

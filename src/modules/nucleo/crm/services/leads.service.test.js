@@ -17,14 +17,15 @@ import { CAMADA, CRM_FEATURES } from '../constants.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { buscarCandidatos, buscarRegras } from '../adapters/crm-duplicates.repository.js';
-import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
+import { buscarUsuarioAtivoDoTenant, listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
 // Layout (M4): tenant que nunca configurou (identificador = Nome).
 vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined) }));
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
-vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn() }));
+vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn(), listarUsuariosAtivosDoTenant: vi.fn() }));
 // Arquivo (M5) ligado; os testes de situação estão em arquivo.service.test.js.
 // Flags: todas ligadas, menos `crm.duplicidade` e `crm.inatividade`
 // (testadas nos blocos do M7 e do M9).
@@ -32,6 +33,8 @@ vi.mock('#core/tenant/feature-flags.js', () => ({
   featureAtiva: vi.fn(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave)),
   garantirFeature: vi.fn(),
 }));
+// M11b: o enriquecimento tem teste próprio; aqui só o gancho depois de salvar.
+vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
 vi.mock('../adapters/crm-duplicates.repository.js', () => ({ buscarRegras: vi.fn(), buscarCandidatos: vi.fn() }));
 
 // Configuração da Camada 2 que o resolver devolveria (`visibilidade`); cada
@@ -688,5 +691,65 @@ describe('lead esfriando (M9)', () => {
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
     await atualizarLeadExistente('tenant-1', 'lead-1', { nome: 'Ana B' });
     expect(atualizarLead.mock.calls[0][4]).toEqual({ inatividade: expect.any(Date) });
+  });
+});
+
+describe('tipos do M11 no formulário', () => {
+  const ID_CONSULTOR = '44444444-4444-4444-4444-444444444444';
+  const USUARIO_ATIVO = '00000000-0000-0000-0000-0000000000aa';
+  const CONSULTAS_DE_USUARIOS = 2; // uma por chamada (a recusada e a aceita)
+  const CAMPO_USUARIO = { id: ID_CONSULTOR, chave: 'consultor', label: 'Consultor', tipo: 'usuario', opcoes: null, obrigatorio: false };
+
+  it('CPF/CNPJ/CEP nativos: inválido → 400 no campo; válido vai gravado sem máscara', async () => {
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', cpf: '529.982.247-24' }),
+    ).rejects.toMatchObject({ fields: { cpf: [expect.any(String)] } });
+
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '11999999999',
+      cpf: '529.982.247-25',
+      cnpj: '12.abc.345/01de-35',
+      cep: '01310-100',
+    });
+    expect(criarLead.mock.calls[0][1]).toMatchObject({ cpf: '52998224725', cnpj: '12ABC34501DE35', cep: '01310100' });
+  });
+
+  it('personalizado "usuario" tem que ser usuário ativo do tenant (uma consulta só)', async () => {
+    listarDefinicoesPorTenant.mockResolvedValue([CAMPO_USUARIO]);
+    listarUsuariosAtivosDoTenant.mockResolvedValue([{ id: USUARIO_ATIVO, nome: 'Bia' }]);
+
+    await expect(
+      registrarNovoLead('tenant-1', {
+        nome: 'Ana',
+        telefone: '11999999999',
+        customFields: { consultor: '00000000-0000-0000-0000-0000000000bb' },
+      }),
+    ).rejects.toThrow('"Consultor" precisa ser um usuário ativo desta conta');
+
+    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', customFields: { consultor: USUARIO_ATIVO } });
+    expect(listarUsuariosAtivosDoTenant).toHaveBeenCalledTimes(CONSULTAS_DE_USUARIOS);
+    expect(criarLead).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem campo "usuario" no payload, não consulta os usuários', async () => {
+    listarDefinicoesPorTenant.mockResolvedValue([CAMPO_USUARIO]);
+    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999' });
+    expect(listarUsuariosAtivosDoTenant).not.toHaveBeenCalled();
+  });
+});
+
+describe('enriquecimento por CNPJ depois de salvar (M11b)', () => {
+  it('criação agenda com o id do lead novo; PUT só quando mexe no CNPJ', async () => {
+    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', cnpj: '11.222.333/0001-81' });
+    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [{ leadId: 'lead-123', cnpj: '11222333000181' }]);
+
+    vi.clearAllMocks();
+    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', cnpj: '11222333000181' });
+    await atualizarLeadExistente('tenant-1', 'lead-1', { cargo: 'Gerente' });
+    expect(agendarEnriquecimento).not.toHaveBeenCalled();
+
+    await atualizarLeadExistente('tenant-1', 'lead-1', { cnpj: '11.222.333/0001-81' });
+    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [{ leadId: 'lead-1', cnpj: '11222333000181' }]);
   });
 });

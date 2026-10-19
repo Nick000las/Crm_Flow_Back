@@ -14,7 +14,7 @@ import {
   TIPOS_CAMPO,
 } from '../constants.js';
 import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
-import { chaveDocumento, somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
+import { chaveDocumento, normalizarHora, somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
 
 /** Tipos guardados como número (faixa e igualdade numérica). */
 const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
@@ -237,8 +237,13 @@ function colunaNativa(campo) {
     // defesa em profundidade, pra nunca cair num Prisma.raw sem mapa.
     throw erroDeFiltro(campo.chave, `"${campo.chave}" não é um campo filtrável`);
   }
-  if (campo.tipo === TIPOS_CAMPO.TELEFONE) return Prisma.raw(`regexp_replace(l.${coluna}, '[^0-9]', '', 'g')`);
+  if (campo.tipo === TIPOS_CAMPO.TELEFONE || campo.tipo === TIPOS_CAMPO.CEP) {
+    return Prisma.raw(`regexp_replace(l.${coluna}, '[^0-9]', '', 'g')`);
+  }
   if (campo.tipo === TIPOS_CAMPO.EMAIL) return Prisma.raw(`lower(l.${coluna})`);
+  // M11: CPF/CNPJ nativos pela coluna de duplicidade (M7), já sem máscara e
+  // em maiúsculas — cobre as linhas antigas gravadas com pontuação.
+  if (campo.tipo === TIPOS_CAMPO.CPF || campo.tipo === TIPOS_CAMPO.CNPJ) return Prisma.raw(`l.dedup_${coluna}`);
   return Prisma.raw(`l.${coluna}`);
 }
 
@@ -299,13 +304,19 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
   const json = Prisma.sql`(l.custom_fields->${caminho})`;
 
   switch (operador) {
+    // Objeto vazio (endereço/intervalo, M11) conta como vazio.
     case 'vazio':
-      return Prisma.sql`(COALESCE(${texto}, '') = '' OR ${json} = '[]'::jsonb)`;
+      return Prisma.sql`(COALESCE(${texto}, '') = '' OR ${json} IN ('[]'::jsonb, '{}'::jsonb))`;
     case 'nao_vazio':
-      return Prisma.sql`(COALESCE(${texto}, '') <> '' AND ${json} <> '[]'::jsonb)`;
+      return Prisma.sql`(COALESCE(${texto}, '') <> '' AND ${json} NOT IN ('[]'::jsonb, '{}'::jsonb))`;
     case 'contem':
       if (campo.tipo === 'selecao_multipla') {
         return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: [exigirTexto(chave, valor)] })}::jsonb`;
+      }
+      if (campo.tipo === TIPOS_CAMPO.ENDERECO) {
+        // Só os valores das partes (nunca o nome da chave, ex. "cidade").
+        const partes = Prisma.sql`(SELECT string_agg(value, ' ') FROM jsonb_each_text(CASE WHEN jsonb_typeof(${json}) = 'object' THEN ${json} END))`;
+        return Prisma.sql`${partes} ILIKE ${`%${escaparLike(exigirTexto(chave, valor))}%`}`;
       }
       return Prisma.sql`${texto} ILIKE ${`%${escaparLike(textoDoTipo(campo, exigirTexto(chave, valor)))}%`}`;
     case 'e_um_dos':
@@ -319,15 +330,43 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
       }
       return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: valorEscalar(campo, chave, valor) })}::jsonb`;
     case 'entre':
-      return condicaoEntre(
-        campo.tipo === 'data' ? dataCamada3(texto) : numeroCamada3(json, texto),
-        campo,
-        chave,
-        valor,
-      );
+      if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS) return condicaoSobrepoe(json, chave, valor);
+      return condicaoEntre(expressaoDeFaixa(campo, json, texto), campo, chave, valor);
     default:
       throw erroDeFiltro(chave, `Operador "${operador}" inválido`);
   }
+}
+
+/**
+ * @param {Campo} campo
+ * @param {Prisma.Sql} json
+ * @param {Prisma.Sql} texto
+ */
+function expressaoDeFaixa(campo, json, texto) {
+  if (campo.tipo === 'data') return dataCamada3(texto);
+  if (campo.tipo === TIPOS_CAMPO.HORA) return Prisma.sql`(CASE WHEN ${texto} ~ '^[0-9]{2}:[0-9]{2}$' THEN ${texto}::time END)`;
+  return numeroCamada3(json, texto);
+}
+
+/**
+ * Intervalo de datas (M11): `entre` = os dois períodos se sobrepõem — o
+ * do lead começa até o fim do filtro e termina depois do início dele.
+ *
+ * @param {Prisma.Sql} json
+ * @param {string} chave
+ * @param {unknown} valor
+ */
+function condicaoSobrepoe(json, chave, valor) {
+  const faixa = /** @type {{ de?: unknown, ate?: unknown }} */ (valor ?? {});
+  const temDe = faixa.de !== undefined && faixa.de !== null;
+  const temAte = faixa.ate !== undefined && faixa.ate !== null;
+  if (typeof valor !== 'object' || (!temDe && !temAte)) {
+    throw erroDeFiltro(chave, 'Informe "de" e/ou "ate" para o filtro de faixa');
+  }
+  const partes = [];
+  if (temAte) partes.push(Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'de')`)} <= ${exigirData(chave, faixa.ate)}::date`);
+  if (temDe) partes.push(Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'ate')`)} >= ${exigirData(chave, faixa.de)}::date`);
+  return Prisma.sql`(${Prisma.join(partes, ' AND ')})`;
 }
 
 /**
@@ -366,11 +405,29 @@ function condicaoEntre(expressao, campo, chave, valor) {
     throw erroDeFiltro(chave, 'Informe "de" e/ou "ate" para o filtro de faixa');
   }
 
-  const converter = campo.tipo === 'data' ? (v) => exigirData(chave, v) : (v) => exigirNumero(chave, v);
+  const converter = conversorDeFaixa(campo, chave);
   const partes = [];
   if (temDe) partes.push(Prisma.sql`${expressao} >= ${converter(faixa.de)}`);
   if (temAte) partes.push(Prisma.sql`${expressao} <= ${converter(faixa.ate)}`);
   return Prisma.sql`(${Prisma.join(partes, ' AND ')})`;
+}
+
+/**
+ * @param {Campo} campo
+ * @param {string} chave
+ * @returns {(valor: unknown) => unknown}
+ */
+function conversorDeFaixa(campo, chave) {
+  if (campo.tipo === 'data') return (valor) => exigirData(chave, valor);
+  if (campo.tipo === TIPOS_CAMPO.HORA) return (valor) => Prisma.sql`${exigirHora(chave, valor)}::time`;
+  return (valor) => exigirNumero(chave, valor);
+}
+
+/** @param {string} chave @param {unknown} valor */
+function exigirHora(chave, valor) {
+  const hora = typeof valor === 'string' ? normalizarHora(valor) : null;
+  if (!hora) throw erroDeFiltro(chave, 'Informe uma hora (hh:mm)');
+  return hora;
 }
 
 /**

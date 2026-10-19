@@ -299,3 +299,78 @@ describe('situação do lead (M5)', () => {
     expect(inicioDaLixeira(dataDaPurga(excluidoEm))).toEqual(excluidoEm);
   });
 });
+
+describe('tipos do M11 no filtro', () => {
+  const CAMPOS_M11 = [
+    { chave: 'cpf', label: 'CPF', tipo: 'cpf', camada: CAMADA.CAMADA_2 },
+    { chave: 'cnpj', label: 'CNPJ', tipo: 'cnpj', camada: CAMADA.CAMADA_2 },
+    { chave: 'cep', label: 'CEP', tipo: 'cep', camada: CAMADA.CAMADA_2 },
+    { chave: 'horario', label: 'Horário', tipo: 'hora', camada: CAMADA.CAMADA_3 },
+    { chave: 'viagem', label: 'Viagem', tipo: 'intervalo_datas', camada: CAMADA.CAMADA_3 },
+    { chave: 'entrega', label: 'Entrega', tipo: 'endereco', camada: CAMADA.CAMADA_3 },
+    { chave: 'consultor', label: 'Consultor', tipo: 'usuario', camada: CAMADA.CAMADA_3 },
+  ];
+
+  it('CPF/CNPJ nativos usam a coluna de duplicidade (já sem máscara); CEP, só os dígitos', () => {
+    const condicoes = montarCondicoes(
+      {
+        filtros: [
+          { chave: 'cpf', operador: 'igual', valor: '529.982.247-25' },
+          { chave: 'cnpj', operador: 'contem', valor: '12.abc' },
+          { chave: 'cep', operador: 'igual', valor: '01310-100' },
+        ],
+      },
+      CAMPOS_M11,
+    );
+    const sql = sqlDe(condicoes);
+    expect(sql).toContain('l.dedup_cpf =');
+    expect(sql).toContain('l.dedup_cnpj ILIKE');
+    expect(sql).toContain("regexp_replace(l.cep, '[^0-9]', '', 'g') =");
+    expect(valoresDe(condicoes)).toEqual(['52998224725', '%12ABC%', '01310100']);
+  });
+
+  it('hora: faixa com cast pra time; igualdade normaliza 9:05 → 09:05', () => {
+    const faixa = montarCondicoes({ filtros: [{ chave: 'horario', operador: 'entre', valor: { de: '8:00', ate: '12:00' } }] }, CAMPOS_M11);
+    expect(sqlDe(faixa)).toContain('::time');
+    expect(valoresDe(faixa)).toEqual(expect.arrayContaining(['08:00', '12:00']));
+
+    const igual = montarCondicoes({ filtros: [{ chave: 'horario', operador: 'igual', valor: '9:05' }] }, CAMPOS_M11);
+    expect(valoresDe(igual)).toContain(JSON.stringify({ horario: '09:05' }));
+    expect(() =>
+      montarCondicoes({ filtros: [{ chave: 'horario', operador: 'entre', valor: { de: 'meio-dia' } }] }, CAMPOS_M11),
+    ).toThrow(/hora/);
+  });
+
+  it('intervalo: "entre" é sobreposição (começa até o fim do filtro e termina depois do início)', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'viagem', operador: 'entre', valor: { de: '2026-02-01', ate: '2026-02-28' } }] },
+      CAMPOS_M11,
+    );
+    const sql = sqlDe(condicoes);
+    expect(sql).toContain("->>'de'");
+    expect(sql).toContain("->>'ate'");
+    expect(sql).toMatch(/<=.*>=/s);
+  });
+
+  it('endereço: "contém" procura nos valores das partes, não nos nomes das chaves', () => {
+    const condicoes = montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'contem', valor: 'Recife' }] }, CAMPOS_M11);
+    expect(sqlDe(condicoes)).toContain('jsonb_each_text');
+    expect(valoresDe(condicoes)).toContain('%Recife%');
+  });
+
+  it('objeto vazio conta como vazio', () => {
+    const condicoes = montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'vazio' }] }, CAMPOS_M11);
+    expect(sqlDe(condicoes)).toContain("'{}'::jsonb");
+  });
+
+  it('usuário compara em minúsculas; endereço não aceita igualdade', () => {
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'consultor', operador: 'igual', valor: '00000000-0000-0000-0000-0000000000AA' }] },
+      CAMPOS_M11,
+    );
+    expect(valoresDe(condicoes)).toContain(JSON.stringify({ consultor: '00000000-0000-0000-0000-0000000000aa' }));
+    expect(() => montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'igual', valor: 'x' }] }, CAMPOS_M11)).toThrow(
+      /não se aplica/,
+    );
+  });
+});

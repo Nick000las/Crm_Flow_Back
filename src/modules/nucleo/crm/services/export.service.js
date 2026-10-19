@@ -1,7 +1,7 @@
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { formatarTelefoneBR } from '#shared/formatters/index.js';
+import { formatarCep, formatarCnpj, formatarCpf, formatarTelefoneBR } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
@@ -29,6 +29,29 @@ import { gerarCsv, gerarPlanilha } from './planilha.service.js';
  */
 
 const SEPARADOR_LISTA = ', ';
+const SEPARADOR_PERIODO = ' – ';
+
+/** Tipos gravados sem máscara que saem formatados na planilha. */
+const MASCARAS = Object.freeze({
+  [TIPOS_CAMPO.TELEFONE]: formatarTelefoneBR,
+  [TIPOS_CAMPO.CPF]: formatarCpf,
+  [TIPOS_CAMPO.CNPJ]: formatarCnpj,
+  [TIPOS_CAMPO.CEP]: formatarCep,
+});
+
+/** `AAAA-MM-DD` → `dd/mm/aaaa` (sem fuso: é um dia, não um instante). @param {unknown} dia */
+function diaBR(dia) {
+  const [ano, mes, dd] = String(dia ?? '').split('-');
+  return ano && mes && dd ? `${dd}/${mes}/${ano}` : '';
+}
+
+/** `Rua X, 10, Apto 2 - Centro, São Paulo/SP, CEP 01310-100`. @param {Record<string, string>} endereco */
+function enderecoEmLinha({ cep, logradouro, numero, complemento, bairro, cidade, uf }) {
+  const rua = [logradouro, numero, complemento].filter(Boolean).join(', ');
+  const local = [cidade, uf].filter(Boolean).join('/');
+  const partes = [[rua, bairro].filter(Boolean).join(' - '), local, cep ? `CEP ${formatarCep(cep)}` : ''];
+  return partes.filter(Boolean).join(', ');
+}
 
 /**
  * @param {string} tenantId
@@ -79,7 +102,10 @@ export async function exportarLeads(tenantId, { colunas, filtro = {}, formato = 
   }
 
   const camposExportados = colunas.map((chave) => /** @type {CampoExportavel} */ (campoPorChave.get(chave)));
-  const responsaveis = colunas.includes('usuarioResponsavelId')
+  const temUsuario = camposExportados.some(
+    (campo) => campo.chave === 'usuarioResponsavelId' || campo.tipo === TIPOS_CAMPO.USUARIO,
+  );
+  const responsaveis = temUsuario
     ? new Map((await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.id, usuario.nome]))
     : new Map();
   const cabecalho = camposExportados.map((campo) => campo.label);
@@ -130,8 +156,14 @@ export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}
   if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
   // NUMERIC chega como Prisma.Decimal.
   if (typeof valor === 'object' && typeof valor.toNumber === 'function') return valor.toNumber();
-  // Telefone personalizado é gravado só com dígitos; na planilha sai com máscara.
-  if (campo.tipo === TIPOS_CAMPO.TELEFONE && typeof valor === 'string') return formatarTelefoneBR(valor);
+  // Telefone/documentos são gravados sem máscara; na planilha saem com ela.
+  if (typeof valor === 'string' && MASCARAS[campo.tipo]) return MASCARAS[campo.tipo](valor);
+  // M11: usuário pelo nome; endereço e período numa linha.
+  if (campo.tipo === TIPOS_CAMPO.USUARIO) return responsaveis.get(String(valor)) ?? null;
+  if (campo.tipo === TIPOS_CAMPO.ENDERECO && typeof valor === 'object') return enderecoEmLinha(valor);
+  if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS && typeof valor === 'object') {
+    return `${diaBR(valor.de)}${SEPARADOR_PERIODO}${diaBR(valor.ate)}`;
+  }
   if (campo.tipo === 'data' && typeof valor === 'string') {
     const data = new Date(valor);
     return Number.isNaN(data.getTime()) ? valor : data;

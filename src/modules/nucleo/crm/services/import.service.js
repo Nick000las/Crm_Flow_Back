@@ -13,6 +13,7 @@ import {
 } from '../adapters/import-jobs.repository.js';
 import { enfileirarImportacao, encerrarFilaImportacao } from '../adapters/import-queue.repository.js';
 import { buscarLeadPorId, criarLead, atualizarLead } from '../adapters/leads.repository.js';
+import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   ACOES_DUPLICIDADE,
   ACOES_IMPORT_DUPLICATA,
@@ -23,12 +24,14 @@ import {
   CAMPOS_EXTRAS_PLANILHA,
   IMPORT_JOB_STATUS,
   IMPORTACAO,
+  TIPOS_CAMPO,
 } from '../constants.js';
 import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
 import { customFieldsParaArmazenamento, exigidoNaCriacao, obterSchemaCampos } from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
 import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
 import { lerPlanilha } from './planilha.service.js';
 import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { converterCelula, valorAusente } from './tipos-campo.service.js';
@@ -93,11 +96,12 @@ export async function previsualizarImportacao(tenantId, buffer) {
  * @returns {Promise<{ jobId: string | null, totalLinhas: number, linhasValidas: number, erros: ErroDeLinha[], duplicados: object[] }>}
  */
 export async function validarImportacao(tenantId, usuarioId, buffer, { mapeamento, estrategiaDuplicata }) {
-  const [{ colunas, linhas }, campos, estagios] = await Promise.all([
+  const [{ colunas, linhas }, camposDaPlanilha, estagios] = await Promise.all([
     lerPlanilha(buffer),
     listarCamposDaPlanilha(tenantId),
     buscarEstagiosPorTenant(tenantId),
   ]);
+  const campos = await comUsuariosDoTenant(tenantId, camposDaPlanilha);
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
   validarMapeamento(mapeamento, colunas, campos, campoPorChave);
@@ -256,6 +260,8 @@ export async function processarImportacao(tenantId, jobId) {
     const { definicoes } = schema;
     const regrasCampos = await regrasAplicaveis(tenantId, schema);
     const acoes = job.acoes ?? {};
+    /** @type {{ leadId: string, cnpj: unknown }[]} */
+    const comCnpj = [];
 
     for (const item of job.payload) {
       try {
@@ -264,7 +270,7 @@ export async function processarImportacao(tenantId, jobId) {
         if (dados.customFields !== undefined) {
           dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
         }
-        const { resultado, motivo } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
+        const { resultado, motivo, leadId } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
           estagioPadraoId: estagioPadrao?.id ?? null,
           responsavelPadraoId: job.usuario_id,
           regras,
@@ -279,6 +285,7 @@ export async function processarImportacao(tenantId, jobId) {
           },
         });
         progresso[resultado] += 1;
+        if (leadId && dados.cnpj) comCnpj.push({ leadId, cnpj: dados.cnpj });
         if (motivo) progresso.relatorioErro.push({ linha: item.linha, motivo });
       } catch (erro) {
         progresso.linhasComErro += 1;
@@ -292,6 +299,8 @@ export async function processarImportacao(tenantId, jobId) {
     }
 
     await registrarProgresso(tenantId, jobId, { ...progresso, statusFinal: IMPORT_JOB_STATUS.CONCLUIDO });
+    // M11b: uma leva só no fim (o worker do CNPJ respeita o rate limit do provedor).
+    await agendarEnriquecimento(tenantId, comCnpj);
   } catch (erro) {
     await marcarFalha(tenantId, jobId);
     throw erro;
@@ -320,7 +329,8 @@ export function encerrarImportacao() {
  *   validarAtualizacao?: (leadId: string) => Promise<string | null>,
  * }} contexto  estágio e responsável padrão só em lead novo — quem importou vira o
  *   responsável; `validarAtualizacao` devolve o motivo se a atualização violar uma regra (M8)
- * @returns {Promise<{ resultado: 'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas' | 'linhasComErro', motivo?: string }>}
+ * @returns {Promise<{ resultado: 'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas' | 'linhasComErro', motivo?: string, leadId?: string }>}
+ *   `leadId`: o lead gravado (criado ou atualizado) — vai pro enriquecimento por CNPJ (M11b)
  */
 async function importarLinha(
   tenantId,
@@ -348,7 +358,7 @@ async function importarLinha(
         ...historico,
         montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
       });
-      return { resultado: 'linhasAtualizadas' };
+      return { resultado: 'linhasAtualizadas', leadId: existente.id };
     }
     if (existente.acao === ACOES_DUPLICIDADE.BLOQUEAR) {
       return {
@@ -358,7 +368,7 @@ async function importarLinha(
     }
   }
 
-  await criarLead(
+  const criado = await criarLead(
     tenantId,
     {
       ...comPrimeiroNomeNaCriacao(dados),
@@ -367,7 +377,7 @@ async function importarLinha(
     },
     historico,
   );
-  return { resultado: 'linhasCriadas' };
+  return { resultado: 'linhasCriadas', leadId: criado?.id };
 }
 
 /**
@@ -395,6 +405,23 @@ async function comTagsResolvidas(tenantId, dados) {
 async function listarCamposDaPlanilha(tenantId) {
   const campos = await listarCamposDoTenant(tenantId);
   return [...campos, ...CAMPOS_EXTRAS_PLANILHA];
+}
+
+/**
+ * Campo do tipo `usuario` (M11): a planilha traz o nome; `converterCelula`
+ * troca pelo id de um usuário ativo. Só consulta se houver um desses campos.
+ *
+ * @template {{ tipo: string }} C
+ * @param {string} tenantId
+ * @param {C[]} campos
+ * @returns {Promise<(C & { usuarios?: Map<string, string> })[]>}
+ */
+async function comUsuariosDoTenant(tenantId, campos) {
+  if (!campos.some((campo) => campo.tipo === TIPOS_CAMPO.USUARIO)) return campos;
+  const usuarios = new Map(
+    (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.nome.trim().toLowerCase(), usuario.id]),
+  );
+  return campos.map((campo) => (campo.tipo === TIPOS_CAMPO.USUARIO ? { ...campo, usuarios } : campo));
 }
 
 /**

@@ -792,6 +792,236 @@
         ],
         "ocultos": []
       }
+    },
+    {
+      "nome": "M11: CNPJ igual compara sem máscara e sem diferenciar maiúscula",
+      "regras": [
+        {
+          "id": "r-cnpj",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-cnpj",
+              "chave": "cnpj",
+              "label": "CNPJ",
+              "tipo": "cnpj",
+              "camada": 2
+            },
+            "operador": "igual",
+            "valor": "12.ABC.345/01DE-35"
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "cnpj": "12abc34501de35"
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "M11: intervalo \"entre\" casa quando os períodos se sobrepõem",
+      "regras": [
+        {
+          "id": "r-viagem",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-viagem",
+              "chave": "viagem",
+              "label": "Viagem",
+              "tipo": "intervalo_datas",
+              "camada": 3
+            },
+            "operador": "entre",
+            "valor": {
+              "de": "2026-02-05",
+              "ate": "2026-03-01"
+            }
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "viagem": {
+            "de": "2026-01-20",
+            "ate": "2026-02-10"
+          }
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "M11: intervalo \"entre\" não casa com período todo antes",
+      "regras": [
+        {
+          "id": "r-viagem",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-viagem",
+              "chave": "viagem",
+              "label": "Viagem",
+              "tipo": "intervalo_datas",
+              "camada": 3
+            },
+            "operador": "entre",
+            "valor": {
+              "de": "2026-02-05"
+            }
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "viagem": {
+            "de": "2026-01-01",
+            "ate": "2026-01-31"
+          }
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "M11: endereço \"contem\" procura nos valores das partes",
+      "regras": [
+        {
+          "id": "r-entrega",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-entrega",
+              "chave": "entrega",
+              "label": "Entrega",
+              "tipo": "endereco",
+              "camada": 3
+            },
+            "operador": "contem",
+            "valor": "recife"
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "entrega": {
+            "logradouro": "Rua X",
+            "cidade": "Recife",
+            "uf": "PE"
+          }
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
+    },
+    {
+      "nome": "M11: endereço sem parte preenchida conta como vazio",
+      "regras": [
+        {
+          "id": "r-entrega",
+          "kind": "conditional",
+          "ativo": true,
+          "sistema": false,
+          "alvo": {
+            "id": "f-empresa",
+            "chave": "empresa",
+            "label": "Empresa",
+            "tipo": "texto",
+            "camada": 2
+          },
+          "condicao": {
+            "campo": {
+              "id": "f-entrega",
+              "chave": "entrega",
+              "label": "Entrega",
+              "tipo": "endereco",
+              "camada": 3
+            },
+            "operador": "vazio"
+          },
+          "efeito": {
+            "obrigatorio": true
+          }
+        }
+      ],
+      "lead": {
+        "customFields": {
+          "entrega": {}
+        }
+      },
+      "contexto": {},
+      "esperado": {
+        "obrigatorios": [
+          "empresa"
+        ],
+        "ocultos": []
+      }
     }
   ]
 }

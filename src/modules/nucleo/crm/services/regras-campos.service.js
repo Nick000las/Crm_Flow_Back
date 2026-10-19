@@ -1,5 +1,5 @@
 import { CAMADA, CATEGORIA_NA_FRASE, TIPOS_CAMPO, TIPOS_REGRA } from '../constants.js';
-import { somenteDigitos, valorAusente } from './tipos-campo.service.js';
+import { chaveDocumento, normalizarHora, somenteDigitos, valorAusente } from './tipos-campo.service.js';
 
 /**
  * SERVICE (puro): regras de obrigatoriedade por status e condicionais (M8).
@@ -48,7 +48,16 @@ function comparavel(tipo, valor) {
     case TIPOS_CAMPO.BOOLEANO:
       return Boolean(valor);
     case TIPOS_CAMPO.TELEFONE:
+    case TIPOS_CAMPO.CPF:
+    case TIPOS_CAMPO.CEP:
       return somenteDigitos(String(valor));
+    case TIPOS_CAMPO.CNPJ:
+      return chaveDocumento(String(valor)) ?? '';
+    case TIPOS_CAMPO.HORA:
+      return normalizarHora(String(valor)) ?? String(valor);
+    // Endereço (M11): só os valores das partes, como o filtro.
+    case TIPOS_CAMPO.ENDERECO:
+      return textoNormalizado(typeof valor === 'object' && valor !== null ? Object.values(valor).join(' ') : valor);
     case TIPOS_CAMPO.SELECAO:
       return valor;
     default:
@@ -86,6 +95,13 @@ export function avaliarCondicao(tipo, operador, valorRegra, valorLead) {
     }
     case 'entre': {
       const { de, ate } = /** @type {{ de?: unknown, ate?: unknown }} */ (valorRegra ?? {});
+      if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
+        // Sobreposição, como o filtro: começa até o fim da regra e termina depois do início dela.
+        const periodo = /** @type {{ de?: unknown, ate?: unknown }} */ (valorLead);
+        const comecaAntesDoFim = ate === undefined || ate === null || diaDe(periodo.de) <= diaDe(ate);
+        const terminaDepoisDoInicio = de === undefined || de === null || diaDe(periodo.ate) >= diaDe(de);
+        return comecaAntesDoFim && terminaDepoisDoInicio;
+      }
       const atual = comparavel(tipo, valorLead);
       const depoisDoInicio = de === undefined || de === null || atual >= comparavel(tipo, de);
       const antesDoFim = ate === undefined || ate === null || atual <= comparavel(tipo, ate);

@@ -7,7 +7,7 @@ import {
   criarLead as criarLeadRepository,
   atualizarLead as atualizarLeadRepository,
 } from '../adapters/leads.repository.js';
-import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
+import { buscarUsuarioAtivoDoTenant, listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   camposDoContexto,
   camposParaFiltro,
@@ -20,11 +20,20 @@ import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
 import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicados } from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
 import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { validarRegras } from './regras-campos.service.js';
 import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
-import { CAMADA, CAMPOS_DUPLICIDADE, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEAD, TIPOS_LISTA } from '../constants.js';
+import {
+  CAMADA,
+  CAMPOS_DUPLICIDADE,
+  CAMPOS_SISTEMA,
+  CRM_FEATURES,
+  SITUACOES_LEAD,
+  TIPOS_CAMPO,
+  TIPOS_LISTA,
+} from '../constants.js';
 
 /**
  * Campos com regra própria de obrigatoriedade: `nome` é checado à parte e
@@ -32,12 +41,24 @@ import { CAMADA, CAMPOS_DUPLICIDADE, CAMPOS_SISTEMA, CRM_FEATURES, SITUACOES_LEA
  */
 const CHAVES_OBRIGATORIEDADE_PROPRIA = new Set(['nome', 'email', 'telefone']);
 
+/** CPF/CNPJ/CEP nativos (Camada 2), por chave da API — ver `comDocumentosNormalizados`. */
+const TIPOS_DOCUMENTO = new Set([TIPOS_CAMPO.CPF, TIPOS_CAMPO.CNPJ, TIPOS_CAMPO.CEP]);
+const DOCUMENTOS_NATIVOS = Object.freeze(
+  Object.fromEntries(
+    CAMPOS_SISTEMA.filter((campo) => TIPOS_DOCUMENTO.has(campo.tipo)).map((campo) => [
+      campo.systemKey,
+      { tipo: campo.tipo, label: campo.label },
+    ]),
+  ),
+);
+
 /**
  * SERVICE: lógica de negócio pura. Nunca importa Fastify.
  * @typedef {import('../types/index.js').Lead} Lead
  * @typedef {import('../types/index.js').CriarLeadInput} CriarLeadInput
  * @typedef {import('../types/index.js').AtualizarLeadInput} AtualizarLeadInput
  * @typedef {import('../types/index.js').FieldVisibility} FieldVisibility
+ * @typedef {import('../types/index.js').FieldDefinition} FieldDefinition
  */
 
 /**
@@ -77,6 +98,7 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   const schema = await obterSchemaCampos(tenantId);
   const { definicoes } = schema;
   validarCustomFields(definicoes, input.customFields);
+  await validarUsuariosDosCampos(tenantId, definicoes, input.customFields);
   // Criação exige todo campo obrigatório (nativo ou personalizado) do
   // formulário de criação — edição não (ver atualizarLeadExistente).
   validarObrigatoriosNaCriacao(schema.campos, input);
@@ -102,11 +124,14 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   // `customFields` vai como objeto puro — é o repository quem faz o
   // `JSON.stringify` (uma vez só). Stringificar aqui também gravaria uma
   // string dupla-serializada no JSONB em vez do objeto.
-  return criarLeadRepository(
+  const criado = await criarLeadRepository(
     tenantId,
     { ...comCustomFieldsArmazenaveis(comListas, definicoes), usuarioResponsavelId: input.usuarioResponsavelId ?? usuarioId },
     { autorId: usuarioId ?? null },
   );
+  // Enriquecimento por CNPJ (M11b, modo automático): depois de salvo, na fila; nunca falha o POST.
+  await agendarEnriquecimento(tenantId, [{ leadId: criado.id, cnpj: input.cnpj }]);
+  return criado;
 }
 
 /**
@@ -139,6 +164,7 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   // nunca exige que TODO campo obrigatório esteja neste payload. O que a
   // edição pode fazer é LIMPAR um campo (`null`) — isso sim é checado.
   validarCustomFields(definicoes, input.customFields);
+  await validarUsuariosDosCampos(tenantId, definicoes, input.customFields);
   validarLimpezaDeObrigatorios(input, schema.campos, definicoes);
   await validarRegrasNaEdicao(tenantId, leadId, input, schema);
   await validarContatoRestante(tenantId, leadId, input);
@@ -168,6 +194,8 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   if (!leadAtualizado) {
     throw leadNaoEncontrado();
   }
+  // M11b: só quando o PUT mexe no CNPJ (o job confere se ainda é o mesmo).
+  if (input.cnpj) await agendarEnriquecimento(tenantId, [{ leadId, cnpj: leadAtualizado.cnpj }]);
 
   return formatarLead(leadAtualizado, schema);
 }
@@ -401,7 +429,51 @@ function comContatoNormalizado(input) {
     normalizado.telefone = telefone;
   }
   if (typeof input.email === 'string') normalizado.email = input.email.trim().toLowerCase();
+  return comDocumentosNormalizados(normalizado);
+}
+
+/**
+ * CPF/CNPJ/CEP nativos (Camada 2, M11): validados e gravados na forma
+ * canônica (só dígitos; CNPJ em [0-9A-Z]) nas escritas novas. Lead antigo
+ * com máscara fica como está até alguém editar o campo.
+ *
+ * @template {Record<string, unknown>} T
+ * @param {T} input
+ * @returns {T}
+ */
+function comDocumentosNormalizados(input) {
+  const normalizado = { ...input };
+  for (const [chave, { tipo, label }] of Object.entries(DOCUMENTOS_NATIVOS)) {
+    const valor = input[chave];
+    if (typeof valor !== 'string' || valor.trim() === '') continue;
+    if (!valorValidoParaTipo(tipo, valor)) {
+      throw erroDeValidacao(chave, `${label} inválido`, `Informe um ${label} válido`);
+    }
+    normalizado[chave] = normalizarValorDoTipo(tipo, valor);
+  }
   return normalizado;
+}
+
+/**
+ * Personalizado do tipo `usuario` (M11): tem que ser um usuário ativo do
+ * tenant — uma consulta só, e só se o payload tiver algum.
+ *
+ * @param {string} tenantId
+ * @param {FieldDefinition[]} definicoes
+ * @param {Record<string, unknown> | undefined} customFields
+ */
+async function validarUsuariosDosCampos(tenantId, definicoes, customFields) {
+  const comUsuario = definicoes.filter(
+    (definicao) => definicao.tipo === TIPOS_CAMPO.USUARIO && !valorAusente(customFields?.[definicao.chave]),
+  );
+  if (comUsuario.length === 0) return;
+  const ativos = new Set((await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => usuario.id.toLowerCase()));
+  const invalido = comUsuario.find(
+    (definicao) => !ativos.has(String(/** @type {Record<string, unknown>} */ (customFields)[definicao.chave]).toLowerCase()),
+  );
+  if (invalido) {
+    throw erroDeValidacao('customFields', `"${invalido.label}" precisa ser um usuário ativo desta conta`);
+  }
 }
 
 /**
