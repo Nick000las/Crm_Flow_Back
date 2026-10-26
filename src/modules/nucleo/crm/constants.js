@@ -14,7 +14,8 @@
  * - `constants/regras.js`: obrigatoriedade por status e condicional;
  * - `constants/inatividade.js`: lead esfriando e o resumo diário;
  * - `constants/acesso.js`: papéis de gestão e feature flags;
- * - `constants/cnpj.js`: enriquecimento por CNPJ (fila, cache, mapeamento).
+ * - `constants/cnpj.js`: enriquecimento por CNPJ (fila, cache, mapeamento);
+ * - `constants/distribuicao.js`: distribuição automática (regras, rodízio).
  */
 export * from './constants/arquivo.js';
 export * from './constants/historico.js';
@@ -27,3 +28,4 @@ export * from './constants/listas.js';
 export * from './constants/planilha.js';
 export * from './constants/acesso.js';
 export * from './constants/cnpj.js';
+export * from './constants/distribuicao.js';

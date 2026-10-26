@@ -19,7 +19,9 @@ const COLUNAS_BASE = Prisma.sql`
   l.data_prevista_fechamento, l.motivo_perda, l.lead_score, l.proximo_followup,
   l.custom_fields, l.usuario_responsavel_id, f.nome AS estagio_nome,
   l.created_at, l.updated_at, l.archived_at, l.deleted_at, l.mesclado_em_id,
-  (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id) AS mesclado_em_nome
+  (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id) AS mesclado_em_nome,
+  l.assigned_by_rule_id AS atribuido_por_regra_id,
+  (SELECT r.nome FROM modulo_crm.crm_assignment_rule r WHERE r.id = l.assigned_by_rule_id) AS atribuido_por_regra_nome
 `;
 
 /**
@@ -121,8 +123,10 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
  * Prisma não aceita `undefined` num `$queryRaw`).
  *
  * @param {string} tenantId
- * @param {CriarLeadInput} dados
- * @param {{ autorId?: string | null }} [historico] sem ele (import), sem evento
+ * @param {CriarLeadInput & { atribuidoPorRegraId?: string | null }} dados  `atribuidoPorRegraId`: a regra
+ *   da distribuição automática que escolheu o responsável (M12)
+ * @param {{ autorId?: string | null, detalhes?: Record<string, unknown> }} [historico] sem ele (import), sem
+ *   evento; `detalhes` vai no evento `criado` (ex.: como o responsável foi distribuído)
  * @returns {Promise<{ id: string }>}
  */
 export function criarLead(tenantId, dados, historico) {
@@ -130,14 +134,14 @@ export function criarLead(tenantId, dados, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const criado = await tx.$queryRaw`
       INSERT INTO modulo_crm.leads (
-        tenant_id, nome, primeiro_nome, telefone, funil_estagio_id, custom_fields, valor, usuario_responsavel_id,
+        tenant_id, nome, primeiro_nome, telefone, funil_estagio_id, custom_fields, valor, usuario_responsavel_id, assigned_by_rule_id,
         email, fonte_lead, status, tags, ultima_interacao_em,
         empresa, cargo, cpf, cnpj, cidade, uf, cep, endereco,
         campanha_utm, data_conversao, probabilidade_fechamento,
         data_prevista_fechamento, motivo_perda, lead_score, proximo_followup
       )
       VALUES (
-        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid,
+        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid, ${dados.atribuidoPorRegraId ?? null}::uuid,
         ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.status ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
         ${dados.empresa ?? null}, ${dados.cargo ?? null}, ${dados.cpf ?? null}, ${dados.cnpj ?? null}, ${dados.cidade ?? null}, ${dados.uf ?? null}, ${dados.cep ?? null}, ${dados.endereco ?? null},
         ${dados.campanhaUtm ?? null}, ${dados.dataConversao ?? null}, ${dados.probabilidadeFechamento ?? null},
@@ -146,7 +150,11 @@ export function criarLead(tenantId, dados, historico) {
       RETURNING id
     `.then((rows) => rows[FIRST_RESULT_INDEX]);
     if (historico) {
-      await inserirEvento(tx, tenantId, criado.id, { tipo: TIPOS_EVENTO_LEAD.CRIADO, autorId: historico.autorId });
+      await inserirEvento(tx, tenantId, criado.id, {
+        tipo: TIPOS_EVENTO_LEAD.CRIADO,
+        autorId: historico.autorId,
+        detalhes: historico.detalhes,
+      });
     }
     return criado;
   });

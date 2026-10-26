@@ -7,6 +7,8 @@
 export const CAMPOS_EXTRAS_PLANILHA = Object.freeze([
   { chave: 'valor', label: 'Valor', tipo: 'numero', obrigatorio: false },
   { chave: 'funilEstagio', label: 'Estágio do funil', tipo: 'texto', obrigatorio: false },
+  // Pelo nome do usuário ativo (M12): linha com responsável não entra na distribuição automática.
+  { chave: 'usuarioResponsavelId', label: 'Responsável', tipo: 'usuario', obrigatorio: false },
 ]);
 
 export const ESTRATEGIAS_DUPLICATA = Object.freeze(['pular', 'atualizar', 'criar']);

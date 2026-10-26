@@ -19,6 +19,7 @@ import { HTTP_STATUS } from '#shared/constants/index.js';
 import { buscarCandidatos, buscarRegras } from '../adapters/crm-duplicates.repository.js';
 import { buscarUsuarioAtivoDoTenant, listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import { carregarContextoDistribuicao, distribuir, notificarAtribuicao } from './distribuicao.service.js';
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
 // Layout (M4): tenant que nunca configurou (identificador = Nome).
@@ -35,6 +36,13 @@ vi.mock('#core/tenant/feature-flags.js', () => ({
 }));
 // M11b: o enriquecimento tem teste próprio; aqui só o gancho depois de salvar.
 vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
+// M12: o motor e a config têm teste próprio; aqui, desligada por padrão (o bloco do M12 liga).
+vi.mock('./distribuicao.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  carregarContextoDistribuicao: vi.fn().mockResolvedValue(null),
+  distribuir: vi.fn(),
+  notificarAtribuicao: vi.fn().mockResolvedValue(1),
+}));
 vi.mock('../adapters/crm-duplicates.repository.js', () => ({ buscarRegras: vi.fn(), buscarCandidatos: vi.fn() }));
 
 // Configuração da Camada 2 que o resolver devolveria (`visibilidade`); cada
@@ -751,5 +759,54 @@ describe('enriquecimento por CNPJ depois de salvar (M11b)', () => {
 
     await atualizarLeadExistente('tenant-1', 'lead-1', { cnpj: '11.222.333/0001-81' });
     expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [{ leadId: 'lead-1', cnpj: '11222333000181' }]);
+  });
+});
+
+describe('distribuição automática (M12)', () => {
+  const LEAD = { nome: 'Bia', email: 'bia@x.com', funilEstagioId: 'estagio-1' };
+  const CONTEXTO = { fallback: 'rodizio_geral', regras: [], campos: [], ativos: new Set(), rodizioGeral: [], membrosPorGrupo: new Map() };
+  const PELA_REGRA = { usuarioId: 'usuario-vendas', regraId: 'regra-1', regraNome: 'Site', origem: 'regra' };
+
+  beforeEach(() => {
+    carregarContextoDistribuicao.mockResolvedValue(CONTEXTO);
+    distribuir.mockResolvedValue(PELA_REGRA);
+  });
+
+  it('sem responsável no payload: distribui, grava a regra e o rastro no histórico, e notifica', async () => {
+    await registrarNovoLead('tenant-1', LEAD, 'usuario-criador');
+    const [, dados, historico] = criarLead.mock.calls[0];
+    expect(dados).toMatchObject({ usuarioResponsavelId: 'usuario-vendas', atribuidoPorRegraId: 'regra-1' });
+    expect(historico).toEqual({
+      autorId: 'usuario-criador',
+      detalhes: { distribuicao: { origem: 'regra', regraId: 'regra-1', regraNome: 'Site' } },
+    });
+    expect(notificarAtribuicao).toHaveBeenCalledWith('tenant-1', {
+      leadId: 'lead-123',
+      leadNome: 'Bia',
+      atribuicao: PELA_REGRA,
+      criadorId: 'usuario-criador',
+    });
+  });
+
+  it('responsável escolhido (mesmo o próprio criador) não é redistribuído', async () => {
+    await registrarNovoLead('tenant-1', { ...LEAD, usuarioResponsavelId: 'usuario-criador' }, 'usuario-criador');
+    expect(carregarContextoDistribuicao).not.toHaveBeenCalled();
+    expect(distribuir).not.toHaveBeenCalled();
+    expect(criarLead.mock.calls[0][1]).toMatchObject({ usuarioResponsavelId: 'usuario-criador', atribuidoPorRegraId: null });
+  });
+
+  it('fallback "sem responsável" grava o lead sem dono (não cai no criador)', async () => {
+    distribuir.mockResolvedValue({ usuarioId: null, regraId: null, regraNome: null, origem: 'sem_responsavel' });
+    await registrarNovoLead('tenant-1', LEAD, 'usuario-criador');
+    expect(criarLead.mock.calls[0][1].usuarioResponsavelId).toBeNull();
+  });
+
+  it('desligada (contexto nulo): o criador continua sendo o responsável, sem detalhes no evento', async () => {
+    carregarContextoDistribuicao.mockResolvedValue(null);
+    await registrarNovoLead('tenant-1', LEAD, 'usuario-criador');
+    expect(distribuir).not.toHaveBeenCalled();
+    expect(criarLead.mock.calls[0][1].usuarioResponsavelId).toBe('usuario-criador');
+    expect(criarLead.mock.calls[0][2].detalhes).toBeUndefined();
+    expect(notificarAtribuicao).not.toHaveBeenCalled();
   });
 });

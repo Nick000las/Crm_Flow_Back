@@ -27,6 +27,7 @@ import { atualizarConfiguracaoCampo, reordenarCampos } from '../services/configu
 import { listarCamposDoTenant } from '../services/leads.service.js';
 import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
 import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js';
+import { excluirGrupo, salvarConfigDistribuicao } from '../services/distribuicao.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -95,6 +96,13 @@ vi.mock('../services/cnpj.service.js', () => ({
   listarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'manual' }),
   salvarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'automatico' }),
   encerrarEnriquecimento: vi.fn(),
+}));
+vi.mock('../services/distribuicao.service.js', () => ({
+  obterConfigDistribuicao: vi.fn().mockResolvedValue({ ativo: false, fallback: 'rodizio_geral', regras: [], grupos: [] }),
+  salvarConfigDistribuicao: vi.fn().mockResolvedValue({ ativo: true }),
+  criarGrupo: vi.fn().mockResolvedValue({ id: 'grupo' }),
+  editarGrupo: vi.fn().mockResolvedValue({ id: 'grupo' }),
+  excluirGrupo: vi.fn().mockResolvedValue({ removido: true }),
 }));
 vi.mock('../services/leads-bulk.service.js', () => ({
   editarLeadsEmMassa: vi.fn().mockResolvedValue({ total: 1, atualizados: 1, inalterados: 0, falhas: 0, resultados: [] }),
@@ -905,5 +913,69 @@ describe('Enriquecimento por CNPJ (M11b, flag crm.cnpj)', () => {
       payload: { ...config, mapeamento: { capitalSocial: CAMPO } },
     });
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+});
+
+describe('Distribuição automática (M12, flag crm.distribuicao)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.distribuicao' }];
+  const USUARIO = '00000000-0000-0000-0000-0000000000a1';
+  const CAMPO = '00000000-0000-0000-0000-0000000000f1';
+  const GRUPO = '00000000-0000-0000-0000-0000000000b1';
+  const config = {
+    ativo: true,
+    fallback: 'sem_responsavel',
+    regras: [
+      {
+        nome: 'Site',
+        ativo: true,
+        condicoes: [{ campoId: CAMPO, operador: 'igual', valor: 'site' }],
+        destino: { tipo: 'grupo', id: GRUPO },
+      },
+    ],
+  };
+
+  it('sem a flag: config → 403', async () => {
+    const resposta = await app.inject({ method: 'GET', url: '/crm/configuracoes/distribuicao', headers: autorizado(tokenOperador) });
+    expect(resposta.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+  });
+
+  it('leitura pra qualquer papel; OPERADOR não grava (antes da flag); DONO grava', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const leitura = await app.inject({ method: 'GET', url: '/crm/configuracoes/distribuicao', headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
+    findManyFeatures.mockResolvedValue([]);
+    const operador = await app.inject({ method: 'PUT', url: '/crm/configuracoes/distribuicao', headers: autorizado(tokenOperador), payload: config });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const dono = await app.inject({ method: 'PUT', url: '/crm/configuracoes/distribuicao', headers: autorizado(tokenDono), payload: config });
+    expect(dono.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarConfigDistribuicao).toHaveBeenCalledWith(TENANT, config);
+  });
+
+  it('borda: fallback desconhecido, destino de tipo inválido ou campo extra → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const payloads = [
+      { ...config, fallback: 'criador' },
+      { ...config, regras: [{ ...config.regras[0], destino: { tipo: 'time', id: GRUPO } }] },
+      { ...config, regras: [{ ...config.regras[0], prioridade: 1 }] },
+    ];
+    for (const payload of payloads) {
+      const resposta = await app.inject({ method: 'PUT', url: '/crm/configuracoes/distribuicao', headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+  });
+
+  it('grupos: criar (201) e excluir só gestão', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const grupo = { nome: 'Vendas', membros: [USUARIO] };
+    const criado = await app.inject({ method: 'POST', url: '/crm/configuracoes/distribuicao/grupos', headers: autorizado(tokenDono), payload: grupo });
+    expect(criado.statusCode).toBe(HTTP_STATUS.CREATED);
+
+    const operador = await app.inject({ method: 'DELETE', url: `/crm/configuracoes/distribuicao/grupos/${GRUPO}`, headers: autorizado(tokenOperador) });
+    expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+    await app.inject({ method: 'DELETE', url: `/crm/configuracoes/distribuicao/grupos/${GRUPO}`, headers: autorizado(tokenDono) });
+    expect(excluirGrupo).toHaveBeenCalledWith(TENANT, GRUPO);
   });
 });
