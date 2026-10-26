@@ -32,6 +32,12 @@ import { diffDoLead } from './historico.service.js';
 import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import {
+  carregarContextoDistribuicao,
+  detalhesDaAtribuicao,
+  distribuir,
+  notificarAtribuicoesDoImport,
+} from './distribuicao.service.js';
 import { lerPlanilha } from './planilha.service.js';
 import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { converterCelula, valorAusente } from './tipos-campo.service.js';
@@ -252,16 +258,19 @@ export async function processarImportacao(tenantId, jobId) {
   try {
     // O payload guarda `customFields` por `chave` (validado no request);
     // as definições de AGORA dão o `id` com que ele é gravado.
-    const [[estagioPadrao], schema, regras] = await Promise.all([
+    const [[estagioPadrao], schema, regras, distribuicao] = await Promise.all([
       buscarEstagiosPorTenant(tenantId),
       obterSchemaCampos(tenantId),
       regrasDoImport(tenantId),
+      carregarContextoDistribuicao(tenantId),
     ]);
     const { definicoes } = schema;
     const regrasCampos = await regrasAplicaveis(tenantId, schema);
     const acoes = job.acoes ?? {};
     /** @type {{ leadId: string, cnpj: unknown }[]} */
     const comCnpj = [];
+    /** Leads distribuídos por responsável (M12) — uma notificação por pessoa no fim. */
+    const distribuidos = new Map();
 
     for (const item of job.payload) {
       try {
@@ -270,10 +279,14 @@ export async function processarImportacao(tenantId, jobId) {
         if (dados.customFields !== undefined) {
           dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
         }
-        const { resultado, motivo, leadId } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
+        const { resultado, motivo, leadId, atribuidoA } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
           estagioPadraoId: estagioPadrao?.id ?? null,
           responsavelPadraoId: job.usuario_id,
           regras,
+          // Lead novo sem responsável na linha (M12): avaliado no formato da API (custom field pela chave).
+          distribuirLinha: distribuicao
+            ? (tagsResolvidas) => distribuir(tenantId, distribuicao, { ...dadosApi, tags: tagsResolvidas })
+            : null,
           // Atualizar um existente: regras do M8 contra o lead resultante.
           validarAtualizacao: async (leadId) => {
             if (regrasCampos.length === 0) return null;
@@ -286,6 +299,7 @@ export async function processarImportacao(tenantId, jobId) {
         });
         progresso[resultado] += 1;
         if (leadId && dados.cnpj) comCnpj.push({ leadId, cnpj: dados.cnpj });
+        if (atribuidoA) distribuidos.set(atribuidoA, (distribuidos.get(atribuidoA) ?? 0) + 1);
         if (motivo) progresso.relatorioErro.push({ linha: item.linha, motivo });
       } catch (erro) {
         progresso.linhasComErro += 1;
@@ -301,6 +315,7 @@ export async function processarImportacao(tenantId, jobId) {
     await registrarProgresso(tenantId, jobId, { ...progresso, statusFinal: IMPORT_JOB_STATUS.CONCLUIDO });
     // M11b: uma leva só no fim (o worker do CNPJ respeita o rate limit do provedor).
     await agendarEnriquecimento(tenantId, comCnpj);
+    await notificarAtribuicoesDoImport(tenantId, { importJobId: jobId, totais: distribuidos, importadorId: job.usuario_id });
   } catch (erro) {
     await marcarFalha(tenantId, jobId);
     throw erro;
@@ -327,16 +342,22 @@ export function encerrarImportacao() {
  *   responsavelPadraoId: string,
  *   regras: import('./duplicidade.service.js').RegraDuplicidade[],
  *   validarAtualizacao?: (leadId: string) => Promise<string | null>,
- * }} contexto  estágio e responsável padrão só em lead novo — quem importou vira o
- *   responsável; `validarAtualizacao` devolve o motivo se a atualização violar uma regra (M8)
- * @returns {Promise<{ resultado: 'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas' | 'linhasComErro', motivo?: string, leadId?: string }>}
- *   `leadId`: o lead gravado (criado ou atualizado) — vai pro enriquecimento por CNPJ (M11b)
+ *   distribuirLinha?: ((tags: unknown) => Promise<import('./distribuicao.service.js').Atribuicao>) | null,
+ * }} contexto  estágio e responsável padrão só em lead novo — o da coluna Responsável, senão
+ *   o da distribuição automática (M12, `distribuirLinha` recebe as tags já como keys), senão
+ *   quem importou; `validarAtualizacao` devolve o motivo se a atualização violar uma regra (M8)
+ * @returns {Promise<{
+ *   resultado: 'linhasCriadas' | 'linhasAtualizadas' | 'linhasIgnoradas' | 'linhasComErro',
+ *   motivo?: string, leadId?: string, atribuidoA?: string | null,
+ * }>}
+ *   `leadId`: o lead gravado (criado ou atualizado) — vai pro enriquecimento por CNPJ (M11b);
+ *   `atribuidoA`: quem recebeu pela distribuição automática (M12)
  */
 async function importarLinha(
   tenantId,
   dadosDaPlanilha,
   acao,
-  { estagioPadraoId, responsavelPadraoId, regras, validarAtualizacao = async () => null },
+  { estagioPadraoId, responsavelPadraoId, regras, validarAtualizacao = async () => null, distribuirLinha = null },
 ) {
   const dados = await comTagsResolvidas(tenantId, dadosDaPlanilha);
   const historico = { autorId: responsavelPadraoId };
@@ -368,16 +389,18 @@ async function importarLinha(
     }
   }
 
+  const atribuicao = dados.usuarioResponsavelId === undefined && distribuirLinha ? await distribuirLinha(dados.tags) : null;
   const criado = await criarLead(
     tenantId,
     {
       ...comPrimeiroNomeNaCriacao(dados),
       funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
-      usuarioResponsavelId: responsavelPadraoId,
+      usuarioResponsavelId: atribuicao ? atribuicao.usuarioId : (dados.usuarioResponsavelId ?? responsavelPadraoId),
+      atribuidoPorRegraId: atribuicao?.regraId ?? null,
     },
-    historico,
+    atribuicao ? { ...historico, detalhes: detalhesDaAtribuicao(atribuicao) } : historico,
   );
-  return { resultado: 'linhasCriadas', leadId: criado?.id };
+  return { resultado: 'linhasCriadas', leadId: criado?.id, atribuidoA: atribuicao?.usuarioId ?? null };
 }
 
 /**

@@ -60,3 +60,21 @@ export function listarDonosAtivosDoTenant(tenantId) {
     `.then((rows) => rows.map((row) => row.id)),
   );
 }
+
+/**
+ * Usuários ativos com o papel — candidatos da distribuição automática (M12):
+ * destino de regra, membro de grupo e o rodízio geral (DONO e OPERADOR).
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{ id: string, nome: string, role: string }[]>}
+ */
+export function listarUsuariosAtivosComPapel(tenantId) {
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT id::text, nome, role FROM usuarios
+      WHERE tenant_id = ${tenantId}::uuid AND ativo = true
+      ORDER BY id
+    `,
+  );
+}

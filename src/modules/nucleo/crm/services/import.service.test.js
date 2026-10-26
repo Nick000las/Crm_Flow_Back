@@ -25,9 +25,17 @@ import { regrasAplicaveis } from './leads.service.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import { carregarContextoDistribuicao, distribuir, notificarAtribuicoesDoImport } from './distribuicao.service.js';
 
 // M11b: enriquecimento por CNPJ tem teste próprio; aqui só o gancho do lote.
 vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
+// M12: distribuição desligada por padrão; o bloco do M12 liga.
+vi.mock('./distribuicao.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  carregarContextoDistribuicao: vi.fn().mockResolvedValue(null),
+  distribuir: vi.fn(),
+  notificarAtribuicoesDoImport: vi.fn().mockResolvedValue(0),
+}));
 
 vi.mock('./leads.service.js', async (importOriginal) => {
   const real = await importOriginal();
@@ -494,5 +502,79 @@ describe('enriquecimento por CNPJ no fim do lote (M11b)', () => {
 
     expect(agendarEnriquecimento).toHaveBeenCalledTimes(1);
     expect(agendarEnriquecimento).toHaveBeenCalledWith(TENANT, [{ leadId: 'lead-ana', cnpj: '11222333000181' }]);
+  });
+});
+
+describe('distribuição automática no import (M12)', () => {
+  const VENDEDORES = ['vendedor-a', 'vendedor-b', 'vendedor-c'];
+  const LINHAS_DISTRIBUIDAS = 6;
+  const POR_VENDEDOR = LINHAS_DISTRIBUIDAS / VENDEDORES.length;
+  const CONTEXTO = { fallback: 'rodizio_geral', regras: [], campos: [], ativos: new Set(), rodizioGeral: [], membrosPorGrupo: new Map() };
+
+  beforeEach(() => {
+    carregarContextoDistribuicao.mockResolvedValue(CONTEXTO);
+    let vez = 0;
+    distribuir.mockImplementation(async () => {
+      const usuarioId = VENDEDORES[vez % VENDEDORES.length];
+      vez += 1;
+      return { usuarioId, regraId: 'regra-1', regraNome: 'Todos', origem: 'regra' };
+    });
+    encontrarDuplicados.mockResolvedValue([]);
+    criarLead.mockImplementation(async () => ({ id: 'lead' }));
+  });
+
+  function jobComLinhas(linhas) {
+    buscarImportJobComPayload.mockResolvedValue({
+      id: JOB,
+      status: 'processando',
+      estrategia_duplicata: 'criar',
+      usuario_id: USUARIO,
+      payload: linhas,
+    });
+  }
+
+  it('cada lead novo passa pelo rodízio: 6 linhas com 3 vendedores, 2 pra cada, e uma notificação por pessoa', async () => {
+    jobComLinhas(
+      Array.from({ length: LINHAS_DISTRIBUIDAS }, (_, i) => ({
+        linha: LINHA_ANA + i,
+        dados: { nome: `Lead ${i}`, email: `l${i}@x.com`, customFields: {} },
+      })),
+    );
+
+    await processarImportacao(TENANT, JOB);
+
+    const responsaveis = criarLead.mock.calls.map(([, dados]) => dados.usuarioResponsavelId);
+    for (const vendedor of VENDEDORES) {
+      expect(responsaveis.filter((id) => id === vendedor)).toHaveLength(POR_VENDEDOR);
+    }
+    expect(criarLead.mock.calls[0][1].atribuidoPorRegraId).toBe('regra-1');
+    expect(criarLead.mock.calls[0][2]).toEqual({
+      autorId: USUARIO,
+      detalhes: { distribuicao: { origem: 'regra', regraId: 'regra-1', regraNome: 'Todos' } },
+    });
+    expect(notificarAtribuicoesDoImport).toHaveBeenCalledWith(TENANT, {
+      importJobId: JOB,
+      totais: new Map(VENDEDORES.map((vendedor) => [vendedor, POR_VENDEDOR])),
+      importadorId: USUARIO,
+    });
+  });
+
+  it('linha com a coluna Responsável fica com ele (sem passar pelo rodízio)', async () => {
+    jobComLinhas([{ linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', usuarioResponsavelId: 'gerente', customFields: {} } }]);
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(distribuir).not.toHaveBeenCalled();
+    expect(criarLead.mock.calls[0][1]).toMatchObject({ usuarioResponsavelId: 'gerente', atribuidoPorRegraId: null });
+  });
+
+  it('desligada: quem importou continua sendo o responsável', async () => {
+    carregarContextoDistribuicao.mockResolvedValue(null);
+    jobComLinhas([{ linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', customFields: {} } }]);
+
+    await processarImportacao(TENANT, JOB);
+
+    expect(distribuir).not.toHaveBeenCalled();
+    expect(criarLead.mock.calls[0][1].usuarioResponsavelId).toBe(USUARIO);
   });
 });

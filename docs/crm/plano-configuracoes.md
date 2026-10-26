@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10 e M11 (em duas etapas, M11a e M11b) no back em 2026-10-18 (migrations 0024 e 0025 ainda não aplicadas; faltam os fronts); próximo marco: M12.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts); próximo marco: M13.
 
 ## Contexto
 O CRM já tem:
@@ -591,6 +591,37 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **12.4** Notificação in-app ao responsável, reaproveitando M9.4.
 
 **Checklist:** um teste de concorrência (N criações simultâneas) mostra distribuição justa e sem colisão; a regra que atribuiu aparece no lead; o import em lote distribui de forma consistente.
+- [x] Concorrência contra o banco: 30 escolhas simultâneas entre 3 usuários dão 10 para cada, e 4 leads simultâneos numa regra de grupo de 2 dão 2 para cada (`services/distribuicao.db.test.js`, `CRM_DB_TESTS=1`).
+- [x] A regra que atribuiu aparece no lead (`atribuido_por_regra_id`/`_nome`) e no evento `criado` do histórico.
+- [x] Import: 6 linhas com 3 vendedores dão 2 para cada, com uma notificação agrupada por pessoa (`import.service.test.js`).
+
+**Como ficou (back, 2026-10-18):**
+- **Decisões do usuário:**
+  - o ponteiro do rodízio fica no banco, não no Redis;
+  - a presença (`usuarios.presenca`) fica de fora, porque nada a atualiza hoje; só usuários inativos são pulados;
+  - rodízio puro, sem peso;
+  - o import distribui linha a linha, e a linha com responsável fica com ele;
+  - notificação: uma por lead no form/API e uma agrupada por import;
+  - DONO e MASTER configuram; os outros papéis só leem.
+- **Quando distribui:** a flag `crm.distribuicao` precisa estar ligada **e** a config com `ativo: true`. O padrão é desligado (`crm_distribuicao_config` sem linha), e aí o criador ou quem importou continua sendo o responsável, como antes. A distribuição só vale para lead **novo** cujo payload não traz `usuarioResponsavelId`, ou cuja linha da planilha não traz a coluna Responsável. Um responsável escolhido é respeitado, mesmo o próprio criador. Edição, massa (M10) e mesclagem nunca redistribuem.
+- **Regras** (`crm_assignment_rule`, migration 0026):
+  - lista ordenada, com `nome`, `ativo`, `condicoes` (de 0 a 10, combinadas com E) e destino: usuário ou grupo;
+  - a primeira regra ativa que casar **e** tiver destino disponível decide; usuário inativo ou grupo sem membro ativo pula para a próxima;
+  - as condições usam os operadores e a validação da regra condicional do M8 e são avaliadas em memória (`avaliarCondicao`); regra cujo campo de condição sumiu não casa;
+  - o motor é puro (`services/distribuicao-motor.service.js`).
+- **Fallback:** `rodizio_geral` (padrão) faz rodízio entre DONO e OPERADOR ativos; o MASTER fica de fora. `sem_responsavel` grava o lead sem dono, e ele cai no resumo "sem responsável" do M9. O plano não previa a opção "o criador fica com o lead": ela só existe com a distribuição desligada.
+- **Rodízio** (`crm_rodizio_ponteiro`): uma linha por (tenant, chave), com `chave` = id do grupo ou `geral`.
+  - A linha guarda o último que recebeu.
+  - O próximo é o primeiro candidato ativo com id maior, voltando ao início no fim. Assim, alguém entrar ou sair do grupo não bagunça a ordem.
+  - A linha é travada com `FOR UPDATE`, e a escolha vem antes do INSERT do lead. Se a criação falhar depois, aquela vez é perdida (aceito).
+- **Rastro:** `leads.assigned_by_rule_id` (`ON DELETE SET NULL`). A leitura devolve `atribuido_por_regra_id` e `atribuido_por_regra_nome`. O evento `criado` ganha `detalhes.distribuicao = { origem: 'regra' | 'rodizio_geral' | 'sem_responsavel', regraId?, regraNome? }`.
+- **Import:** a coluna mapeável **Responsável** (pelo nome do usuário ativo, reaproveitando a conversão do tipo `usuario`) é um extra da planilha, que não existia antes. Ao atualizar um lead existente, só muda o responsável se a coluna vier preenchida.
+- **Notificações** (`#core/notificacoes`): `crm.lead_atribuido`, uma por lead e não para o próprio criador, com `dados: { rota, leadId }`. `crm.leads_atribuidos`, uma por pessoa no fim do import e não para quem importou, com `dados: { rota, filtro, importJobId, total }`. Uma falha ao notificar não derruba a criação.
+- **HTTP** (flag `crm.distribuicao`; escrita DONO/MASTER, com o papel conferido antes da flag):
+  - `GET /crm/configuracoes/distribuicao`, para qualquer papel: `{ ativo, fallback, configurado, regras, grupos }`.
+  - `PUT /crm/configuracoes/distribuicao`: manda a config inteira, e a ordem de `regras` é a de avaliação. Regra com `id` é atualizada (o `id` se mantém), sem `id` é criada, e a que não vier é apagada (os leads que ela atribuiu ficam com `NULL`).
+  - `POST`/`PUT`/`DELETE /crm/configuracoes/distribuicao/grupos(/:id)` com `{ nome, membros }`. Nome repetido dá 409, e grupo destino de alguma regra também dá 409 no DELETE.
+  - Limites: 50 regras, 10 condições, 30 grupos e 200 membros.
 
 ### M13. Permissão por campo (flag `crm.permissoes`)
 - **13.1** `crm_field_permission` (campo, papel e acesso `edit`/`view`/`hidden`). DONO e MASTER ignoram.

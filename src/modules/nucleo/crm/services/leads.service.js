@@ -21,6 +21,12 @@ import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicado
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import {
+  carregarContextoDistribuicao,
+  detalhesDaAtribuicao,
+  distribuir,
+  notificarAtribuicao,
+} from './distribuicao.service.js';
 import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
 import { validarRegras } from './regras-campos.service.js';
@@ -83,7 +89,8 @@ export async function buscarLeadFormatado(tenantId, leadId) {
  * @param {string} tenantId
  * @param {CriarLeadInput} input
  * @param {string} [usuarioId] quem está criando — vira o responsável
- *   quando `input.usuarioResponsavelId` não vem
+ *   quando `input.usuarioResponsavelId` não vem (com a distribuição
+ *   automática do M12 ligada, quem decide são as regras)
  * @returns {Promise<{ id: string }>}
  */
 export async function registrarNovoLead(tenantId, entrada, usuarioId) {
@@ -124,11 +131,23 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
   // `customFields` vai como objeto puro — é o repository quem faz o
   // `JSON.stringify` (uma vez só). Stringificar aqui também gravaria uma
   // string dupla-serializada no JSONB em vez do objeto.
+  // Distribuição automática (M12): só quando o payload não traz responsável
+  // — um escolhido, mesmo o próprio criador, é respeitado.
+  const contextoDistribuicao =
+    input.usuarioResponsavelId === undefined ? await carregarContextoDistribuicao(tenantId) : null;
+  const atribuicao = contextoDistribuicao ? await distribuir(tenantId, contextoDistribuicao, comListas) : null;
   const criado = await criarLeadRepository(
     tenantId,
-    { ...comCustomFieldsArmazenaveis(comListas, definicoes), usuarioResponsavelId: input.usuarioResponsavelId ?? usuarioId },
-    { autorId: usuarioId ?? null },
+    {
+      ...comCustomFieldsArmazenaveis(comListas, definicoes),
+      usuarioResponsavelId: atribuicao ? atribuicao.usuarioId : (input.usuarioResponsavelId ?? usuarioId),
+      atribuidoPorRegraId: atribuicao?.regraId ?? null,
+    },
+    { autorId: usuarioId ?? null, detalhes: atribuicao ? detalhesDaAtribuicao(atribuicao) : undefined },
   );
+  if (atribuicao) {
+    await notificarAtribuicao(tenantId, { leadId: criado.id, leadNome: input.nome, atribuicao, criadorId: usuarioId });
+  }
   // Enriquecimento por CNPJ (M11b, modo automático): depois de salvo, na fila; nunca falha o POST.
   await agendarEnriquecimento(tenantId, [{ leadId: criado.id, cnpj: input.cnpj }]);
   return criado;
