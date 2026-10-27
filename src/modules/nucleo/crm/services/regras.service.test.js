@@ -9,6 +9,8 @@ import { HTTP_STATUS } from '#shared/constants/index.js';
 import { CAMADA } from '../constants.js';
 import { criarRegra, editarRegra, removerRegra } from './regras.service.js';
 
+// M13: sem permissão configurada (o schema real lê a tabela).
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn(),
   inserirRegra: vi.fn(async () => ({ id: 'nova' })),

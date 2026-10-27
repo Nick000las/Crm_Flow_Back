@@ -15,6 +15,12 @@ import {
 
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
+// Regras (M8) e permissões (M13): o schema real lê as duas tabelas — sem mock, o teste ia ao banco.
+vi.mock('../adapters/crm-field-rules.repository.js', () => ({
+  buscarRegrasDoTenant: vi.fn().mockResolvedValue([]),
+  semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
+}));
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
 vi.mock('../adapters/crm-fields.repository.js', () => ({ buscarCamposDoTenant: vi.fn() }));
 vi.mock('./campos-reconcile.service.js', () => ({ reconciliarCampos: vi.fn() }));
 

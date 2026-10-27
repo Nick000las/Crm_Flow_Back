@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts); próximo marco: M13.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 no back em 2026-10-26 (sem migration; falta o front); próximo marco: M14.
 
 ## Contexto
 O CRM já tem:
@@ -629,6 +629,26 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **13.3** No front, campo "só ver" desabilitado com tooltip "sem permissão"; campo oculto não aparece.
 
 **Checklist:** o OPERADOR não consegue filtrar, exportar nem ver no histórico um campo oculto (testes de rota para cada caminho).
+- [x] Contra o banco (`services/permissoes.db.test.js`): com e-mail e um personalizado ocultos e o status "só ver", o OPERADOR não lê esses campos (lead, lista, `GET /crm/leads/fields`), não filtra pelo oculto (400), não acha o lead pelo e-mail na busca textual, não vê o diff no histórico e recebe 403 ao gravar (PUT, criação, massa). O DONO vê e edita tudo.
+- [x] Export e import seguem só de gestão: o OPERADOR recebe 403 (teste de rota). As rotas passam o papel do token aos services (testes de rota).
+
+**Como ficou (back, 2026-10-26):**
+- **Decisões do usuário:** campo "só ver" ou oculto no payload dá **403** e não é ignorado em silêncio. A obrigatoriedade (do campo ou de regra do M8) **não vale** para quem não pode preencher. **Só o OPERADOR** é configurável, porque DONO e MASTER ignoram. A API já recebe o papel como chave, para quando surgirem papéis novos.
+- **Schema:** sem migration. A `crm_field_permission` da 0012 é usada como estava, com uma linha só para restrição (sem linha = `edit`). As permissões entram no schema de campos em cache e são invalidadas ao salvar.
+- **Mecanismo:** um "schema do papel" (`services/permissoes.service.js`, `obterSchemaDoPapel`), que é o schema de campos sem os ocultos e com `acesso` em cada campo. Leitura (`formatarLead`), filtro (`camposParaFiltro`), histórico (`descritorDoDiff`) e layout já tiravam campo desligado a partir do schema, e o oculto sai pelo mesmo caminho. As rotas passam `{ papel: role }` e, sem papel (worker, job, import, export), vale o schema inteiro. Sem a flag `crm.permissoes`, ninguém é restringido.
+- **Escrita** (`garantirEscritaPermitida`): roda antes do primeiro nome derivado, então só conta o que o usuário mandou. Uma chave com valor (inclusive `null`) num campo "só ver" ou oculto dá 403 `FORBIDDEN`, com cada campo em `fields`. Na edição em massa, a checagem é feita uma vez para o pedido inteiro, antes de mexer em qualquer lead.
+- **Busca textual:** e-mail ou telefone oculto deixa de ser pesquisado, e o identificador do layout (M4) oculto também. Sem isso, a busca revelaria o valor.
+- **Regras do M8 no schema do papel:** só ficam as que o papel cumpre, ou seja, alvo editável e condição sobre campo visível.
+- **Lupa do CNPJ** (M11b): a `sugestao` só aponta para campos que o papel edita.
+- **Limites da configuração:** o Nome é sempre editável (`podeRestringir: false`). E-mail e telefone não podem ser restringidos os dois juntos, porque sem um deles não dá para criar lead.
+- **HTTP** (flag `crm.permissoes`, só DONO/MASTER, com o papel conferido antes da flag):
+  - `GET /crm/configuracoes/permissoes` responde `{ papeis, campos: [{ id, chave, label, camada, podeRestringir, acessos: { OPERADOR } }] }`.
+  - `PUT` recebe `{ OPERADOR: { [campoId]: 'edit' | 'view' | 'hidden' } }`, o mapa inteiro do papel.
+  - O OPERADOR recebe o próprio acesso em `GET /crm/leads/fields`, com `acesso: 'edit' | 'view'` em cada campo; o oculto não vem.
+- **Fora do M13:**
+  - O aviso de duplicidade (M7) cita o nome do lead parecido e o rótulo do campo que casou, mesmo oculto, mas nunca o valor.
+  - A metadata dos campos (`GET /crm/configuracoes/campos`, `/crm/field-definitions`) continua visível para todos. Ela traz rótulos, não dados.
+- **Testes:** os testes unitários que montam o schema real mockam agora os adapters de regras, permissões e usuários. Antes, alguns iam ao banco de verdade sem ninguém notar (ficaram lentos e instáveis com o Neon lento). Os arquivos `*.db.test.js` usam um timeout maior.
 
 ### M14. Pontuação de leads (flag `crm.score`)
 - **14.1** `crm_score_rule` (condição e pontos, podendo ser negativos) e `crm_score_band` (mínimo, máximo, rótulo e cor), com seed Frio, Morno e Quente.

@@ -6,6 +6,7 @@ import { provedorBrasilApi } from '../adapters/cnpj-brasilapi.provider.js';
 import { encerrarFilaCnpj, enfileirarEnriquecimentos } from '../adapters/cnpj-queue.repository.js';
 import { buscarCacheCnpj, buscarConfigCnpj, gravarCacheCnpj, salvarConfigCnpj as gravarConfig } from '../adapters/crm-cnpj.repository.js';
 import {
+  ACESSOS_CAMPO,
   CAMADA,
   CAMPOS_RECEITA,
   CHAVES_RECEITA,
@@ -17,6 +18,7 @@ import {
   TIPOS_CAMPO,
 } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
+import { obterSchemaDoPapel } from './permissoes.service.js';
 import { normalizarCep, normalizarCnpj, normalizarTelefone, normalizarValorDoTipo, valorValidoParaTipo } from './tipos-campo.service.js';
 
 /**
@@ -66,8 +68,9 @@ export async function consultarCnpj(tenantId, entrada, agora = new Date()) {
  *
  * @param {string} tenantId
  * @param {string} entrada
+ * @param {{ papel?: string }} [acesso]  M13: a sugestão só aponta pra campo que o papel edita
  */
-export async function consultarParaLupa(tenantId, entrada) {
+export async function consultarParaLupa(tenantId, entrada, { papel } = {}) {
   // Desligado nas configurações vale pra lupa também — sem gastar consulta.
   const config = await obterConfigCnpj(tenantId);
   if (!config.ativo) {
@@ -90,8 +93,10 @@ export async function consultarParaLupa(tenantId, entrada) {
       cause: erro,
     });
   }
-  const { campos } = await obterSchemaCampos(tenantId);
-  const sugestao = resultado.status === STATUS_CNPJ.OK ? sugestaoParaLead(resultado.dados, config.mapeamento, campos) : [];
+  const { campos } = await obterSchemaDoPapel(tenantId, papel);
+  // "Só ver" fica de fora (o 403 viria ao salvar); o oculto nem está no schema do papel.
+  const editaveis = campos.filter((campo) => campo.acesso === undefined || campo.acesso === ACESSOS_CAMPO.EDITAR);
+  const sugestao = resultado.status === STATUS_CNPJ.OK ? sugestaoParaLead(resultado.dados, config.mapeamento, editaveis) : [];
   return { cnpj: resultado.cnpj, status: resultado.status, dados: resultado.dados, sugestao };
 }
 

@@ -73,7 +73,9 @@ const ORDEM_SEGMENTO = 40;
 const TIMEOUT_TESTE_LONGO_MS = 30_000;
 const LINHA_PLANILHA_ANA = 2;
 
-rodar('campos do CRM no banco (CRM_DB_TESTS=1)', () => {
+// Todo teste aqui vai várias vezes ao banco: no Neon, a conexão fria e a
+// latência passam fácil dos 5 s padrão do vitest.
+rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_MS }, () => {
   const prisma = getAdminClient();
   const tenantId = randomUUID();
   const usuarioId = randomUUID();

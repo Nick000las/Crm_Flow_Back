@@ -111,12 +111,18 @@ export function condicaoDaSituacao(situacao = SITUACOES_LEAD.ATIVOS, { comArquiv
  *   identificador?: { chave: string, camada: number, id?: string | null } | null,
  *   comArquivo?: boolean,
  *   agora?: Date,
+ *   contato?: { email: boolean, telefone: boolean },
  * }} [opcoes] `identificador`: do layout do tenant (M4), também entra na
  *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`; `agora` também
  *   é o relógio do filtro `esfriando` (M9 — a flag é conferida por quem chama).
+ *   `contato`: e-mail/telefone entram na `busca` (M13: oculto pro papel não entra).
  * @returns {Prisma.Sql[]}
  */
-export function montarCondicoes(filtro, campos, { identificador = null, comArquivo = true, agora } = {}) {
+export function montarCondicoes(
+  filtro,
+  campos,
+  { identificador = null, comArquivo = true, agora, contato = { email: true, telefone: true } } = {},
+) {
   const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
 
   if (filtro.busca) {
@@ -128,11 +134,13 @@ export function montarCondicoes(filtro, campos, { identificador = null, comArqui
       ? Prisma.sql`${TELEFONE_SO_DIGITOS} LIKE ${`%${digitos}%`}`
       : Prisma.sql`l.telefone ILIKE ${padrao}`;
     const porIdentificador = condicaoBuscaIdentificador(identificador, filtro.busca, padrao);
-    condicoes.push(
-      porIdentificador
-        ? Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone} OR ${porIdentificador})`
-        : Prisma.sql`(l.nome ILIKE ${padrao} OR l.email ILIKE ${padrao} OR ${porTelefone})`,
-    );
+    const alternativas = [
+      Prisma.sql`l.nome ILIKE ${padrao}`,
+      ...(contato.email ? [Prisma.sql`l.email ILIKE ${padrao}`] : []),
+      ...(contato.telefone ? [porTelefone] : []),
+      ...(porIdentificador ? [porIdentificador] : []),
+    ];
+    condicoes.push(Prisma.sql`(${Prisma.join(alternativas, ' OR ')})`);
   }
   if (filtro.funilEstagioId) {
     condicoes.push(Prisma.sql`l.funil_estagio_id = ${filtro.funilEstagioId}::uuid`);

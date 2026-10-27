@@ -2,7 +2,7 @@ import { AppError, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
-import { obterSchemaCampos } from './field-schema.service.js';
+import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
 import { atualizarLeadExistente } from './leads.service.js';
 import { buscadorDeTags } from './listas.service.js';
 import { TIPOS_LISTA } from '../constants.js';
@@ -35,9 +35,17 @@ import { TIPOS_LISTA } from '../constants.js';
  * @param {string} tenantId
  * @param {{ ids: string[], alteracoes: AlteracoesEmMassa }} entrada
  * @param {string} [usuarioId]
+ * @param {{ papel?: string }} [acesso]  M13: campo que o papel não edita → 403 pro pedido inteiro
  */
-export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioId) {
-  const { listas } = await obterSchemaCampos(tenantId);
+export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioId, acesso = {}) {
+  const schema = await obterSchemaDoPapel(tenantId, acesso.papel);
+  // Uma vez, antes de mexer em qualquer lead (e não o mesmo 403 repetido no relatório).
+  garantirEscritaPermitida(schema, {
+    status: alteracoes.status,
+    fonteLead: alteracoes.fonteLead,
+    tags: alteracoes.tags,
+  });
+  const { listas } = schema;
   const encontrarTag = buscadorDeTags(listas[TIPOS_LISTA.TAG] ?? []);
 
   /** @type {ResultadoEmMassa[]} */
@@ -52,7 +60,7 @@ export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioI
         resultados.push({ id, ok: true, inalterado: true });
         continue;
       }
-      await atualizarLeadExistente(tenantId, id, input, usuarioId);
+      await atualizarLeadExistente(tenantId, id, input, usuarioId, acesso);
       resultados.push({ id, ok: true });
     } catch (erro) {
       resultados.push({ id, ok: false, erro: erroDoRelatorio(erro) });

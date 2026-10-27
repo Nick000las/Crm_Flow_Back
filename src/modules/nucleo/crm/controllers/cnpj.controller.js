@@ -22,9 +22,9 @@ export function registrarRotasCnpj(app) {
   app.addHook('onClose', async () => encerrarEnriquecimento());
 
   app.get('/crm/cnpj/:cnpj', { preHandler: [comFlag] }, async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     const { cnpj } = cnpjParamSchema.parse(req.params);
-    return sendSuccess(reply, await consultarParaLupa(tenantId, cnpj));
+    return sendSuccess(reply, await consultarParaLupa(tenantId, cnpj, { papel: role }));
   });
 
   app.get('/crm/configuracoes/cnpj', { preHandler: [comFlag] }, async (req, reply) => {

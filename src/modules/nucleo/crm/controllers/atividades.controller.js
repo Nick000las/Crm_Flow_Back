@@ -61,9 +61,9 @@ export function registrarRotasAtividades(app) {
   });
 
   app.get('/crm/leads/:id/historico', comFlag, async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const paginacao = historicoQuerySchema.parse(req.query);
-    return sendSuccess(reply, await listarHistorico(tenantId, leadId, paginacao));
+    return sendSuccess(reply, await listarHistorico(tenantId, leadId, paginacao, { papel: role }));
   });
 }

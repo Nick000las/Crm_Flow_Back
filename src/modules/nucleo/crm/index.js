@@ -12,6 +12,7 @@ import { registrarRotasRegras } from './controllers/regras.controller.js';
 import { registrarRotasInatividade } from './controllers/inatividade.controller.js';
 import { registrarRotasCnpj } from './controllers/cnpj.controller.js';
 import { registrarRotasDistribuicao } from './controllers/distribuicao.controller.js';
+import { registrarRotasPermissoes } from './controllers/permissoes.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
 
@@ -37,6 +38,7 @@ export const crmModule = {
     registrarRotasInatividade(app);
     registrarRotasCnpj(app);
     registrarRotasDistribuicao(app);
+    registrarRotasPermissoes(app);
     await registrarRotasImportExport(app);
   },
 };
