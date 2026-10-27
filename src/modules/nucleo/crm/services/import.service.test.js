@@ -28,6 +28,12 @@ import { agendarEnriquecimento } from './cnpj.service.js';
 import { carregarContextoDistribuicao, distribuir, notificarAtribuicoesDoImport } from './distribuicao.service.js';
 
 // M11b: enriquecimento por CNPJ tem teste próprio; aqui só o gancho do lote.
+// M14: a pontuação tem teste próprio; aqui ela não grava nada.
+vi.mock('./score.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
+  garantirScoreNaoEditado: vi.fn(),
+}));
 vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
 // M12: distribuição desligada por padrão; o bloco do M12 liga.
 vi.mock('./distribuicao.service.js', async (importOriginal) => ({

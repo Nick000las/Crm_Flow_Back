@@ -22,6 +22,7 @@ import {
   CAMADA_2_METADADOS,
   CAMPOS_CAMADA_1,
   CAMPOS_EXTRAS_PLANILHA,
+  CHAVE_CAMPO_SCORE,
   IMPORT_JOB_STATUS,
   IMPORTACAO,
   TIPOS_CAMPO,
@@ -32,6 +33,7 @@ import { diffDoLead } from './historico.service.js';
 import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import { garantirScoreNaoEditado, recalcularScoreDosLeads } from './score.service.js';
 import {
   carregarContextoDistribuicao,
   detalhesDaAtribuicao,
@@ -111,6 +113,10 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
   validarMapeamento(mapeamento, colunas, campos, campoPorChave);
+  // M14: com a pontuação ligada, a coluna Lead score não pode ser importada.
+  if (Object.values(mapeamento).includes(CHAVE_CAMPO_SCORE)) {
+    await garantirScoreNaoEditado(tenantId, { [CHAVE_CAMPO_SCORE]: true });
+  }
 
   const estagioPorNome = new Map(estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]));
   // Regras do M8: a linha é avaliada como lead novo (o Revisar mostra a violação).
@@ -271,6 +277,8 @@ export async function processarImportacao(tenantId, jobId) {
     const comCnpj = [];
     /** Leads distribuídos por responsável (M12) — uma notificação por pessoa no fim. */
     const distribuidos = new Map();
+    /** Criados ou atualizados — o score (M14) é recalculado de uma vez no fim. */
+    const gravados = [];
 
     for (const item of job.payload) {
       try {
@@ -298,6 +306,7 @@ export async function processarImportacao(tenantId, jobId) {
           },
         });
         progresso[resultado] += 1;
+        if (leadId) gravados.push(leadId);
         if (leadId && dados.cnpj) comCnpj.push({ leadId, cnpj: dados.cnpj });
         if (atribuidoA) distribuidos.set(atribuidoA, (distribuidos.get(atribuidoA) ?? 0) + 1);
         if (motivo) progresso.relatorioErro.push({ linha: item.linha, motivo });
@@ -315,6 +324,7 @@ export async function processarImportacao(tenantId, jobId) {
     await registrarProgresso(tenantId, jobId, { ...progresso, statusFinal: IMPORT_JOB_STATUS.CONCLUIDO });
     // M11b: uma leva só no fim (o worker do CNPJ respeita o rate limit do provedor).
     await agendarEnriquecimento(tenantId, comCnpj);
+    await recalcularScoreDosLeads(tenantId, gravados);
     await notificarAtribuicoesDoImport(tenantId, { importJobId: jobId, totais: distribuidos, importadorId: job.usuario_id });
   } catch (erro) {
     await marcarFalha(tenantId, jobId);

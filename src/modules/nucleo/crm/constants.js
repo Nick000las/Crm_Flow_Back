@@ -16,7 +16,8 @@
  * - `constants/acesso.js`: papéis de gestão e feature flags;
  * - `constants/cnpj.js`: enriquecimento por CNPJ (fila, cache, mapeamento);
  * - `constants/distribuicao.js`: distribuição automática (regras, rodízio);
- * - `constants/permissoes.js`: permissão por campo (acessos, papéis).
+ * - `constants/permissoes.js`: permissão por campo (acessos, papéis);
+ * - `constants/score.js`: pontuação de leads (faixas padrão, limites).
  */
 export * from './constants/arquivo.js';
 export * from './constants/historico.js';
@@ -31,3 +32,4 @@ export * from './constants/acesso.js';
 export * from './constants/cnpj.js';
 export * from './constants/distribuicao.js';
 export * from './constants/permissoes.js';
+export * from './constants/score.js';

@@ -179,6 +179,13 @@ export function montarCondicoes(
   if (filtro.esfriando) {
     condicoes.push(condicaoEsfriando(agora ?? new Date()));
   }
+  // M14: `faixaScore` já resolvida em limites (inclusivos) por quem chama.
+  if (filtro.faixaDoScore) {
+    const { minimo, maximo } = filtro.faixaDoScore;
+    if (minimo !== null) condicoes.push(Prisma.sql`l.lead_score >= ${minimo}`);
+    if (maximo !== null) condicoes.push(Prisma.sql`l.lead_score <= ${maximo}`);
+    if (minimo === null && maximo === null) condicoes.push(Prisma.sql`l.lead_score IS NOT NULL`);
+  }
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
 
@@ -187,18 +194,29 @@ export function montarCondicoes(
     if (!campo) {
       throw erroDeFiltro(item.chave, `"${item.chave}" não é um campo ativo para filtro`);
     }
-    if (!OPERADORES_POR_TIPO[campo.tipo]?.includes(item.operador)) {
-      throw erroDeFiltro(item.chave, `Operador "${item.operador}" não se aplica ao campo "${campo.label}"`);
-    }
-
-    condicoes.push(
-      campo.camada === CAMADA.CAMADA_3
-        ? condicaoCamada3(campo, item)
-        : condicaoColuna(colunaNativa(campo), campo, item),
-    );
+    condicoes.push(condicaoDoCampo(campo, item));
   }
 
   return condicoes;
+}
+
+/**
+ * Uma condição `{ chave, operador, valor }` sobre um campo, em SQL sobre
+ * `l` (leads) — a do filtro, reaproveitada pelo score (M14), que soma
+ * pontos com as mesmas regras de operador × tipo.
+ *
+ * @param {Campo} campo
+ * @param {{ chave: string, operador: string, valor?: unknown }} item
+ * @returns {Prisma.Sql}
+ */
+export function condicaoDoCampo(campo, item) {
+  if (!OPERADORES_POR_TIPO[campo.tipo]?.includes(item.operador)) {
+    throw erroDeFiltro(item.chave, `Operador "${item.operador}" não se aplica ao campo "${campo.label}"`);
+  }
+  if (campo.camada !== CAMADA.CAMADA_3) return condicaoColuna(colunaNativa(campo), campo, item);
+  // O personalizado é gravado pelo `id` (`camposParaFiltro` já põe o
+  // caminho; um campo cru do schema, como o do score, ainda não).
+  return condicaoCamada3(campo.chaveArmazenamento || !campo.id ? campo : { ...campo, chaveArmazenamento: campo.id }, item);
 }
 
 /**

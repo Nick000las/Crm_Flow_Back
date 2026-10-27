@@ -23,6 +23,12 @@ import { carregarContextoDistribuicao, distribuir, notificarAtribuicao } from '.
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
 // Layout (M4): tenant que nunca configurou (identificador = Nome).
+// M14: a pontuação tem teste próprio; aqui ela não grava nada.
+vi.mock('./score.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
+  garantirScoreNaoEditado: vi.fn(),
+}));
 vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined) }));
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());

@@ -4,6 +4,7 @@ import { CAMPOS_SISTEMA, PROPRIEDADES_NO_HISTORICO } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
+import { recalcularScoreDosLeads } from './score.service.js';
 import { valorAusente } from './tipos-campo.service.js';
 
 /**
@@ -104,5 +105,7 @@ export async function mesclarLeads(tenantId, { principalId, secundarioId, escolh
     },
   );
   if (!mesclado) throw erroNaoEncontrado('Lead não encontrado');
+  // Pontuação (M14): o principal agora tem os dados escolhidos dos dois.
+  await recalcularScoreDosLeads(tenantId, [principalId]);
   return buscarLeadFormatado(tenantId, principalId);
 }
