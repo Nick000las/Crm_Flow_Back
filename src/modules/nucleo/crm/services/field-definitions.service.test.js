@@ -21,6 +21,8 @@ import { CAMPOS_SISTEMA } from '../constants.js';
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
 // Regras (M8): tenant sem regra (a do sistema já semeada).
+// M13: sem permissão configurada (o schema real lê a tabela).
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn().mockResolvedValue([{ id: 'r', system_key: 'motivo_perda_em_perdido' }]),
   semearRegrasDoSistema: vi.fn().mockResolvedValue(0),

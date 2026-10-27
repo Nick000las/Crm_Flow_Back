@@ -8,7 +8,7 @@ import {
   PROPRIEDADES_NO_HISTORICO,
   REFERENCIAS_FIXAS,
 } from '../constants.js';
-import { obterSchemaCampos } from './field-schema.service.js';
+import { obterSchemaDoPapel } from './permissoes.service.js';
 
 /**
  * SERVICE: histórico do lead (M6). Cada mudança vira um `crm_lead_event`
@@ -88,15 +88,17 @@ export function diffDoLead(antes, depois, { ignorar = [] } = {}) {
 /**
  * Histórico do lead, mais novo primeiro, pronto pra tela: cada entrada do
  * diff ganha `chave`, `label` e `tipo` (e `opcoesLista`, se for lista).
- * Campo desligado (oculto em todos os contextos) ou personalizado excluído
- * sai do diff — mesma regra da resposta do lead (`formatarLead`).
+ * Campo desligado (oculto em todos os contextos), personalizado excluído
+ * ou oculto pro papel de quem lê (M13) sai do diff — mesma regra da
+ * resposta do lead (`formatarLead`).
  *
  * @param {string} tenantId
  * @param {string} leadId
  * @param {{ pagina: number, tamanho: number }} paginacao
+ * @param {{ papel?: string }} [acesso]
  */
-export async function listarHistorico(tenantId, leadId, { pagina, tamanho }) {
-  const [lead, schema] = await Promise.all([buscarLeadPorId(tenantId, leadId), obterSchemaCampos(tenantId)]);
+export async function listarHistorico(tenantId, leadId, { pagina, tamanho }, { papel } = {}) {
+  const [lead, schema] = await Promise.all([buscarLeadPorId(tenantId, leadId), obterSchemaDoPapel(tenantId, papel)]);
   if (!lead) throw erroNaoEncontrado('Lead não encontrado');
 
   const { itens, total } = await listarEventosDoLead(tenantId, leadId, {

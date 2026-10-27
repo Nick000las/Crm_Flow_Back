@@ -27,20 +27,24 @@ import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
+ *
+ * O papel do token vai pros services (`{ papel: role }`): com a flag
+ * `crm.permissoes` (M13), o OPERADOR não lê campo oculto nem escreve campo
+ * "só ver"/oculto. DONO e MASTER ignoram.
  * @param {import('fastify').FastifyInstance} app
  */
 export function registrarRotasLeads(app) {
   app.get('/crm/leads', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     // Mesma implementação do /search (sem filtro), paginada.
     const paginacao = listarLeadsQuerySchema.parse(req.query);
-    return sendSuccess(reply, await pesquisarLeads(tenantId, { filtros: [], paginacao }));
+    return sendSuccess(reply, await pesquisarLeads(tenantId, { filtros: [], paginacao }, { papel: role }));
   });
 
   app.post('/crm/leads', async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
+    const { tenantId, userId, role } = req.tenantContext;
     const body = criarLeadBodySchema.parse(req.body);
-    const lead = await registrarNovoLead(tenantId, body, userId);
+    const lead = await registrarNovoLead(tenantId, body, userId, { papel: role });
     return sendSuccess(reply, lead, HTTP_STATUS.CREATED);
   });
 
@@ -51,17 +55,17 @@ export function registrarRotasLeads(app) {
   // Registrada antes de `/crm/leads/:id` só por legibilidade — rota
   // estática já tem precedência no roteador do Fastify.
   app.get('/crm/leads/fields', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     const { contexto } = contextoCamposQuerySchema.parse(req.query);
-    return sendSuccess(reply, await listarCamposDoTenant(tenantId, contexto));
+    return sendSuccess(reply, await listarCamposDoTenant(tenantId, contexto, { papel: role }));
   });
 
   // POST (não GET): filtro combinado com campos customizados não cabe bem
   // em query string (docs/crm/plano-campos-filtros-import-export.md §2.2).
   app.post('/crm/leads/search', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     const body = pesquisarLeadsBodySchema.parse(req.body ?? {});
-    return sendSuccess(reply, await pesquisarLeads(tenantId, body));
+    return sendSuccess(reply, await pesquisarLeads(tenantId, body, { papel: role }));
   });
 
   // Checagem ao vivo de duplicidade (M7) — não salva. Sem `crm.duplicidade`,
@@ -87,22 +91,22 @@ export function registrarRotasLeads(app) {
   // Edição em massa (M10): qualquer papel, como o PUT de um lead. Responde
   // 200 com o relatório por lead mesmo se alguns falharem.
   app.patch('/crm/leads/bulk', { preHandler: [exigirFeature(CRM_FEATURES.MASSA)] }, async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
+    const { tenantId, userId, role } = req.tenantContext;
     const body = editarEmMassaBodySchema.parse(req.body);
-    return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId));
+    return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId, { papel: role }));
   });
 
   app.get('/crm/leads/:id', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
+    const { tenantId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
-    return sendSuccess(reply, await buscarLeadFormatado(tenantId, leadId));
+    return sendSuccess(reply, await buscarLeadFormatado(tenantId, leadId, { papel: role }));
   });
 
   app.put('/crm/leads/:id', async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
+    const { tenantId, userId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = atualizarLeadBodySchema.parse(req.body);
-    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body, userId));
+    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body, userId, { papel: role }));
   });
 
   // "Excluir" é sempre lixeira (M5), com ou sem a flag: sem ela só não há
@@ -122,9 +126,9 @@ export function registrarRotasLeads(app) {
   ];
   for (const [acao, executar] of acoes) {
     app.post(`/crm/leads/:id/${acao}`, comArquivo, async (req, reply) => {
-      const { tenantId, userId } = req.tenantContext;
+      const { tenantId, userId, role } = req.tenantContext;
       const { id: leadId } = leadIdParamSchema.parse(req.params);
-      return sendSuccess(reply, await executar(tenantId, leadId, userId));
+      return sendSuccess(reply, await executar(tenantId, leadId, userId, { papel: role }));
     });
   }
 }

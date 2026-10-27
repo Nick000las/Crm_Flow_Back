@@ -67,8 +67,8 @@ describe('editarLeadsEmMassa', () => {
       { id: LEAD_IGUAL, ok: true, inalterado: true },
     ]);
     // Mesmo caminho do PUT, com quem editou de autor; o lead sem mudança nem chega lá.
-    expect(atualizarLeadExistente).toHaveBeenCalledWith(TENANT, LEAD_OK, { status: 'perdido' }, USUARIO);
-    expect(atualizarLeadExistente).not.toHaveBeenCalledWith(TENANT, LEAD_IGUAL, expect.anything(), USUARIO);
+    expect(atualizarLeadExistente).toHaveBeenCalledWith(TENANT, LEAD_OK, { status: 'perdido' }, USUARIO, {});
+    expect(atualizarLeadExistente).not.toHaveBeenCalledWith(TENANT, LEAD_IGUAL, expect.anything(), USUARIO, {});
   });
 
   it('erro que não é de negócio sai genérico e não para os outros', async () => {

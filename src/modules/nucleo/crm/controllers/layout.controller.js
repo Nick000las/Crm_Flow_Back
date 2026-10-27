@@ -23,8 +23,8 @@ export function registrarRotasLayout(app) {
   const apenasGestao = { preHandler: [requireRole(PAPEIS_GESTAO), comFlag] };
 
   app.get('/crm/layout', qualquerPapel, async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
-    return sendSuccess(reply, await obterLayout(tenantId, userId));
+    const { tenantId, userId, role } = req.tenantContext;
+    return sendSuccess(reply, await obterLayout(tenantId, userId, { papel: role }));
   });
 
   app.put('/crm/layout/padrao', apenasGestao, async (req, reply) => {
@@ -34,13 +34,13 @@ export function registrarRotasLayout(app) {
   });
 
   app.put('/crm/layout/meu', qualquerPapel, async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
+    const { tenantId, userId, role } = req.tenantContext;
     const parcial = layoutMeuBodySchema.parse(req.body);
-    return sendSuccess(reply, await salvarMeu(tenantId, userId, parcial));
+    return sendSuccess(reply, await salvarMeu(tenantId, userId, parcial, { papel: role }));
   });
 
   app.delete('/crm/layout/meu', qualquerPapel, async (req, reply) => {
-    const { tenantId, userId } = req.tenantContext;
-    return sendSuccess(reply, await removerMeu(tenantId, userId));
+    const { tenantId, userId, role } = req.tenantContext;
+    return sendSuccess(reply, await removerMeu(tenantId, userId, { papel: role }));
   });
 }

@@ -1,5 +1,6 @@
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
+import { listarPermissoes } from '../adapters/crm-field-permissions.repository.js';
 import { buscarRegrasDoTenant, semearRegrasDoSistema } from '../adapters/crm-field-rules.repository.js';
 import { buscarOpcoesDoTenant } from '../adapters/crm-options.repository.js';
 import {
@@ -38,9 +39,11 @@ import { resolverRegras } from './regras-campos.service.js';
  * @typedef {import('../adapters/crm-options.repository.js').OpcaoLista} OpcaoLista
  * @typedef {Record<string, OpcaoLista[]>} Listas  opções por `kind` (M3), inclusive as inativas
  * @typedef {import('../adapters/crm-field-rules.repository.js').RegraLinha} RegraLinha
- * @typedef {{ visibilidade: FieldVisibility[], definicoes: FieldDefinition[], sobreposicoes?: Record<string, Sobreposicao>, listas?: Listas, regras?: RegraLinha[] }} BaseSchema
+ * @typedef {import('../adapters/crm-field-permissions.repository.js').PermissaoLinha} PermissaoLinha
+ * @typedef {{ visibilidade: FieldVisibility[], definicoes: FieldDefinition[], sobreposicoes?: Record<string, Sobreposicao>, listas?: Listas, regras?: RegraLinha[], permissoes?: PermissaoLinha[] }} BaseSchema
  * @typedef {BaseSchema & { listas: Listas, campos: ReturnType<typeof montarCampos>, regras: import('./regras-campos.service.js').Regra[] }} SchemaCampos
- *   `regras` (M8): todas, inclusive as desligadas — quem avalia ignora `ativo: false`
+ *   `regras` (M8): todas, inclusive as desligadas — quem avalia ignora `ativo: false`;
+ *   `permissoes` (M13): as restrições por papel, cruas — quem aplica é `permissoes.service.js`
  */
 
 /** Toda escrita de configuração invalida — o TTL só cobre invalidação perdida. */
@@ -71,13 +74,13 @@ const chaveCache = (tenantId) => `crm:campos:${tenantId}`;
  * @returns {Promise<SchemaCampos>}
  */
 export async function obterSchemaCampos(tenantId) {
-  const { visibilidade, definicoes, sobreposicoes, listas = {}, regras = [] } = await lerComCache(
+  const { visibilidade, definicoes, sobreposicoes, listas = {}, regras = [], permissoes = [] } = await lerComCache(
     chaveCache(tenantId),
     TTL_CACHE_SEGUNDOS,
     () => carregarSchema(tenantId),
   );
   const campos = montarCampos(visibilidade, definicoes, sobreposicoes, listas);
-  return { visibilidade, definicoes, listas, campos, regras: resolverRegras(regras, campos) };
+  return { visibilidade, definicoes, listas, campos, regras: resolverRegras(regras, campos), permissoes };
 }
 
 /**
@@ -97,8 +100,8 @@ export function invalidarSchemaCampos(tenantId) {
 async function carregarSchema(tenantId) {
   const [linhas, opcoes] = await Promise.all([garantirCamposSistema(tenantId), garantirListas(tenantId)]);
   // Regras depois dos campos: a semente aponta pro campo do sistema (M8).
-  const regras = await garantirRegras(tenantId);
-  return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes), regras };
+  const [regras, permissoes] = await Promise.all([garantirRegras(tenantId), listarPermissoes(tenantId)]);
+  return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes), regras, permissoes };
 }
 
 /**

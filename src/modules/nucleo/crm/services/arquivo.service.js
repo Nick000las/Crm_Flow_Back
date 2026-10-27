@@ -29,24 +29,26 @@ import { buscarLeadFormatado } from './leads.service.js';
  * @param {string} tenantId
  * @param {string} leadId
  * @param {string} [usuarioId]
+ * @param {{ papel?: string }} [acesso]  papel de quem pediu (M13: a resposta sem os campos ocultos)
  */
-export async function arquivarLead(tenantId, leadId, usuarioId) {
+export async function arquivarLead(tenantId, leadId, usuarioId, acesso = {}) {
   if (!(await definirArquivamento(tenantId, leadId, true, { autorId: usuarioId ?? null }))) {
     throw leadNaoEncontrado();
   }
-  return buscarLeadFormatado(tenantId, leadId);
+  return buscarLeadFormatado(tenantId, leadId, acesso);
 }
 
 /**
  * @param {string} tenantId
  * @param {string} leadId
  * @param {string} [usuarioId]
+ * @param {{ papel?: string }} [acesso]
  */
-export async function desarquivarLead(tenantId, leadId, usuarioId) {
+export async function desarquivarLead(tenantId, leadId, usuarioId, acesso = {}) {
   if (!(await definirArquivamento(tenantId, leadId, false, { autorId: usuarioId ?? null }))) {
     throw leadNaoEncontrado();
   }
-  return buscarLeadFormatado(tenantId, leadId);
+  return buscarLeadFormatado(tenantId, leadId, acesso);
 }
 
 /**
@@ -70,9 +72,9 @@ export async function excluirLead(tenantId, leadId, usuarioId) {
  * @param {string} tenantId
  * @param {string} leadId
  * @param {string} [usuarioId]
- * @param {Date} [agora]
+ * @param {{ papel?: string, agora?: Date }} [opcoes]
  */
-export async function restaurarLead(tenantId, leadId, usuarioId, agora = new Date()) {
+export async function restaurarLead(tenantId, leadId, usuarioId, { papel, agora = new Date() } = {}) {
   const historico = { autorId: usuarioId ?? null };
   const restaurado = await restaurarDaLixeira(tenantId, leadId, inicioDaLixeira(agora), historico);
   if (!restaurado) throw leadNaoEncontrado();
@@ -80,7 +82,7 @@ export async function restaurarLead(tenantId, leadId, usuarioId, agora = new Dat
   if (restaurado.mescladoEmId) {
     throw erroDeConflito('id', `Este lead foi mesclado no lead ${restaurado.mescladoEmId} e não pode ser restaurado`);
   }
-  return buscarLeadFormatado(tenantId, leadId);
+  return buscarLeadFormatado(tenantId, leadId, { papel });
 }
 
 /**

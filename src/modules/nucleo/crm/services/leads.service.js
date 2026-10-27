@@ -14,7 +14,6 @@ import {
   customFieldsParaApi,
   customFieldsParaArmazenamento,
   exigidoNaCriacao,
-  obterSchemaCampos,
 } from './field-schema.service.js';
 import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
 import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicados } from './duplicidade.service.js';
@@ -32,6 +31,13 @@ import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual }
 import { validarRegras } from './regras-campos.service.js';
 import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
 import {
+  contatoNaBusca,
+  garantirEscritaPermitida,
+  identificadorVisivel,
+  obterSchemaDoPapel,
+} from './permissoes.service.js';
+import {
+  ACESSOS_CAMPO,
   CAMADA,
   CAMPOS_DUPLICIDADE,
   CAMPOS_SISTEMA,
@@ -70,12 +76,13 @@ const DOCUMENTOS_NATIVOS = Object.freeze(
 /**
  * @param {string} tenantId
  * @param {string} leadId
+ * @param {{ papel?: string }} [acesso]  papel de quem lê (M13: campo oculto não sai)
  * @returns {Promise<Lead>}
  */
-export async function buscarLeadFormatado(tenantId, leadId) {
+export async function buscarLeadFormatado(tenantId, leadId, { papel } = {}) {
   const [lead, schema] = await Promise.all([
     relogioDaInatividade(tenantId).then((inatividade) => buscarLeadPorId(tenantId, leadId, { inatividade })),
-    obterSchemaCampos(tenantId),
+    obterSchemaDoPapel(tenantId, papel),
   ]);
 
   if (!lead) {
@@ -91,10 +98,15 @@ export async function buscarLeadFormatado(tenantId, leadId) {
  * @param {string} [usuarioId] quem está criando — vira o responsável
  *   quando `input.usuarioResponsavelId` não vem (com a distribuição
  *   automática do M12 ligada, quem decide são as regras)
+ * @param {{ papel?: string }} [acesso]  papel de quem cria (M13: campo que ele
+ *   não edita no payload → 403; obrigatório que ele não edita não é exigido)
  * @returns {Promise<{ id: string }>}
  */
-export async function registrarNovoLead(tenantId, entrada, usuarioId) {
+export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } = {}) {
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
+  const schema = await obterSchemaDoPapel(tenantId, papel);
+  // Antes do primeiro nome derivado: só o que o usuário mandou conta.
+  garantirEscritaPermitida(schema, semFlagDeDuplicidade);
   const input = comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade));
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
@@ -102,7 +114,6 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
 
   validarEmailOuTelefone(input);
 
-  const schema = await obterSchemaCampos(tenantId);
   const { definicoes } = schema;
   validarCustomFields(definicoes, input.customFields);
   await validarUsuariosDosCampos(tenantId, definicoes, input.customFields);
@@ -162,10 +173,14 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId) {
  * @param {string} leadId
  * @param {AtualizarLeadInput} input
  * @param {string} [usuarioId] quem está editando (do token)
+ * @param {{ papel?: string }} [acesso]  papel de quem edita (M13: campo que ele não edita → 403)
  * @returns {Promise<Lead>}
  */
-export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId) {
+export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId, { papel } = {}) {
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
+  const schema = await obterSchemaDoPapel(tenantId, papel);
+  // Antes do primeiro nome derivado: só o que o usuário mandou conta.
+  garantirEscritaPermitida(schema, semFlagDeDuplicidade);
   const normalizado = comContatoNormalizado(semFlagDeDuplicidade);
   if (normalizado.nome !== undefined && normalizado.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
@@ -176,7 +191,6 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
     precisaDoLeadAtual(normalizado) ? await buscarLeadPorId(tenantId, leadId) : null,
   );
 
-  const schema = await obterSchemaCampos(tenantId);
   const { definicoes } = schema;
 
   // Edição é parcial: só valida tipo/opções das chaves que vieram agora,
@@ -339,10 +353,11 @@ async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplic
  *
  * @param {string} tenantId
  * @param {string} [contexto]
+ * @param {{ papel?: string }} [acesso]  M13: sem os ocultos pro papel e com `acesso` (`edit`/`view`) em cada campo
  * @returns {Promise<Array<{ chave: string, label: string, tipo: string, camada: 1 | 2 | 3, obrigatorio: boolean, ordem: number, visibilidade: Record<string, boolean>, opcoes?: string[] | null }>>}
  */
-export async function listarCamposDoTenant(tenantId, contexto) {
-  const { campos } = await obterSchemaCampos(tenantId);
+export async function listarCamposDoTenant(tenantId, contexto, { papel } = {}) {
+  const { campos } = await obterSchemaDoPapel(tenantId, papel);
   return contexto ? camposDoContexto(campos, contexto) : campos;
 }
 
@@ -351,14 +366,17 @@ export async function listarCamposDoTenant(tenantId, contexto) {
  *
  * @param {string} tenantId
  * @param {import('./lead-filter.service.js').FiltroLeads & { paginacao: { pagina: number, tamanho: number } }} input
+ * @param {{ papel?: string }} [acesso]  M13: filtro por campo oculto → 400 (campo desconhecido)
  * @returns {Promise<{ itens: Lead[], total: number, pagina: number, tamanho: number }>}
  */
-export async function pesquisarLeads(tenantId, input) {
+export async function pesquisarLeads(tenantId, input, acesso = {}) {
   const { pagina, tamanho } = input.paginacao;
-  const { itens, total } = await buscarLeadsFiltrados(tenantId, input, {
-    limite: tamanho,
-    offset: (pagina - 1) * tamanho,
-  });
+  const { itens, total } = await buscarLeadsFiltrados(
+    tenantId,
+    input,
+    { limite: tamanho, offset: (pagina - 1) * tamanho },
+    acesso,
+  );
 
   return { itens, total, pagina, tamanho };
 }
@@ -371,10 +389,11 @@ export async function pesquisarLeads(tenantId, input) {
  * @param {string} tenantId
  * @param {import('./lead-filter.service.js').FiltroLeads} filtro
  * @param {{ limite: number, offset: number }} paginacao
+ * @param {{ papel?: string }} [acesso]  papel de quem busca (M13); sem ele (export, só gestão), tudo
  */
-export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
+export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel } = {}) {
   const [schema, identificador, comArquivo, inatividade] = await Promise.all([
-    obterSchemaCampos(tenantId),
+    obterSchemaDoPapel(tenantId, papel),
     identificadorDaBusca(tenantId),
     featureAtiva(tenantId, CRM_FEATURES.ARQUIVO),
     relogioDaInatividade(tenantId),
@@ -388,7 +407,9 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao) {
     await garantirFeature(tenantId, CRM_FEATURES.INATIVIDADE);
   }
   const condicoes = montarCondicoes(filtro, camposParaFiltro(schema), {
-    identificador,
+    // M13: campo oculto pro papel não entra na busca textual (revelaria o valor).
+    identificador: identificadorVisivel(identificador, schema),
+    contato: contatoNaBusca(schema),
     comArquivo,
     agora: inatividade ?? undefined,
   });
@@ -522,6 +543,8 @@ function validarEmailOuTelefone(input) {
 function validarObrigatoriosNaCriacao(campos, input) {
   for (const campo of campos) {
     if (!exigidoNaCriacao(campo) || CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) continue;
+    // M13: "só ver" pro papel — não dá pra exigir de quem não pode preencher.
+    if (campo.acesso === ACESSOS_CAMPO.VER) continue;
 
     const personalizado = campo.camada === CAMADA.CAMADA_3;
     const valor = personalizado ? input.customFields?.[campo.chave] : input[campo.chave];

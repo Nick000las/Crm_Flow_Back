@@ -22,6 +22,7 @@ import {
 } from '../constants.js';
 import { listarConfiguracaoCampos } from './configuracoes-campos.service.js';
 import { camposDoContexto, obterSchemaCampos } from './field-schema.service.js';
+import { obterSchemaDoPapel } from './permissoes.service.js';
 
 /**
  * SERVICE: layout do lead (docs/crm/plano-configuracoes.md, M4). Dois
@@ -69,10 +70,11 @@ const chaveCache = (tenantId) => `crm:layout:${tenantId}`;
  *
  * @param {string} tenantId
  * @param {string} usuarioId
+ * @param {{ papel?: string }} [acesso]  M13: campo oculto pro papel sai do `efetivo`
  */
-export async function obterLayout(tenantId, usuarioId) {
+export async function obterLayout(tenantId, usuarioId, acesso = {}) {
   const [{ campos }, camposConfig, padraoSalvo, override] = await Promise.all([
-    obterSchemaCampos(tenantId),
+    obterSchemaDoPapel(tenantId, acesso.papel),
     listarConfiguracaoCampos(tenantId),
     buscarLayoutPadrao(tenantId),
     buscarOverride(tenantId, usuarioId),
@@ -108,8 +110,9 @@ export async function salvarPadrao(tenantId, usuarioId, layout) {
  * @param {string} tenantId
  * @param {string} usuarioId
  * @param {Partial<LayoutRefs>} parcial
+ * @param {{ papel?: string }} [acesso]
  */
-export async function salvarMeu(tenantId, usuarioId, parcial) {
+export async function salvarMeu(tenantId, usuarioId, parcial, acesso = {}) {
   const camposConfig = await listarConfiguracaoCampos(tenantId);
   validarLayout(parcial, catalogoDe(camposConfig), { parcial: true });
 
@@ -121,7 +124,7 @@ export async function salvarMeu(tenantId, usuarioId, parcial) {
     ]),
   );
   await salvarOverride(tenantId, usuarioId, parcial, padraoVisto);
-  return obterLayout(tenantId, usuarioId);
+  return obterLayout(tenantId, usuarioId, acesso);
 }
 
 /**
@@ -129,10 +132,11 @@ export async function salvarMeu(tenantId, usuarioId, parcial) {
  *
  * @param {string} tenantId
  * @param {string} usuarioId
+ * @param {{ papel?: string }} [acesso]
  */
-export async function removerMeu(tenantId, usuarioId) {
+export async function removerMeu(tenantId, usuarioId, acesso = {}) {
   await excluirOverride(tenantId, usuarioId);
-  return obterLayout(tenantId, usuarioId);
+  return obterLayout(tenantId, usuarioId, acesso);
 }
 
 /**

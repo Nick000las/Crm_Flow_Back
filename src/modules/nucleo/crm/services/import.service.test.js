@@ -52,6 +52,8 @@ vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   obterSchemaCampos: vi.fn().mockResolvedValue({ visibilidade: [], definicoes: [], campos: [] }),
 }));
+// A coluna Responsável (M12) é do tipo usuário: a validação lista os usuários ativos pelo nome.
+vi.mock('../adapters/usuarios.repository.js', () => ({ listarUsuariosAtivosDoTenant: vi.fn().mockResolvedValue([]) }));
 vi.mock('../adapters/funil-estagios.repository.js', () => ({ buscarEstagiosPorTenant: vi.fn() }));
 vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
