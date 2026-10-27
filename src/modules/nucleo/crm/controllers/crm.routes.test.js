@@ -29,6 +29,7 @@ import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
 import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js';
 import { excluirGrupo, salvarConfigDistribuicao } from '../services/distribuicao.service.js';
 import { salvarPermissoes } from '../services/permissoes.service.js';
+import { recalcularTodos, salvarConfigScore } from '../services/score.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -97,6 +98,11 @@ vi.mock('../services/cnpj.service.js', () => ({
   listarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'manual' }),
   salvarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'automatico' }),
   encerrarEnriquecimento: vi.fn(),
+}));
+vi.mock('../services/score.service.js', () => ({
+  obterConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
+  salvarConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
+  recalcularTodos: vi.fn().mockResolvedValue({ total: 0, processados: 0 }),
 }));
 vi.mock('../services/permissoes.service.js', () => ({
   obterPermissoes: vi.fn().mockResolvedValue({ papeis: ['OPERADOR'], campos: [] }),
@@ -1020,5 +1026,57 @@ describe('Permissão por campo (M13, flag crm.permissoes)', () => {
   it('export e import continuam só de gestão: o OPERADOR não exporta campo nenhum', async () => {
     const exportar = await app.inject({ method: 'POST', url: '/crm/export', headers: autorizado(tokenOperador), payload: { formato: 'csv' } });
     expect(exportar.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+  });
+});
+
+describe('Pontuação de leads (M14, flag crm.score)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.score' }];
+  const URL = '/crm/configuracoes/score';
+  const CAMPO = '00000000-0000-0000-0000-0000000000d1';
+  const PONTOS = 20;
+  const MAXIMO_FRIO = 29;
+  const PONTOS_QUEBRADOS = 1.5;
+  const config = {
+    regras: [{ nome: 'Site', ativo: true, pontos: PONTOS, condicoes: [{ campoId: CAMPO, operador: 'igual', valor: 'site' }] }],
+    faixas: [{ rotulo: 'Frio', minimo: null, maximo: MAXIMO_FRIO, cor: '#3B82F6' }],
+  };
+
+  it('sem a flag → 403; leitura pra qualquer papel; OPERADOR não grava nem recalcula', async () => {
+    const semFlag = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache(); // as flags do tenant ficam em cache
+    const leitura = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+    for (const [method, url] of [['PUT', URL], ['POST', `${URL}/recalcular`]]) {
+      const resposta = await app.inject({ method, url, headers: autorizado(tokenOperador), payload: config });
+      expect(resposta.json().error.code, url).toBe(ERROR_CODES.FORBIDDEN);
+    }
+  });
+
+  it('DONO grava e recalcula; pontos não inteiros, cor inválida ou sem faixa → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const ok = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload: config });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarConfigScore).toHaveBeenCalledWith(TENANT, config);
+    await app.inject({ method: 'POST', url: `${URL}/recalcular`, headers: autorizado(tokenDono) });
+    expect(recalcularTodos).toHaveBeenCalledWith(TENANT);
+
+    const invalidos = [
+      { ...config, regras: [{ ...config.regras[0], pontos: PONTOS_QUEBRADOS }] },
+      { ...config, faixas: [{ ...config.faixas[0], cor: 'azul' }] },
+      { ...config, faixas: [] },
+    ];
+    for (const payload of invalidos) {
+      const resposta = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
+  });
+
+  it('busca aceita `faixaScore` e repassa ao service', async () => {
+    const corpo = { faixaScore: 'quente', paginacao: { pagina: 1, tamanho: TAMANHO } };
+    await app.inject({ method: 'POST', url: '/crm/leads/search', headers: autorizado(tokenOperador), payload: corpo });
+    expect(pesquisarLeads).toHaveBeenCalledWith(TENANT, expect.objectContaining({ faixaScore: 'quente' }), { papel: 'OPERADOR' });
   });
 });

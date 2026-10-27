@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 no back em 2026-10-26 (sem migration; falta o front); próximo marco: M14.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts); próximo marco: M15.
 
 ## Contexto
 O CRM já tem:
@@ -657,6 +657,36 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - O score de engajamento (com decaimento) fica para quando existir o omnichannel.
 
 **Checklist:** o recálculo em lote é idempotente e mostra progresso; o filtro por faixa funciona; uma regra com campo inativo é ignorada.
+- [x] Contra o banco (`services/score.db.test.js`): salvar as regras recalcula todos com o progresso gravado, e recalcular de novo dá os mesmos scores. O filtro `faixaScore` traz cada lead na sua faixa. Uma regra sobre um campo personalizado excluído deixa de contar no recálculo.
+- [x] Testes puros (`score.service.test.js`): a expressão (uma parcela por regra, condições com E, regra inválida ignorada), as faixas (inclusivas, sobreposição dá 400) e o cursor do recálculo em lotes.
+
+**Como ficou (back, 2026-10-26):**
+- **Decisões do usuário:**
+  - o score **reusa o campo nativo "Lead score"** (`lead_score`, Camada 2), em vez da coluna nova `leads.score` do plano. Com a flag `crm.score` ele é calculado e só leitura (`leadScore` no payload dá 400, inclusive mapeado no import); sem a flag, volta a ser manual;
+  - o recálculo é **na hora, em lotes**, e não num job da fila, para funcionar sem Redis;
+  - faixas semeadas: Frio até 29, Morno de 30 a 69 e Quente a partir de 70.
+- **Cálculo:** uma única expressão SQL (`expressaoDoScore`), a soma de `CASE WHEN <condições da regra> THEN pontos ELSE 0 END`.
+  - As condições usam a mesma tradução do filtro (`condicaoDoCampo`, extraída do `montarCondicoes`).
+  - A mesma expressão serve para um lead ao salvar e para o recálculo em lote, então os dois nunca divergem. O resultado é determinístico, o que torna o recálculo idempotente.
+  - Uma regra desligada, com campo de condição excluído ou desligado, sobre o próprio score, ou com condição que deixou de valer para o tipo do campo é ignorada. Ela nunca derruba o salvar.
+- **Quando recalcula:**
+  - ao criar e editar um lead (o que cobre a edição em massa), com o score novo já na resposta do PUT;
+  - no fim do import, para todos os leads gravados;
+  - na mesclagem e no enriquecimento por CNPJ;
+  - em todos os leads do tenant ao salvar as regras, ou por `POST …/score/recalcular`.
+
+  O recálculo do score não gera evento no histórico, porque não é edição de ninguém.
+- **Recálculo em lote:** lotes de 500 por ordem de id (cursor = último id), incluindo arquivados e lixeira. O progresso (`total`, `processados`, `emAndamento`, `concluidoEm`) fica em `crm_score_config` e aparece no GET enquanto roda. O PUT responde no fim.
+- **Faixas:** em `crm_score_band`, com `chave` (o que o filtro usa), `rotulo`, `minimo`/`maximo` inclusivos (nulo = sem limite) e `cor`. Sem linha no tenant, valem as padrão do código, sem seed no banco. Faixas sobrepostas ou com chave repetida dão 400; um buraco entre faixas é permitido.
+- **Filtro:** `faixaScore: '<chave>'` na busca (`POST /crm/leads/search`), que também vale para o export. Exige a flag. O filtro numérico normal do campo Lead score continua funcionando.
+- **Visibilidade:** ao salvar a configuração, o campo Lead score é ligado no detalhe, na tabela e no filtro, se estiver desligado. O formulário de criação não muda, porque o campo é só leitura. Sem isso, a resposta do lead nem traria o score.
+- **Migration 0027:** `crm_score_rule`, `crm_score_band` e `crm_score_config`, com RLS, mais o índice `(tenant_id, lead_score)`.
+- **HTTP** (flag `crm.score`; leitura para qualquer papel, escrita DONO/MASTER com o papel conferido antes da flag):
+  - `GET /crm/configuracoes/score` responde `{ regras, faixas, faixasConfiguradas, recalculo }`.
+  - `PUT` recebe `{ regras: [{ nome, ativo, pontos (inteiro, ±1000), condicoes }], faixas: [{ chave?, rotulo, minimo, maximo, cor }] }`.
+  - `POST /crm/configuracoes/score/recalcular`.
+  - Limites: 100 regras, 10 condições e 10 faixas.
+- **Fora do M14:** o score de engajamento com decaimento, como o plano prevê. Mudanças fora das regras (excluir um campo, mudar o tipo de um campo) só refletem no próximo recálculo.
 
 ### M15. Base legal LGPD (flag `crm.lgpd`)
 - **15.1** Colunas `legal_basis`, `legal_basis_at`, `origem_registro` e `marketing_opt_out_at` como campos do sistema.

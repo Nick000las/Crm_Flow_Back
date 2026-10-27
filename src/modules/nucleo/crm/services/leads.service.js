@@ -20,6 +20,7 @@ import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicado
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
+import { garantirScoreNaoEditado, limitesDaFaixa, recalcularScoreDosLeads } from './score.service.js';
 import {
   carregarContextoDistribuicao,
   detalhesDaAtribuicao,
@@ -107,6 +108,8 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   const schema = await obterSchemaDoPapel(tenantId, papel);
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
+  // M14: com a pontuação ligada, o Lead score é calculado.
+  await garantirScoreNaoEditado(tenantId, semFlagDeDuplicidade);
   const input = comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade));
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
@@ -161,6 +164,8 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   }
   // Enriquecimento por CNPJ (M11b, modo automático): depois de salvo, na fila; nunca falha o POST.
   await agendarEnriquecimento(tenantId, [{ leadId: criado.id, cnpj: input.cnpj }]);
+  // Pontuação (M14): soma das regras sobre o lead já gravado.
+  await recalcularScoreDosLeads(tenantId, [criado.id]);
   return criado;
 }
 
@@ -181,6 +186,7 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   const schema = await obterSchemaDoPapel(tenantId, papel);
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
+  await garantirScoreNaoEditado(tenantId, semFlagDeDuplicidade);
   const normalizado = comContatoNormalizado(semFlagDeDuplicidade);
   if (normalizado.nome !== undefined && normalizado.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
@@ -229,6 +235,9 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   }
   // M11b: só quando o PUT mexe no CNPJ (o job confere se ainda é o mesmo).
   if (input.cnpj) await agendarEnriquecimento(tenantId, [{ leadId, cnpj: leadAtualizado.cnpj }]);
+  // Pontuação (M14): a resposta já sai com o score novo.
+  const scores = await recalcularScoreDosLeads(tenantId, [leadId]);
+  if (scores?.has(leadId)) leadAtualizado.lead_score = scores.get(leadId);
 
   return formatarLead(leadAtualizado, schema);
 }
@@ -406,7 +415,10 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
   if (!inatividade && filtro.esfriando) {
     await garantirFeature(tenantId, CRM_FEATURES.INATIVIDADE);
   }
-  const condicoes = montarCondicoes(filtro, camposParaFiltro(schema), {
+  // Faixa de score (M14): a chave da faixa vira os limites (exige `crm.score`).
+  if (filtro.faixaScore) await garantirFeature(tenantId, CRM_FEATURES.SCORE);
+  const faixaDoScore = filtro.faixaScore ? await limitesDaFaixa(tenantId, filtro.faixaScore) : undefined;
+  const condicoes = montarCondicoes({ ...filtro, faixaDoScore }, camposParaFiltro(schema), {
     // M13: campo oculto pro papel não entra na busca textual (revelaria o valor).
     identificador: identificadorVisivel(identificador, schema),
     contato: contatoNaBusca(schema),

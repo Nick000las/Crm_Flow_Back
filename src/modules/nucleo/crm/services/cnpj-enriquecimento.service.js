@@ -17,6 +17,7 @@ import { encontrarDuplicados } from './duplicidade.service.js';
 import { customFieldsParaArmazenamento, obterSchemaCampos } from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
 import { leadParaApi } from './leads.service.js';
+import { recalcularScoreDosLeads } from './score.service.js';
 import { chaveDocumento, valorAusente } from './tipos-campo.service.js';
 
 /**
@@ -66,6 +67,8 @@ export async function processarEnriquecimento({ tenantId, leadId, cnpj }) {
     detalhes: { cnpj, provedor: consulta.provedor },
     montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
   });
+  // Pontuação (M14): dados novos podem casar regras.
+  await recalcularScoreDosLeads(tenantId, [leadId]);
   return { resultado: 'enriquecido', campos: aplicar.map((item) => item.chave) };
 }
 

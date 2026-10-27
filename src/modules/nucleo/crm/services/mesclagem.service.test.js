@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mesclarLeads as mesclarLeadsRepository } from '../adapters/leads.repository.js';
 import { mesclarLeads, montarMesclagem } from './mesclagem.service.js';
 
+// M14: a pontuação tem teste próprio; aqui ela não grava nada.
+vi.mock('./score.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
+  garantirScoreNaoEditado: vi.fn(),
+}));
 vi.mock('../adapters/leads.repository.js', () => ({ mesclarLeads: vi.fn() }));
 vi.mock('./leads.service.js', () => ({ buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })) }));
 vi.mock('./field-schema.service.js', () => ({

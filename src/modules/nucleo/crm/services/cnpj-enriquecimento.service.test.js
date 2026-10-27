@@ -9,6 +9,12 @@ import { consultarCnpj, obterConfigCnpj } from './cnpj.service.js';
 import { encontrarDuplicados } from './duplicidade.service.js';
 import { dadosParaGravar, filtrarSobrescrita, opcoesDoWorkerCnpj, processarEnriquecimento } from './cnpj-enriquecimento.service.js';
 
+// M14: a pontuação tem teste próprio; aqui ela não grava nada.
+vi.mock('./score.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
+  garantirScoreNaoEditado: vi.fn(),
+}));
 vi.mock('./duplicidade.service.js', () => ({ encontrarDuplicados: vi.fn().mockResolvedValue([]) }));
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));

@@ -39,6 +39,8 @@ export const filtroLeadsSchema = z.object({
     .optional(),
   // M9: só os leads esfriando agora. Exige `crm.inatividade`.
   esfriando: z.boolean({ invalid_type_error: 'Esfriando deve ser verdadeiro ou falso' }).optional(),
+  // M14: a chave da faixa de score (`frio`, `morno`, `quente`…). Exige `crm.score`.
+  faixaScore: z.string({ invalid_type_error: 'Faixa de score inválida' }).trim().min(1, 'Faixa de score inválida').optional(),
   filtros: z
     .array(filtroCampoSchema)
     .max(BUSCA_LEADS.MAX_FILTROS, `Use no máximo ${BUSCA_LEADS.MAX_FILTROS} filtros`)
