@@ -4,6 +4,7 @@ import { CAMPOS_SISTEMA, PROPRIEDADES_NO_HISTORICO } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
+import { leadAnonimizadoNaoEditavel } from './lgpd.service.js';
 import { recalcularScoreDosLeads } from './score.service.js';
 import { valorAusente } from './tipos-campo.service.js';
 
@@ -100,7 +101,11 @@ export async function mesclarLeads(tenantId, { principalId, secundarioId, escolh
     { principalId, secundarioId },
     {
       autorId: usuarioId ?? null,
-      montar: (principal, secundario) => montarMesclagem(principal, secundario, escolhasArmazenadas),
+      montar: (principal, secundario) => {
+        // M15: lead anonimizado não recebe nem doa dados (a transação desfaz).
+        if (principal.anonimizado_em || secundario.anonimizado_em) throw leadAnonimizadoNaoEditavel();
+        return montarMesclagem(principal, secundario, escolhasArmazenadas);
+      },
       montarDiff: (antes, depois) => diffDoLead(antes, depois),
     },
   );

@@ -6,6 +6,7 @@
  * Como cada tipo valida, normaliza e converte mora em
  * `services/tipos-campo.service.js`.
  */
+import { OPCOES_BASE_LEGAL, OPCOES_ORIGEM_REGISTRO } from './lgpd.js';
 import { TIPOS_LISTA } from './listas.js';
 
 export const TIPOS_CAMPO = Object.freeze({
@@ -74,6 +75,11 @@ export const CAMADA_2_CAMPOS = Object.freeze({
   motivoPerda: 'motivo_perda',
   leadScore: 'lead_score',
   proximoFollowup: 'proximo_followup',
+  // M15 (LGPD): base legal escolhida; data, origem e opt-out carimbados pelo back.
+  baseLegal: 'legal_basis',
+  baseLegalEm: 'legal_basis_at',
+  origemRegistro: 'origem_registro',
+  optOutMarketingEm: 'marketing_opt_out_at',
 });
 
 /**
@@ -93,6 +99,19 @@ export const CAMADA_2_COLUNAS = Object.freeze(Object.values(CAMADA_2_CAMPOS));
 export const CAMADA_2_COLUNA_PARA_CAMPO = Object.freeze(
   Object.fromEntries(Object.entries(CAMADA_2_CAMPOS).map(([campo, coluna]) => [coluna, campo])),
 );
+
+/**
+ * Opções fixas de um campo do sistema no mesmo shape das de lista
+ * (`opcoes` = keys aceitas, `opcoesLista` = com label pra tela).
+ *
+ * @param {readonly { key: string, label: string }[]} opcoes
+ */
+function opcoesFixas(opcoes) {
+  return {
+    opcoes: opcoes.map((opcao) => opcao.key),
+    opcoesLista: opcoes.map(({ key, label }) => ({ key, label, color: null, category: null, ativo: true })),
+  };
+}
 
 /**
  * Label/tipo/opções por coluna de Camada 2 (chave snake_case, mesma de
@@ -118,6 +137,12 @@ export const CAMADA_2_METADADOS = Object.freeze({
   motivo_perda: { label: 'Motivo da perda', tipo: 'selecao', lista: TIPOS_LISTA.MOTIVO_PERDA },
   lead_score: { label: 'Lead score', tipo: 'numero' },
   proximo_followup: { label: 'Próximo follow-up', tipo: 'data' },
+  // M15: opções fixas (categorias da lei, não lista do tenant); `somenteLeitura`
+  // = o back grava, o payload não muda (o front trava no formulário).
+  legal_basis: { label: 'Base legal', tipo: 'selecao', ...opcoesFixas(OPCOES_BASE_LEGAL) },
+  legal_basis_at: { label: 'Data da base legal', tipo: 'data', somenteLeitura: true },
+  origem_registro: { label: 'Origem do registro', tipo: 'selecao', ...opcoesFixas(OPCOES_ORIGEM_REGISTRO), somenteLeitura: true },
+  marketing_opt_out_at: { label: 'Opt-out de marketing', tipo: 'data', somenteLeitura: true },
 });
 
 /**
@@ -201,6 +226,7 @@ const CAPACIDADES_CAMADA_2 = Object.freeze({ canHide: true, canMakeOptional: tru
  *   lista: string | null, camada: 1 | 2,
  *   ordemPadrao: number, obrigatorioPadrao: boolean, visivelPadrao: boolean,
  *   canHide: boolean, canMakeOptional: boolean, canRename: boolean,
+ *   opcoes?: readonly string[], somenteLeitura?: boolean,
  * }} CampoSistema
  * @type {readonly CampoSistema[]}
  */
@@ -223,6 +249,9 @@ export const CAMPOS_SISTEMA = Object.freeze([
     label: CAMADA_2_METADADOS[coluna].label,
     tipo: CAMADA_2_METADADOS[coluna].tipo,
     lista: CAMADA_2_METADADOS[coluna].lista ?? null,
+    // M15: opções fixas e "só leitura" (os campos LGPD carimbados pelo back).
+    ...(CAMADA_2_METADADOS[coluna].opcoes ? { opcoes: CAMADA_2_METADADOS[coluna].opcoes } : {}),
+    ...(CAMADA_2_METADADOS[coluna].somenteLeitura ? { somenteLeitura: true } : {}),
     camada: CAMADA.CAMADA_2,
     ordemPadrao: CAMPOS_CAMADA_1.length + indice,
     obrigatorioPadrao: false,

@@ -17,6 +17,7 @@ const COLUNAS_BASE = Prisma.sql`
   l.empresa, l.cargo, l.cpf, l.cnpj, l.cidade, l.uf, l.cep, l.endereco,
   l.campanha_utm, l.data_conversao, l.probabilidade_fechamento,
   l.data_prevista_fechamento, l.motivo_perda, l.lead_score, l.proximo_followup,
+  l.legal_basis, l.legal_basis_at, l.origem_registro, l.marketing_opt_out_at, l.anonimizado_em,
   l.custom_fields, l.usuario_responsavel_id, f.nome AS estagio_nome,
   l.created_at, l.updated_at, l.archived_at, l.deleted_at, l.mesclado_em_id,
   (SELECT m.nome FROM modulo_crm.leads m WHERE m.id = l.mesclado_em_id) AS mesclado_em_nome,
@@ -138,14 +139,16 @@ export function criarLead(tenantId, dados, historico) {
         email, fonte_lead, status, tags, ultima_interacao_em,
         empresa, cargo, cpf, cnpj, cidade, uf, cep, endereco,
         campanha_utm, data_conversao, probabilidade_fechamento,
-        data_prevista_fechamento, motivo_perda, lead_score, proximo_followup
+        data_prevista_fechamento, motivo_perda, lead_score, proximo_followup,
+        legal_basis, legal_basis_at, origem_registro, marketing_opt_out_at
       )
       VALUES (
         ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid, ${dados.atribuidoPorRegraId ?? null}::uuid,
         ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.status ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
         ${dados.empresa ?? null}, ${dados.cargo ?? null}, ${dados.cpf ?? null}, ${dados.cnpj ?? null}, ${dados.cidade ?? null}, ${dados.uf ?? null}, ${dados.cep ?? null}, ${dados.endereco ?? null},
         ${dados.campanhaUtm ?? null}, ${dados.dataConversao ?? null}, ${dados.probabilidadeFechamento ?? null},
-        ${dados.dataPrevistaFechamento ?? null}, ${dados.motivoPerda ?? null}, ${dados.leadScore ?? null}, ${dados.proximoFollowup ?? null}
+        ${dados.dataPrevistaFechamento ?? null}, ${dados.motivoPerda ?? null}, ${dados.leadScore ?? null}, ${dados.proximoFollowup ?? null},
+        ${dados.baseLegal ?? null}, ${dados.baseLegalEm ?? null}, ${dados.origemRegistro ?? null}, ${dados.optOutMarketingEm ?? null}
       )
       RETURNING id
     `.then((rows) => rows[FIRST_RESULT_INDEX]);
@@ -194,6 +197,7 @@ export function atualizarLead(tenantId, leadId, dados, historico, { inatividade 
         FROM modulo_crm.leads l
         LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
         WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
+          AND l.anonimizado_em IS NULL
         FOR UPDATE OF l
       `;
       if (!antes) return undefined;
@@ -206,6 +210,7 @@ export function atualizarLead(tenantId, leadId, dados, historico, { inatividade 
         UPDATE modulo_crm.leads
         SET ${Prisma.join(atribuicoes, ', ')}
         WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+          AND anonimizado_em IS NULL
         RETURNING *
       )
       SELECT ${colunasLeitura(inatividade)}
@@ -262,6 +267,20 @@ export function montarAtribuicoes(dados) {
   if (dados.status !== undefined && dados.ultimaInteracaoEm === undefined) {
     atribuicoes.push(
       Prisma.sql`ultima_interacao_em = CASE WHEN status IS DISTINCT FROM ${dados.status} THEN now() ELSE ultima_interacao_em END`,
+    );
+  }
+
+  // Base legal (M15): a data acompanha a troca (some quando a base é limpa),
+  // a não ser que venha explícita (mesclagem copia as duas do lado escolhido).
+  if (dados.baseLegal !== undefined && dados.baseLegalEm === undefined) {
+    atribuicoes.push(
+      Prisma.sql`legal_basis_at = CASE WHEN ${dados.baseLegal}::varchar IS NULL THEN NULL WHEN legal_basis IS DISTINCT FROM ${dados.baseLegal} THEN now() ELSE legal_basis_at END`,
+    );
+  }
+  // Opt-out (M15): sim/não no payload; ligar de novo mantém a data da primeira vez.
+  if (dados.optOutMarketing !== undefined && dados.optOutMarketingEm === undefined) {
+    atribuicoes.push(
+      Prisma.sql`marketing_opt_out_at = CASE WHEN ${dados.optOutMarketing}::boolean THEN COALESCE(marketing_opt_out_at, now()) ELSE NULL END`,
     );
   }
 

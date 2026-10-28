@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts); próximo marco: M15.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts), M15 no back em 2026-10-27 (0028 e 0029 aplicadas no banco de dev; falta o front); próximo marco: M16.
 
 ## Contexto
 O CRM já tem:
@@ -694,6 +694,38 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **15.3** Pedido do titular: **anonimizar** o lead, preservando estatísticas (sem PII nos eventos), com registro de auditoria.
 
 **Checklist:** a anonimização remove PII do lead, das atividades e dos eventos; o import exige a base legal quando ela é obrigatória.
+- [x] Contra o banco (`services/lgpd.db.test.js`): o lead manual nasce com origem "manual", a base padrão e as datas; trocar a base renova a data e limpar a apaga; o opt-out guarda a data da primeira vez; obrigatória sem base nem padrão dá 400 no campo.
+- [x] Import (`import.service.test.js`): a base do lote preenche as linhas sem a sua; obrigatória sem coluna e sem lote barra o mapeamento; os campos carimbados ficam fora do mapeamento.
+- [x] Anonimização contra o banco (`lgpd.db.test.js`): o lead e o mesclado nele perdem a PII (o personalizado numérico fica), a atividade e o histórico ficam sem vestígio, o evento `anonimizado` e a linha na `audit_log` existem. Editar ou anonimizar de novo dá 409. DELETE direto na `audit_log` continua barrado, e a exclusão do tenant no fim passa.
+
+**Como ficou (back, 2026-10-27):**
+- **Decisões do usuário:**
+  - anonimizar **mantém o lead** para as estatísticas e apaga só o que identifica a pessoa. É irreversível, e o lead fica travado para edição;
+  - a origem do registro é **automática e só leitura**;
+  - as datas da base legal e do opt-out são **carimbadas pelo back**;
+  - só DONO e MASTER anonimizam.
+- **Campos:** os quatro entram como **Camada 2** (`baseLegal`, `baseLegalEm`, `origemRegistro`, `optOutMarketingEm`), com visibilidade, tabela, filtro e export do mecanismo de sempre.
+  - A base legal e a origem têm **opções fixas**: são categorias da lei, então não são lista do tenant (CHECK no banco). Vêm em `opcoes` e `opcoesLista`, como os campos de lista.
+  - Os três carimbados vêm com `somenteLeitura: true` em `/fields`, ficam fora do payload (o Zod descarta) e fora do mapeamento do import.
+  - O opt-out é um sim/não no payload (`optOutMarketing`). Ligar grava a data, e ligar de novo mantém a da primeira vez; desligar apaga a data.
+  - Trocar a base legal renova a data; mandar a mesma de novo não mexe nela; limpar apaga as duas.
+- **Os carimbos valem sempre**, com ou sem a flag: origem `manual` no `POST /crm/leads` e `importacao` no import. A flag liga a configuração, a base do lote e a anonimização. `formulario`, `whatsapp` e `api` ficam reservadas para canais futuros. Leads antigos ficam sem origem.
+- **Obrigatoriedade:** é a do próprio campo "Base legal" (`crm_field.is_required`), que o formulário e o import já exigem. A configuração só a liga ou desliga, em vez de manter uma segunda fonte.
+  - A base padrão vale só no cadastro manual e é aplicada antes da checagem de obrigatório.
+  - No import, `baseLegalLote` (multipart do validate) preenche as linhas sem base e cobre o campo obrigatório sem coluna mapeada.
+- **Configuração:** `GET/PUT /crm/configuracoes/lgpd`.
+  - Salvar liga os quatro campos no detalhe, na tabela e no filtro; a Base legal também no formulário.
+  - A base padrão fica em `crm_lgpd_config`.
+- **Anonimização:** `POST /crm/leads/:id/anonimizar`. Vale para lead arquivado ou na lixeira, e leva junto os leads mesclados nele, que são a mesma pessoa.
+  - **Lead:** o nome vira "Lead anonimizado". Ficam nulos primeiro nome, e-mail, telefone, empresa, cargo, CPF, CNPJ, endereço e CEP. Dos personalizados, ficam só os de tipo que não identifica (número, data, seleção…).
+  - **Atividades:** título genérico, sem notas.
+  - **Histórico:** o antes/depois dos campos pessoais vira `null`, e o `detalhes` perde o nome do mesclado e o CNPJ. O trigger append-only abre essa exceção só com `app.lgpd_anonimizando` ligado na transação.
+  - **Rastro:** um evento `anonimizado` e uma linha na `audit_log`, ambos só com as contagens.
+  - **Depois:** editar ou mesclar o lead dá 409, e o score é recalculado.
+  - A constraint "e-mail ou telefone" aceita o lead anonimizado.
+- **`audit_log` e exclusão do tenant (migration 0029, decisão do usuário):** o trigger barrava **todo** DELETE, inclusive a cascata da exclusão do tenant (`TenantManagement.deleteTenant`, que documenta apagar o audit log). Nada gravava na `audit_log` antes do M15, e com a anonimização gravando, um tenant que anonimizou alguém deixaria de poder ser excluído. Agora o trigger deixa passar só o DELETE em cascata (`pg_trigger_depth() > 1`); UPDATE e DELETE direto continuam barrados.
+- **Fora do M15:** a PII do mesmo titular em outros módulos (atendimento, agendamento, IA…). A fronteira de módulo impede o CRM de mexer lá, e isso precisa de um evento do core.
+- **Migrations:** 0028 (CRM) traz as colunas, `anonimizado_em`, a constraint "e-mail ou telefone", `crm_lgpd_config` (com RLS) e o trigger do histórico; 0029 (core) traz o trigger da `audit_log`.
 
 ### M16. Timeline completa no drawer (flag `crm.timeline`)
 - **16.1** O drawer ganha as abas Dados · Atividades · Histórico.

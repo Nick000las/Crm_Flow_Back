@@ -14,6 +14,7 @@ import { registrarRotasCnpj } from './controllers/cnpj.controller.js';
 import { registrarRotasDistribuicao } from './controllers/distribuicao.controller.js';
 import { registrarRotasPermissoes } from './controllers/permissoes.controller.js';
 import { registrarRotasScore } from './controllers/score.controller.js';
+import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
 
@@ -41,6 +42,7 @@ export const crmModule = {
     registrarRotasDistribuicao(app);
     registrarRotasPermissoes(app);
     registrarRotasScore(app);
+    registrarRotasLgpd(app);
     await registrarRotasImportExport(app);
   },
 };

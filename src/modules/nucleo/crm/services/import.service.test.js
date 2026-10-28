@@ -26,6 +26,11 @@ import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
 import { carregarContextoDistribuicao, distribuir, notificarAtribuicoesDoImport } from './distribuicao.service.js';
+import { featureAtiva } from '#core/tenant/feature-flags.js';
+import { garantirScoreNaoEditado } from './score.service.js';
+
+// Flags desligadas por padrão (M14: o Lead score é mapeável); o bloco do M14 liga.
+vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn().mockResolvedValue(false), garantirFeature: vi.fn() }));
 
 // M11b: enriquecimento por CNPJ tem teste próprio; aqui só o gancho do lote.
 // M14: a pontuação tem teste próprio; aqui ela não grava nada.
@@ -126,6 +131,7 @@ function planilha(linhas) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  featureAtiva.mockResolvedValue(false);
   listarCamposDoTenant.mockResolvedValue(CAMPOS);
   buscarEstagiosPorTenant.mockResolvedValue([
     { id: ESTAGIO_NOVO, nome: 'Novo' },
@@ -151,6 +157,54 @@ describe('previsualizarImportacao', () => {
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const { campos } = await previsualizarImportacao(TENANT, buffer);
     expect(campos).toContainEqual(expect.objectContaining({ chave: 'segmento', camada: CAMADA.CAMADA_3 }));
+  });
+
+  // M14: com a pontuação ligada, o Lead score é calculado — some do mapeamento.
+  it('Lead score só é mapeável com a pontuação desligada', async () => {
+    listarCamposDoTenant.mockResolvedValue([
+      ...CAMPOS,
+      { chave: 'leadScore', label: 'Lead score', tipo: 'numero', camada: CAMADA.CAMADA_2, obrigatorio: false },
+    ]);
+    const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
+    const chaves = async () => (await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave);
+
+    expect(await chaves()).toContain('leadScore');
+    featureAtiva.mockResolvedValue(true);
+    expect(await chaves()).not.toContain('leadScore');
+  });
+
+  // M15: base legal obrigatória; o lote preenche as linhas sem a sua.
+  it('base legal do lote vale nas linhas sem a sua; sem lote nem coluna, a obrigatória barra o mapeamento', async () => {
+    listarCamposDoTenant.mockResolvedValue([
+      ...CAMPOS,
+      { chave: 'baseLegal', label: 'Base legal', tipo: 'selecao', camada: CAMADA.CAMADA_2, obrigatorio: true, opcoes: ['consentimento', 'outra'] },
+      { chave: 'origemRegistro', label: 'Origem do registro', tipo: 'selecao', camada: CAMADA.CAMADA_2, obrigatorio: false, somenteLeitura: true },
+    ]);
+    const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
+    const opcoes = { mapeamento: MAPEAMENTO, estrategiaDuplicata: 'pular' };
+
+    // Carimbado pelo back: fora do mapeamento.
+    expect((await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave)).not.toContain('origemRegistro');
+
+    await expect(validarImportacao(TENANT, USUARIO, buffer, opcoes)).rejects.toMatchObject({
+      fields: { mapeamento: [expect.stringContaining('base legal do lote')] },
+    });
+
+    const comLote = await validarImportacao(TENANT, USUARIO, buffer, { ...opcoes, baseLegalLote: 'consentimento' });
+    expect(comLote.erros).toEqual([]);
+    expect(criarImportJob.mock.calls.at(-1)[1].payload[0].dados.baseLegal).toBe('consentimento');
+  });
+
+  it('mapear o Lead score com a pontuação ligada → erro do score (não "campo desconhecido")', async () => {
+    featureAtiva.mockResolvedValue(true);
+    const erroDoScore = new Error('O Lead score é calculado');
+    garantirScoreNaoEditado.mockRejectedValueOnce(erroDoScore);
+    const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
+
+    await expect(
+      validarImportacao(TENANT, USUARIO, buffer, { mapeamento: { ...MAPEAMENTO, Fone: 'leadScore' }, estrategiaDuplicata: 'pular' }),
+    ).rejects.toBe(erroDoScore);
+    expect(criarImportJob).not.toHaveBeenCalled();
   });
 });
 

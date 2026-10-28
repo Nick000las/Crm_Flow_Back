@@ -15,7 +15,7 @@ import {
 import { CHAVE_CAMPO_SCORE, CONTEXTOS_VISIBILIDADE, CRM_FEATURES, FAIXAS_SCORE_PADRAO, LIMITES_SCORE } from '../constants.js';
 import { atualizarConfiguracaoCampo, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
-import { condicaoDoCampo } from './lead-filter.service.js';
+import { condicaoDoCampo, erroDeFiltro } from './lead-filter.service.js';
 
 /**
  * SERVICE: pontuação de leads (M14). O score é o campo nativo "Lead score"
@@ -161,7 +161,8 @@ export function faixaDoScore(faixas, score) {
 }
 
 /**
- * Filtro `faixaScore` (chave da faixa) → limites. Exige a flag.
+ * Filtro `faixaScore` (chave da faixa) → limites. Exige a flag. Faixa
+ * apagada (view salva antes) → 400 em `filtros.faixaScore`, como os outros filtros.
  *
  * @param {string} tenantId
  * @param {string} chave
@@ -169,7 +170,7 @@ export function faixaDoScore(faixas, score) {
  */
 export async function limitesDaFaixa(tenantId, chave) {
   const faixa = (await obterFaixas(tenantId)).find((item) => item.chave === chave);
-  if (!faixa) throw erroDeValidacao('faixaScore', `"${chave}" não é uma faixa de score`);
+  if (!faixa) throw erroDeFiltro('faixaScore', `"${chave}" não é uma faixa de score`);
   return { minimo: faixa.minimo, maximo: faixa.maximo };
 }
 

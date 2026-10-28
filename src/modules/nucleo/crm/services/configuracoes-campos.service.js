@@ -64,7 +64,8 @@ function paraCampoConfigurado(linha, listas) {
     labelPadrao: contrato ? contrato.label : null,
     tipo: contrato ? contrato.tipo : linha.type,
     // Campo de lista (M3): as keys ativas; a gestão fica em Configurações → Listas.
-    opcoes: contrato?.lista ? opcoesAtivas(listas, contrato.lista) : (contrato ? null : linha.options),
+    // Opções fixas do sistema (M15, base legal): as do contrato.
+    opcoes: contrato?.lista ? opcoesAtivas(listas, contrato.lista) : (contrato ? (contrato.opcoes ?? null) : linha.options),
     lista: contrato?.lista ?? null,
     obrigatorio: contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
     ordem: linha.position,
