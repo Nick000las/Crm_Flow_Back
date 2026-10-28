@@ -131,9 +131,12 @@ describe('faixas', () => {
     expect(faixaDoScore(faixas, null)).toBeNull();
   });
 
-  it('nunca salvou: o filtro usa as padrão', async () => {
+  it('nunca salvou: o filtro usa as padrão; faixa inexistente → 400 em filtros.faixaScore', async () => {
     expect(await limitesDaFaixa(TENANT, 'morno')).toEqual({ minimo: INICIO_MORNO, maximo: FIM_MORNO });
-    await expect(limitesDaFaixa(TENANT, 'fervendo')).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+    await expect(limitesDaFaixa(TENANT, 'fervendo')).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      fields: { 'filtros.faixaScore': [expect.any(String)] },
+    });
   });
 
   it('normalizarFaixas: chave do rótulo; sobreposição ou chave repetida → 400; buraco pode', () => {

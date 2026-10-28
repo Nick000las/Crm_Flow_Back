@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { ESTRATEGIAS_DUPLICATA, FORMATOS_EXPORTACAO, LISTA_FORMATOS_EXPORTACAO, SITUACOES_LEAD } from '../constants.js';
+import {
+  ESTRATEGIAS_DUPLICATA,
+  FORMATOS_EXPORTACAO,
+  LISTA_BASES_LEGAIS,
+  LISTA_FORMATOS_EXPORTACAO,
+  SITUACOES_LEAD,
+} from '../constants.js';
 import { filtroLeadsSchema } from './leads-search.schema.js';
 
 /**
@@ -28,6 +34,16 @@ export const validarImportacaoCamposSchema = z.object({
     required_error: 'Informe o que fazer com leads duplicados',
     invalid_type_error: 'Estratégia de duplicata inválida',
   }),
+  // M15 (flag `crm.lgpd`): base legal do lote inteiro — vale nas linhas sem
+  // base legal própria. Vazio no multipart = não informada.
+  baseLegalLote: z.preprocess(
+    (valor) => (valor === '' ? undefined : valor),
+    z
+      .enum(/** @type {[string, ...string[]]} */ ([...LISTA_BASES_LEGAIS]), {
+        errorMap: () => ({ message: `Base legal deve ser uma de: ${LISTA_BASES_LEGAIS.join(', ')}` }),
+      })
+      .optional(),
+  ),
 });
 
 // POST /crm/import/:jobId/confirm (M7) — body opcional: a ação de cada

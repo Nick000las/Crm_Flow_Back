@@ -30,6 +30,11 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   garantirScoreNaoEditado: vi.fn(),
 }));
 vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined) }));
+// M15: tenant sem base legal padrão e nenhum lead anonimizado (o bloco do M15 troca).
+vi.mock('../adapters/crm-lgpd.repository.js', () => ({
+  buscarConfigLgpd: vi.fn().mockResolvedValue(undefined),
+  buscarSituacaoLgpd: vi.fn().mockResolvedValue(undefined),
+}));
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
 vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn(), listarUsuariosAtivosDoTenant: vi.fn() }));

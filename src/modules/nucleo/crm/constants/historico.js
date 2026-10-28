@@ -14,6 +14,8 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
   MESCLADO: 'mesclado',
   // M11b: dados da Receita aplicados pelo enriquecimento automático (autor nulo).
   ENRIQUECIDO: 'enriquecido',
+  // M15: pedido do titular atendido (detalhes só com as contagens).
+  ANONIMIZADO: 'anonimizado',
 });
 
 /**

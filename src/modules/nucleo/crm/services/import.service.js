@@ -1,4 +1,5 @@
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
+import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarEstagiosPorTenant } from '../adapters/funil-estagios.repository.js';
@@ -22,9 +23,12 @@ import {
   CAMADA_2_METADADOS,
   CAMPOS_CAMADA_1,
   CAMPOS_EXTRAS_PLANILHA,
+  CAMPOS_LGPD,
   CHAVE_CAMPO_SCORE,
+  CRM_FEATURES,
   IMPORT_JOB_STATUS,
   IMPORTACAO,
+  ORIGENS_REGISTRO,
   TIPOS_CAMPO,
 } from '../constants.js';
 import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
@@ -34,6 +38,7 @@ import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regra
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
 import { garantirScoreNaoEditado, recalcularScoreDosLeads } from './score.service.js';
+import { comDadosLgpdNaCriacao, garantirBaseDoLote } from './lgpd.service.js';
 import {
   carregarContextoDistribuicao,
   detalhesDaAtribuicao,
@@ -96,14 +101,16 @@ export async function previsualizarImportacao(tenantId, buffer) {
  * @param {string} tenantId
  * @param {string} usuarioId
  * @param {Buffer} buffer
- * @param {{ mapeamento: Record<string, string>, estrategiaDuplicata: string }} opcoes
- *   `mapeamento` é `{ colunaDaPlanilha: chaveDoCampo }`.
+ * @param {{ mapeamento: Record<string, string>, estrategiaDuplicata: string, baseLegalLote?: string }} opcoes
+ *   `mapeamento` é `{ colunaDaPlanilha: chaveDoCampo }`; `baseLegalLote` (M15) = a base legal
+ *   das linhas que não trazem a sua (antes da obrigatoriedade, que vale por linha).
  * Também aponta, no passo Revisar (M7), as linhas que parecem com leads
  * que já existem (`duplicados`), pelas regras de duplicidade do tenant.
  *
  * @returns {Promise<{ jobId: string | null, totalLinhas: number, linhasValidas: number, erros: ErroDeLinha[], duplicados: object[] }>}
  */
-export async function validarImportacao(tenantId, usuarioId, buffer, { mapeamento, estrategiaDuplicata }) {
+export async function validarImportacao(tenantId, usuarioId, buffer, { mapeamento, estrategiaDuplicata, baseLegalLote }) {
+  await garantirBaseDoLote(tenantId, baseLegalLote);
   const [{ colunas, linhas }, camposDaPlanilha, estagios] = await Promise.all([
     lerPlanilha(buffer),
     listarCamposDaPlanilha(tenantId),
@@ -111,12 +118,15 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
   ]);
   const campos = await comUsuariosDoTenant(tenantId, camposDaPlanilha);
 
-  const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
-  validarMapeamento(mapeamento, colunas, campos, campoPorChave);
-  // M14: com a pontuação ligada, a coluna Lead score não pode ser importada.
+  // M14: com a pontuação ligada, a coluna Lead score não pode ser importada —
+  // antes do mapeamento, pra dizer isso (e não "campo desconhecido").
   if (Object.values(mapeamento).includes(CHAVE_CAMPO_SCORE)) {
     await garantirScoreNaoEditado(tenantId, { [CHAVE_CAMPO_SCORE]: true });
   }
+  const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
+  // M15: a base legal do lote cobre o campo Base legal sem coluna mapeada.
+  const cobertos = baseLegalLote ? [CAMPOS_LGPD.BASE_LEGAL] : [];
+  validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos);
 
   const estagioPorNome = new Map(estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]));
   // Regras do M8: a linha é avaliada como lead novo (o Revisar mostra a violação).
@@ -127,7 +137,9 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
   const erros = [];
   const payload = [];
   for (const linha of linhas) {
-    const resultado = converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome);
+    const resultado = converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome, {
+      baseLegal: baseLegalLote,
+    });
     const violacoes = resultado.erros.length > 0 ? [] : errosDasRegras(schema, regrasCampos, resultado.dados);
     if (resultado.erros.length > 0) {
       erros.push(...resultado.erros);
@@ -403,7 +415,8 @@ async function importarLinha(
   const criado = await criarLead(
     tenantId,
     {
-      ...comPrimeiroNomeNaCriacao(dados),
+      // M15: origem "importação" e a data da base legal (a do lote já veio na linha).
+      ...comDadosLgpdNaCriacao(comPrimeiroNomeNaCriacao(dados), ORIGENS_REGISTRO.IMPORTACAO),
       funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
       usuarioResponsavelId: atribuicao ? atribuicao.usuarioId : (dados.usuarioResponsavelId ?? responsavelPadraoId),
       atribuidoPorRegraId: atribuicao?.regraId ?? null,
@@ -436,8 +449,16 @@ async function comTagsResolvidas(tenantId, dados) {
  * @returns {Promise<CampoPlanilha[]>}
  */
 async function listarCamposDaPlanilha(tenantId) {
-  const campos = await listarCamposDoTenant(tenantId);
-  return [...campos, ...CAMPOS_EXTRAS_PLANILHA];
+  const [campos, comScore] = await Promise.all([
+    listarCamposDoTenant(tenantId),
+    featureAtiva(tenantId, CRM_FEATURES.SCORE),
+  ]);
+  // M14: com a pontuação ligada, o Lead score é calculado — não é mapeável.
+  // M15: nem os carimbados pelo back (data da base legal, origem, opt-out).
+  const mapeaveis = campos.filter(
+    (campo) => !campo.somenteLeitura && !(comScore && campo.chave === CHAVE_CAMPO_SCORE),
+  );
+  return [...mapeaveis, ...CAMPOS_EXTRAS_PLANILHA];
 }
 
 /**
@@ -463,7 +484,7 @@ async function comUsuariosDoTenant(tenantId, campos) {
  * @param {CampoPlanilha[]} campos
  * @param {Map<string, CampoPlanilha>} campoPorChave
  */
-function validarMapeamento(mapeamento, colunas, campos, campoPorChave) {
+function validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos = []) {
   const problemas = [];
   const chavesMapeadas = Object.values(mapeamento);
 
@@ -476,9 +497,12 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave) {
   if (repetida) problemas.push(`O campo "${campoPorChave.get(repetida)?.label ?? repetida}" foi mapeado mais de uma vez`);
 
   for (const campo of campos) {
-    if (exigidoNaCriacao(campo) && !chavesMapeadas.includes(campo.chave)) {
-      problemas.push(`O campo obrigatório "${campo.label}" não foi mapeado`);
-    }
+    if (!exigidoNaCriacao(campo) || chavesMapeadas.includes(campo.chave) || cobertos.includes(campo.chave)) continue;
+    problemas.push(
+      campo.chave === CAMPOS_LGPD.BASE_LEGAL
+        ? `O campo obrigatório "${campo.label}" não foi mapeado — mapeie a coluna ou escolha a base legal do lote`
+        : `O campo obrigatório "${campo.label}" não foi mapeado`,
+    );
   }
   if (!chavesMapeadas.includes('email') && !chavesMapeadas.includes('telefone')) {
     problemas.push('Mapeie ao menos a coluna de e-mail ou a de telefone');
@@ -504,8 +528,9 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave) {
  * @param {CampoPlanilha[]} campos
  * @param {Map<string, CampoPlanilha>} campoPorChave
  * @param {Map<string, string>} estagioPorNome
+ * @param {{ baseLegal?: string }} [padroes]  M15: base legal do lote (linha sem a sua)
  */
-export function converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome) {
+export function converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome, padroes = {}) {
   /** @type {Record<string, unknown> & { customFields: Record<string, unknown> }} */
   const dados = { customFields: {} };
   /** @type {ErroDeLinha[]} */
@@ -535,6 +560,9 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
       dados[chave] = resultado.valor;
     }
   }
+
+  // M15: base legal do lote nas linhas sem a sua — antes da obrigatoriedade.
+  if (padroes.baseLegal && valorAusente(dados[CAMPOS_LGPD.BASE_LEGAL])) dados[CAMPOS_LGPD.BASE_LEGAL] = padroes.baseLegal;
 
   for (const campo of campos) {
     if (!exigidoNaCriacao(campo)) continue;

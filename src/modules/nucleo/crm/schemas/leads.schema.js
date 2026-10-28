@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BRAZIL_PHONE, TEXT_LIMITS } from '#shared/constants/index.js';
+import { LISTA_BASES_LEGAIS } from '../constants.js';
 
 // Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa, mesmo nível
 // de nome/telefone. `email`/`telefone` são cada um opcional isoladamente
@@ -47,7 +48,17 @@ const camposCamada2 = {
   motivoPerda: opcaoDeLista('Motivo de perda inválido'),
   leadScore: z.number({ invalid_type_error: 'Informe um número válido' }).optional(),
   proximoFollowup: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
+  // M15 (LGPD): categorias fixas da lei. Data da base legal, origem do
+  // registro e data do opt-out são do back — fora do payload (o Zod descarta).
+  baseLegal: z
+    .enum(/** @type {[string, ...string[]]} */ ([...LISTA_BASES_LEGAIS]), {
+      errorMap: () => ({ message: `Base legal deve ser uma de: ${LISTA_BASES_LEGAIS.join(', ')}` }),
+    })
+    .optional(),
 };
+
+// M15: opt-out de marketing como sim/não; o back carimba a data.
+const optOutMarketing = z.boolean({ invalid_type_error: 'Informe sim ou não para o opt-out' }).optional();
 
 export const usuarioResponsavelIdSchema = z
   .string({ invalid_type_error: 'Informe um responsável válido' })
@@ -92,6 +103,7 @@ export const criarLeadBodySchema = z
     // Omitido → o próprio usuário que está criando (ver leads.service.js).
     usuarioResponsavelId: usuarioResponsavelIdSchema.optional(),
     ignorarDuplicados,
+    optOutMarketing,
     ...camposCamada1,
     ...camposCamada2,
   })
@@ -122,6 +134,7 @@ export const atualizarLeadBodySchema = z.object({
   usuarioResponsavelId: usuarioResponsavelIdSchema.nullable().optional(),
   customFields: z.record(z.unknown()).optional(),
   ignorarDuplicados,
+  optOutMarketing,
   ...aceitandoNull(camposCamada1),
   ...aceitandoNull(camposCamada2),
 });

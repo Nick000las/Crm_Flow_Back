@@ -21,6 +21,7 @@ import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
 import { garantirScoreNaoEditado, limitesDaFaixa, recalcularScoreDosLeads } from './score.service.js';
+import { basePadraoDoTenant, comDadosLgpdNaCriacao, erroDoLeadNaoEditado } from './lgpd.service.js';
 import {
   carregarContextoDistribuicao,
   detalhesDaAtribuicao,
@@ -43,6 +44,7 @@ import {
   CAMPOS_DUPLICIDADE,
   CAMPOS_SISTEMA,
   CRM_FEATURES,
+  ORIGENS_REGISTRO,
   SITUACOES_LEAD,
   TIPOS_CAMPO,
   TIPOS_LISTA,
@@ -110,7 +112,12 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
   // M14: com a pontuação ligada, o Lead score é calculado.
   await garantirScoreNaoEditado(tenantId, semFlagDeDuplicidade);
-  const input = comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade));
+  // M15: base legal padrão (antes do obrigatório), origem e datas carimbadas.
+  const input = comDadosLgpdNaCriacao(
+    comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade)),
+    ORIGENS_REGISTRO.MANUAL,
+    { basePadrao: await basePadraoDoTenant(tenantId) },
+  );
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
@@ -231,7 +238,8 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   // tenant) — mesmo padrão de field-definitions.service.js, sem query
   // extra só pra checar antes.
   if (!leadAtualizado) {
-    throw leadNaoEncontrado();
+    // M15: lead anonimizado existe, mas está travado (409); senão, 404.
+    throw await erroDoLeadNaoEditado(tenantId, leadId, leadNaoEncontrado());
   }
   // M11b: só quando o PUT mexe no CNPJ (o job confere se ainda é o mesmo).
   if (input.cnpj) await agendarEnriquecimento(tenantId, [{ leadId, cnpj: leadAtualizado.cnpj }]);

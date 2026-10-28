@@ -30,6 +30,7 @@ import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js
 import { excluirGrupo, salvarConfigDistribuicao } from '../services/distribuicao.service.js';
 import { salvarPermissoes } from '../services/permissoes.service.js';
 import { recalcularTodos, salvarConfigScore } from '../services/score.service.js';
+import { anonimizarLeadDoTitular, salvarConfigLgpd } from '../services/lgpd.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -103,6 +104,11 @@ vi.mock('../services/score.service.js', () => ({
   obterConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
   salvarConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
   recalcularTodos: vi.fn().mockResolvedValue({ total: 0, processados: 0 }),
+}));
+vi.mock('../services/lgpd.service.js', () => ({
+  obterConfigLgpd: vi.fn().mockResolvedValue({ basePadrao: null, obrigatoria: false, basesLegais: [], origensRegistro: [] }),
+  salvarConfigLgpd: vi.fn().mockResolvedValue({ basePadrao: 'consentimento', obrigatoria: true, basesLegais: [], origensRegistro: [] }),
+  anonimizarLeadDoTitular: vi.fn().mockResolvedValue({ leadId: 'x', leads: 1, atividades: 0, eventos: 0 }),
 }));
 vi.mock('../services/permissoes.service.js', () => ({
   obterPermissoes: vi.fn().mockResolvedValue({ papeis: ['OPERADOR'], campos: [] }),
@@ -1078,5 +1084,44 @@ describe('Pontuação de leads (M14, flag crm.score)', () => {
     const corpo = { faixaScore: 'quente', paginacao: { pagina: 1, tamanho: TAMANHO } };
     await app.inject({ method: 'POST', url: '/crm/leads/search', headers: autorizado(tokenOperador), payload: corpo });
     expect(pesquisarLeads).toHaveBeenCalledWith(TENANT, expect.objectContaining({ faixaScore: 'quente' }), { papel: 'OPERADOR' });
+  });
+});
+
+describe('Base legal LGPD (M15, flag crm.lgpd)', () => {
+  const COM_FLAG = [{ featureKey: 'crm.lgpd' }];
+  const URL = '/crm/configuracoes/lgpd';
+  const LEAD = '00000000-0000-0000-0000-0000000000e1';
+  const ANONIMIZAR = `/crm/leads/${LEAD}/anonimizar`;
+  const config = { basePadrao: 'consentimento', obrigatoria: true };
+
+  it('sem a flag → 403; leitura pra qualquer papel; OPERADOR não configura nem anonimiza', async () => {
+    const semFlag = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    await encerrarCache(); // as flags do tenant ficam em cache
+    const leitura = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+    expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+    for (const [method, url] of [['PUT', URL], ['POST', ANONIMIZAR]]) {
+      const resposta = await app.inject({ method, url, headers: autorizado(tokenOperador), payload: config });
+      expect(resposta.json().error.code, url).toBe(ERROR_CODES.FORBIDDEN);
+    }
+    expect(anonimizarLeadDoTitular).not.toHaveBeenCalled();
+  });
+
+  it('DONO configura e anonimiza; base inexistente ou campo a mais → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const ok = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload: config });
+    expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+    expect(salvarConfigLgpd).toHaveBeenCalledWith(TENANT, config);
+
+    const anonimizado = await app.inject({ method: 'POST', url: ANONIMIZAR, headers: autorizado(tokenDono) });
+    expect(anonimizado.statusCode).toBe(HTTP_STATUS.OK);
+    expect(anonimizarLeadDoTitular).toHaveBeenCalledWith(TENANT, LEAD, expect.any(String));
+
+    for (const payload of [{ ...config, basePadrao: 'vontade' }, { ...config, extra: true }, { basePadrao: null }]) {
+      const resposta = await app.inject({ method: 'PUT', url: URL, headers: autorizado(tokenDono), payload });
+      expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    }
   });
 });

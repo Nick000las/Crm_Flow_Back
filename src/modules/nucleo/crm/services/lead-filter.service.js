@@ -511,8 +511,13 @@ function escaparLike(texto) {
   return texto.replace(/[\\%_]/g, '\\$&');
 }
 
-/** @param {string} chave @param {string} mensagem */
-function erroDeFiltro(chave, mensagem) {
+/**
+ * 400 no formato que o front destaca no chip do filtro (`filtros.<chave>`).
+ *
+ * @param {string} chave
+ * @param {string} mensagem
+ */
+export function erroDeFiltro(chave, mensagem) {
   return new AppError({
     statusCode: HTTP_STATUS.BAD_REQUEST,
     code: ERROR_CODES.VALIDATION_ERROR,
