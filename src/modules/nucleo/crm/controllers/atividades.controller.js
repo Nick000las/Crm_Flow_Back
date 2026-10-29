@@ -1,7 +1,7 @@
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
-import { CRM_FEATURES } from '../constants.js';
+import { CRM_FEATURES, OPCOES_CATEGORIA_EVENTO } from '../constants.js';
 import {
   atividadeParamSchema,
   criarAtividadeBodySchema,
@@ -22,6 +22,9 @@ import { listarHistorico } from '../services/historico.service.js';
  * CONTROLLER: atividades e histórico do lead (M6). HTTP fino. Atrás da
  * flag `crm.atividades`; qualquer papel. O histórico é gravado sempre,
  * com ou sem a flag — ela só libera a leitura (e as atividades).
+ *
+ * Timeline (M16, flag `crm.timeline`): `?categorias=` no histórico e
+ * `GET /crm/historico/categorias` (`[{ key, label }]`) pro seletor.
  *
  * @param {import('fastify').FastifyInstance} app
  */
@@ -59,6 +62,10 @@ export function registrarRotasAtividades(app) {
     const { id: leadId, atividadeId } = atividadeParamSchema.parse(req.params);
     return sendSuccess(reply, await removerAtividade(tenantId, leadId, atividadeId));
   });
+
+  app.get('/crm/historico/categorias', { preHandler: [exigirFeature(CRM_FEATURES.TIMELINE)] }, async (req, reply) =>
+    sendSuccess(reply, OPCOES_CATEGORIA_EVENTO),
+  );
 
   app.get('/crm/leads/:id/historico', comFlag, async (req, reply) => {
     const { tenantId, role } = req.tenantContext;

@@ -656,7 +656,12 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       headers: autorizado(tokenOperador),
     });
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
-    expect(listarHistorico).toHaveBeenCalledWith(TENANT, LEAD, { pagina: PAGINA, tamanho: TAMANHO_HISTORICO }, { papel: 'OPERADOR' });
+    expect(listarHistorico).toHaveBeenCalledWith(
+      TENANT,
+      LEAD,
+      { pagina: PAGINA, tamanho: TAMANHO_HISTORICO, categorias: [] },
+      { papel: 'OPERADOR' },
+    );
 
     const excessivo = await app.inject({
       method: 'GET',
@@ -664,6 +669,37 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       headers: autorizado(tokenOperador),
     });
     expect(excessivo.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  // M16: filtro por categoria (a flag `crm.timeline` é conferida no service).
+  it('histórico filtra por categorias (sem repetir); categoria inválida → 400', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const url = `/crm/leads/${LEAD}/historico?categorias=campos,atribuicao,campos`;
+    await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+    expect(listarHistorico).toHaveBeenCalledWith(
+      TENANT,
+      LEAD,
+      expect.objectContaining({ categorias: ['campos', 'atribuicao'] }),
+      { papel: 'OPERADOR' },
+    );
+
+    const invalida = await app.inject({
+      method: 'GET',
+      url: `/crm/leads/${LEAD}/historico?categorias=fofoca`,
+      headers: autorizado(tokenOperador),
+    });
+    expect(invalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+  });
+
+  it('categorias do filtro: sem `crm.timeline` → 403; com a flag, a lista', async () => {
+    findManyFeatures.mockResolvedValue(COM_FLAG);
+    const semFlag = await app.inject({ method: 'GET', url: '/crm/historico/categorias', headers: autorizado(tokenOperador) });
+    expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
+
+    findManyFeatures.mockResolvedValue([...COM_FLAG, { featureKey: 'crm.timeline' }]);
+    await encerrarCache(); // as flags do tenant ficam em cache
+    const lista = await app.inject({ method: 'GET', url: '/crm/historico/categorias', headers: autorizado(tokenOperador) });
+    expect(lista.json().data.map((categoria) => categoria.key)).toEqual(['campos', 'atribuicao', 'mesclagem', 'enriquecimento', 'ciclo']);
   });
 });
 

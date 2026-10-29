@@ -2,7 +2,7 @@
 
 Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/10/2026), cruzada com o estado atual do back e do front.
 
-**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts), M15 no back em 2026-10-27 (0028 e 0029 aplicadas no banco de dev; falta o front); próximo marco: M16.
+**Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts), M15 e M16 no back em 2026-10-27 (0028 e 0029 aplicadas no banco de dev; M16 sem migration; faltam os fronts). Com isso, a Fase 3 está completa no back; falta estabilizar e remover as flags.
 
 ## Contexto
 O CRM já tem:
@@ -731,6 +731,28 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **16.1** O drawer ganha as abas Dados · Atividades · Histórico.
   - O Histórico mostra mudanças de campo com autor e data, mesclagens, enriquecimentos e atribuições, a partir de `crm_lead_event`.
 - **16.2** Paginação, filtro por tipo de evento e respeito à permissão de campo.
+
+- [x] Contra o banco (`services/historico.db.test.js`):
+  - cada evento vem com as suas categorias;
+  - o filtro `atribuicao` traz só a troca de responsável, com os nomes (inclusive de usuário inativo);
+  - `ciclo` e o OU de categorias batem com o `total`;
+  - filtrar sem a flag dá 403.
+- [x] `permissoes.db.test.js`: a edição que só mexeu em campos ocultos para o OPERADOR some da lista e do total dele.
+
+**Como ficou (back, 2026-10-27):**
+- **Decisões do usuário:** o filtro é **por categoria**, e uma edição **só de campos ocultos** para o papel **some** do histórico, na lista e no total.
+- **O que já existia** (M6/M13): `GET /crm/leads/:id/historico` paginado, com autor e data, e o diff já sem os campos desligados ou ocultos para o papel. A M16 no back só acrescenta o que faltava; as abas são trabalho do front.
+- **Categorias** (`CATEGORIAS_EVENTO`). Um evento pode ter mais de uma:
+  - `campos`: edição;
+  - `atribuicao`: o diff tem o responsável, ou o lead nasceu pela distribuição do M12;
+  - `mesclagem`;
+  - `enriquecimento`;
+  - `ciclo`: criado, arquivado, desarquivado, excluído, restaurado e anonimizado.
+  - Cada item traz `categorias`. `?categorias=campos,atribuicao` filtra no SQL (OU), então a paginação e o `total` batem. Filtrar exige `crm.timeline`; a rota continua atrás de `crm.atividades`.
+  - `GET /crm/historico/categorias` devolve `[{ key, label }]`.
+- **Permissão:** eventos `atualizado`/`enriquecido` sem nenhuma entrada visível para o papel ficam de fora já no SQL. As listas de visíveis saem do mesmo schema do papel que descreve o diff (`visiveisDoSchema`). O `detalhes.cnpj` do enriquecimento só aparece para quem vê o CNPJ.
+- **Nomes:** responsável e personalizado `usuario` vêm com `antesNome`/`depoisNome`. Uma consulta por página, incluindo usuários inativos; id que já não é usuário do tenant fica `null`.
+- Sem migration.
 
 **Marco da Fase 3:** todas as 9 subseções de Configurações entregues, e todas as flags estabilizadas e removidas do código.
 

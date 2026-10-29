@@ -2,13 +2,17 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { listarEventosDoLead } from '../adapters/crm-lead-events.repository.js';
+import { garantirFeature } from '#core/tenant/feature-flags.js';
+import { buscarNomesDeUsuarios } from '../adapters/usuarios.repository.js';
 import { CAMADA } from '../constants.js';
-import { diffDoLead, listarHistorico } from './historico.service.js';
+import { categoriasDoEvento, diffDoLead, listarHistorico, visiveisDoSchema } from './historico.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 
 vi.mock('../adapters/leads.repository.js', () => ({ buscarLeadPorId: vi.fn() }));
 vi.mock('../adapters/crm-lead-events.repository.js', () => ({ listarEventosDoLead: vi.fn() }));
 vi.mock('./field-schema.service.js', () => ({ obterSchemaCampos: vi.fn() }));
+vi.mock('../adapters/usuarios.repository.js', () => ({ buscarNomesDeUsuarios: vi.fn(async () => new Map()) }));
+vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn(), garantirFeature: vi.fn() }));
 
 const ID_SEGMENTO = '11111111-1111-1111-1111-111111111111';
 const ID_EXCLUIDO = '22222222-2222-2222-2222-222222222222';
@@ -16,6 +20,7 @@ const VALOR_ANTES = 1500.5;
 const VALOR_DEPOIS = 2000;
 const TAMANHO_PAGINA = 50;
 const PAGINA = { pagina: 1, tamanho: TAMANHO_PAGINA };
+const DOIS_EVENTOS = 2;
 
 const LEAD = {
   nome: 'Ana',
@@ -132,5 +137,75 @@ describe('listarHistorico', () => {
       ['valor', 'Valor'],
     ]);
     expect(itens[0].diff[0].opcoesLista).toEqual([{ key: 'ganho' }]);
+  });
+
+  // M16: timeline.
+  it('responsável e personalizado "usuario" com nome; CNPJ do enriquecimento só pra quem vê o CNPJ', async () => {
+    const DONO = '33333333-3333-3333-3333-333333333333';
+    const VENDEDOR = '44444444-4444-4444-4444-444444444444';
+    buscarNomesDeUsuarios.mockResolvedValueOnce(new Map([[DONO, 'Dono'], [VENDEDOR, 'Vendedor']]));
+    listarEventosDoLead.mockResolvedValueOnce({
+      total: DOIS_EVENTOS,
+      itens: [
+        {
+          id: 'ev-2',
+          tipo: 'atualizado',
+          created_at: new Date(),
+          diff: [{ campo: 'usuarioResponsavelId', antes: DONO, depois: VENDEDOR }],
+        },
+        { id: 'ev-3', tipo: 'enriquecido', created_at: new Date(), diff: [], detalhes: { cnpj: '11222333000181', provedor: 'brasilapi' } },
+      ],
+    });
+
+    const { itens } = await listarHistorico('tenant-1', 'lead-1', PAGINA);
+    expect(buscarNomesDeUsuarios).toHaveBeenCalledWith('tenant-1', [DONO, VENDEDOR]);
+    expect(itens[0]).toMatchObject({ categorias: ['campos', 'atribuicao'] });
+    expect(itens[0].diff[0]).toMatchObject({ chave: 'usuarioResponsavelId', antesNome: 'Dono', depoisNome: 'Vendedor' });
+    expect(itens[1].detalhes).toEqual({ provedor: 'brasilapi' }); // CNPJ não está nos campos ligados
+    // A visibilidade vai pro SQL (edição só de campo oculto some do total).
+    expect(listarEventosDoLead).toHaveBeenCalledWith(
+      'tenant-1',
+      'lead-1',
+      expect.objectContaining({ categorias: [], visiveis: expect.objectContaining({ campoIds: [ID_SEGMENTO] }) }),
+    );
+    expect(garantirFeature).not.toHaveBeenCalled();
+  });
+
+  it('filtrar por categoria exige a flag crm.timeline', async () => {
+    listarEventosDoLead.mockResolvedValueOnce({ total: 0, itens: [] });
+    await listarHistorico('tenant-1', 'lead-1', { ...PAGINA, categorias: ['ciclo'] });
+    expect(garantirFeature).toHaveBeenCalledWith('tenant-1', 'crm.timeline');
+  });
+});
+
+describe('timeline (M16): funções puras', () => {
+  it('categoriasDoEvento: edição, troca de responsável, distribuição, mesclagem, ciclo', () => {
+    expect(categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'status' }] })).toEqual(['campos']);
+    expect(categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'usuarioResponsavelId' }] })).toEqual([
+      'campos',
+      'atribuicao',
+    ]);
+    expect(categoriasDoEvento({ tipo: 'criado', diff: [], detalhes: { distribuicao: { origem: 'regra' } } })).toEqual([
+      'atribuicao',
+      'ciclo',
+    ]);
+    expect(categoriasDoEvento({ tipo: 'mesclado', diff: [] })).toEqual(['mesclagem']);
+    expect(categoriasDoEvento({ tipo: 'enriquecido', diff: [] })).toEqual(['enriquecimento']);
+    expect(categoriasDoEvento({ tipo: 'anonimizado', diff: null })).toEqual(['ciclo']);
+  });
+
+  it('visiveisDoSchema: sistema ligado + propriedades; personalizado só se ligado', () => {
+    const visiveis = visiveisDoSchema({
+      campos: [
+        { chave: 'status', camada: CAMADA.CAMADA_1 },
+        { chave: 'segmento', camada: CAMADA.CAMADA_3 },
+      ],
+      definicoes: [
+        { id: ID_SEGMENTO, chave: 'segmento' },
+        { id: ID_EXCLUIDO, chave: 'oculto' },
+      ],
+    });
+    expect(visiveis.chaves).toEqual(['status', 'valor', 'funilEstagioId', 'usuarioResponsavelId']);
+    expect(visiveis.campoIds).toEqual([ID_SEGMENTO]);
   });
 });
