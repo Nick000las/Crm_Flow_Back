@@ -19,6 +19,47 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
 });
 
 /**
+ * Categorias do filtro do histórico (M16). Um evento pode cair em mais de
+ * uma (ex.: edição que trocou o responsável é Campos e Atribuições).
+ */
+export const CATEGORIAS_EVENTO = Object.freeze({
+  CAMPOS: 'campos',
+  ATRIBUICAO: 'atribuicao',
+  MESCLAGEM: 'mesclagem',
+  ENRIQUECIMENTO: 'enriquecimento',
+  CICLO: 'ciclo',
+});
+
+export const OPCOES_CATEGORIA_EVENTO = Object.freeze([
+  Object.freeze({ key: CATEGORIAS_EVENTO.CAMPOS, label: 'Campos' }),
+  Object.freeze({ key: CATEGORIAS_EVENTO.ATRIBUICAO, label: 'Atribuições' }),
+  Object.freeze({ key: CATEGORIAS_EVENTO.MESCLAGEM, label: 'Mesclagens' }),
+  Object.freeze({ key: CATEGORIAS_EVENTO.ENRIQUECIMENTO, label: 'Enriquecimentos' }),
+  Object.freeze({ key: CATEGORIAS_EVENTO.CICLO, label: 'Ciclo de vida' }),
+]);
+
+export const LISTA_CATEGORIAS_EVENTO = Object.freeze(OPCOES_CATEGORIA_EVENTO.map((opcao) => opcao.key));
+
+/** Tipos da categoria "Ciclo de vida". */
+export const TIPOS_CICLO_DE_VIDA = Object.freeze([
+  TIPOS_EVENTO_LEAD.CRIADO,
+  TIPOS_EVENTO_LEAD.ARQUIVADO,
+  TIPOS_EVENTO_LEAD.DESARQUIVADO,
+  TIPOS_EVENTO_LEAD.EXCLUIDO,
+  TIPOS_EVENTO_LEAD.RESTAURADO,
+  TIPOS_EVENTO_LEAD.ANONIMIZADO,
+]);
+
+/**
+ * Eventos cujo conteúdo é só o diff: sem nenhuma entrada visível pro papel
+ * de quem lê, somem do histórico (M16).
+ */
+export const TIPOS_SO_DIFF = Object.freeze([TIPOS_EVENTO_LEAD.ATUALIZADO, TIPOS_EVENTO_LEAD.ENRIQUECIDO]);
+
+/** Chave do diff (e de `PROPRIEDADES_NO_HISTORICO`) que é a atribuição do lead. */
+export const CAMPO_RESPONSAVEL_NO_DIFF = 'usuarioResponsavelId';
+
+/**
  * Dados do lead que não são campos configuráveis, no diff do evento — a
  * mesma chave da API (`AtualizarLeadInput`) e a coluna de onde sai o valor.
  * A referência do layout (M4) é a mesma de `REFERENCIAS_FIXAS`.

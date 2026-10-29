@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PAGINATION, TEXT_LIMITS } from '#shared/constants/index.js';
-import { LIMITES_ATIVIDADE, PAGINACAO_EVENTOS } from '../constants.js';
+import { LIMITES_ATIVIDADE, LISTA_CATEGORIAS_EVENTO, PAGINACAO_EVENTOS } from '../constants.js';
 
 // Atividades e histórico do lead (M6). Se o `tipo` é uma opção ativa da
 // lista "Tipo de atividade" é regra por tenant — `atividades.service.js`.
@@ -53,4 +53,16 @@ export const historicoQuerySchema = z.object({
     .min(PAGINATION.MIN_ITEMS_PER_PAGE)
     .max(PAGINACAO_EVENTOS.TAMANHO_MAXIMO)
     .default(PAGINACAO_EVENTOS.TAMANHO_PADRAO),
+  // M16 (flag `crm.timeline`): `?categorias=campos,atribuicao` — vazio = todas.
+  categorias: z
+    .string()
+    .optional()
+    .transform((texto) => [...new Set((texto ?? '').split(',').map((parte) => parte.trim()).filter(Boolean))])
+    .pipe(
+      z.array(
+        z.enum(/** @type {[string, ...string[]]} */ ([...LISTA_CATEGORIAS_EVENTO]), {
+          errorMap: () => ({ message: `Categoria deve ser uma de: ${LISTA_CATEGORIAS_EVENTO.join(', ')}` }),
+        }),
+      ),
+    ),
 });

@@ -78,3 +78,22 @@ export function listarUsuariosAtivosComPapel(tenantId) {
     `,
   );
 }
+
+/**
+ * Nomes pra exibir (histórico, M16) — ativos e inativos, já que o evento
+ * pode ser antigo. Id que não é mais usuário do tenant fica de fora.
+ *
+ * @param {string} tenantId
+ * @param {string[]} ids
+ * @returns {Promise<Map<string, string>>}
+ */
+export function buscarNomesDeUsuarios(tenantId, ids) {
+  if (ids.length === 0) return Promise.resolve(new Map());
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT id::text, nome FROM usuarios
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
+    `.then((rows) => new Map(rows.map((row) => [row.id, row.nome]))),
+  );
+}

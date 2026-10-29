@@ -40,6 +40,7 @@ const SALARIO_NOVO = 9500;
 const TIMEOUT_MS = 60_000;
 const OPERADOR = { papel: 'OPERADOR' };
 const DONO = { papel: 'DONO' };
+const EVENTOS_DO_DONO = 2;
 
 rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
   const prisma = getAdminClient();
@@ -123,7 +124,7 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
   );
 
   it(
-    'histórico: o diff do oculto não aparece pro OPERADOR',
+    'histórico: o diff do oculto não aparece pro OPERADOR (e a edição só de oculto some)',
     async () => {
       const chavesDoDiff = async (acesso) =>
         (await listarHistorico(tenantId, leadId, PAGINA, acesso)).itens.flatMap((evento) => evento.diff.map((entrada) => entrada.chave));
@@ -131,6 +132,13 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
       const doOperador = await chavesDoDiff(OPERADOR);
       expect(doOperador).not.toContain('email');
       expect(doOperador).not.toContain('salario');
+      // M16: a edição só mexeu em campos ocultos pra ele — some da lista e do total.
+      const tipos = async (acesso) => {
+        const { itens, total } = await listarHistorico(tenantId, leadId, PAGINA, acesso);
+        return { tipos: itens.map((evento) => evento.tipo), total };
+      };
+      expect(await tipos(DONO)).toEqual({ tipos: ['atualizado', 'criado'], total: EVENTOS_DO_DONO });
+      expect(await tipos(OPERADOR)).toEqual({ tipos: ['criado'], total: 1 });
     },
     TIMEOUT_MS,
   );
