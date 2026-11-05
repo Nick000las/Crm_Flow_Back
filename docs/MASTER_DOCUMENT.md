@@ -42,6 +42,7 @@ Como todos os tenants de um módulo compartilham a mesma tabela, qualquer evolu�
 
 - Toda alteração de schema em módulo já vendido é **aditiva**: `ADD COLUMN` sempre nullable ou com `DEFAULT`; nunca remoção de coluna ou `NOT NULL` sem default em tabela com dados de produção.
 - Toda funcionalidade nova dentro de um módulo nasce atrás de uma `tenant_module_feature`, mesmo que inicialmente ativada para um único tenant.
+- Migrations usam **um contador único entre todos os módulos**: a próxima sempre recebe o número seguinte ao maior já usado. Os prefixos repetidos 0008–0011 são históricos e não se renomeiam. Os números 0030–0034 ficam reservados (foram aplicados num banco antigo e seus arquivos não existem); a numeração continua em 0035.
 
 ### 1.1.4. Critério de Priorização (Evolução Compartilhada vs. Trabalho Customizado)
 
@@ -68,7 +69,7 @@ Princípio de posicionamento: eliminar a necessidade de o cliente manter múltip
 
 ### 1.6.1. Motor Universal de Kanban
 
-Um único motor de Kanban, parametrizado por tipo de entidade (`board_type`: `crm_leads`, `projetos`, `postagens_agencia`, etc.), reaproveitado por todos os casos de uso de quadro do sistema — CRM de vendas (Bloco 4.2), Gestão de Projetos, e Kanban de módulos verticais (ex: calendário editorial de agência, Bloco 1.1.4) — em vez de implementações separadas por caso de uso. O que varia entre eles é o schema do cartão (lead tem valor/etapa de funil; tarefa de projeto tem responsável/prazo/subtarefas), acomodado pela mesma arquitetura de módulos (`config_jsonb`, Bloco 1.1.1). Toda a mecânica de estado — Optimistic UI, Noisy Rollback, resolução de conflito concorrente, alternativa de teclado (Bloco 4.2/4.3), salas de Socket.io — é herdada integralmente por qualquer novo tipo de quadro, sem reimplementação.
+Um único motor de Kanban, parametrizado por tipo de quadro (`board_type`: `projetos`, `postagens_agencia`, etc.), reaproveitado por todos os casos de uso de quadro do sistema — CRM de vendas (Bloco 4.2), Gestão de Projetos, e Kanban de módulos verticais (ex: calendário editorial de agência, Bloco 1.1.4) — em vez de implementações separadas por caso de uso. O que varia entre eles é o schema do cartão (lead tem valor/etapa de funil; tarefa de projeto tem responsável/prazo/subtarefas), acomodado pela mesma arquitetura de módulos (`config_jsonb`, Bloco 1.1.1). Toda a mecânica de estado — Optimistic UI, Noisy Rollback, resolução de conflito concorrente, alternativa de teclado (Bloco 4.2/4.3), salas de Socket.io — é herdada integralmente por qualquer novo tipo de quadro, sem reimplementação.
 
 - **Gestão de Projetos:** aba própria sobre o motor universal, com atribuição de responsável por card (roles), e chat interno por card.
 - **Chat Interno por Card:** reuso do padrão de tempo real já estabelecido (Bloco 3.3) — uma sala de Socket.io por `card_id` — persistido em uma tabela genérica `card_comments`, vinculada ao motor de Kanban, não a um módulo específico.

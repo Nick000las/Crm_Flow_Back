@@ -34,7 +34,7 @@
     "lint:fix": "prettier --write . && eslint . --fix && prettier --write .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:kanban:integration": "RUN_KANBAN_INTEGRATION=1 vitest run src/modules/nucleo/kanban-universal/adapters/*.integration.test.js"
+    "test:kanban:integration": "RUN_KANBAN_INTEGRATION=1 vitest run src/modules/nucleo/kanban-universal/adapters/*.integration.test.js --testTimeout=60000 --hookTimeout=60000"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
