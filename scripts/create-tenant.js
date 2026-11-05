@@ -38,7 +38,10 @@ const argsSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(/^[a-z0-9-]+$/, 'Use só letras minúsculas, números e hífen'),
-  'owner-nome': z.string({ required_error: 'Informe --owner-nome' }).trim().min(1, 'Informe --owner-nome'),
+  'owner-nome': z
+    .string({ required_error: 'Informe --owner-nome' })
+    .trim()
+    .min(1, 'Informe --owner-nome'),
   // Minúsculo: o índice único de e-mail (migration 0003) é case-insensitive.
   'owner-email': z
     .string({ required_error: 'Informe --owner-email' })
@@ -47,7 +50,14 @@ const argsSchema = z.object({
     .transform((email) => email.toLowerCase()),
   modulos: z
     .string({ required_error: `Informe --modulos (${MODULE_KEYS.join(', ')})` })
-    .transform((lista) => [...new Set(lista.split(',').map((chave) => chave.trim()).filter(Boolean))])
+    .transform((lista) => [
+      ...new Set(
+        lista
+          .split(',')
+          .map((chave) => chave.trim())
+          .filter(Boolean),
+      ),
+    ])
     .pipe(
       z
         .array(z.enum(MODULE_KEYS, { message: `Módulos válidos: ${MODULE_KEYS.join(', ')}` }))
@@ -68,7 +78,9 @@ async function main() {
   ]);
 
   if (tenantExistente) {
-    throw new Error(`Já existe um tenant com o subdomínio "${args.subdomain}" (id: ${tenantExistente.id}). Nada foi criado.`);
+    throw new Error(
+      `Já existe um tenant com o subdomínio "${args.subdomain}" (id: ${tenantExistente.id}). Nada foi criado.`,
+    );
   }
   if (usuarioExistente) {
     throw new Error(

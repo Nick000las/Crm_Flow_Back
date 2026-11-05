@@ -1,7 +1,12 @@
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { formatarCep, formatarCnpj, formatarCpf, formatarTelefoneBR } from '#shared/formatters/index.js';
+import {
+  formatarCep,
+  formatarCnpj,
+  formatarCpf,
+  formatarTelefoneBR,
+} from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
@@ -49,7 +54,11 @@ function diaBR(dia) {
 function enderecoEmLinha({ cep, logradouro, numero, complemento, bairro, cidade, uf }) {
   const rua = [logradouro, numero, complemento].filter(Boolean).join(', ');
   const local = [cidade, uf].filter(Boolean).join('/');
-  const partes = [[rua, bairro].filter(Boolean).join(' - '), local, cep ? `CEP ${formatarCep(cep)}` : ''];
+  const partes = [
+    [rua, bairro].filter(Boolean).join(' - '),
+    local,
+    cep ? `CEP ${formatarCep(cep)}` : '',
+  ];
   return partes.filter(Boolean).join(', ');
 }
 
@@ -67,7 +76,11 @@ function enderecoEmLinha({ cep, logradouro, numero, complemento, bairro, cidade,
  * @param {string} [usuarioId]  dono do layout das colunas padrão
  * @returns {Promise<Buffer>}
  */
-export async function exportarLeads(tenantId, { colunas, filtro = {}, formato = FORMATOS_EXPORTACAO.XLSX }, usuarioId) {
+export async function exportarLeads(
+  tenantId,
+  { colunas, filtro = {}, formato = FORMATOS_EXPORTACAO.XLSX },
+  usuarioId,
+) {
   // O schema da rota já barra; aqui é a garantia pra qualquer outro chamador.
   if (filtro.situacao === SITUACOES_LEAD.LIXEIRA) {
     throw erroDeValidacao('situacao', 'A lixeira não pode ser exportada');
@@ -75,7 +88,11 @@ export async function exportarLeads(tenantId, { colunas, filtro = {}, formato = 
   if (formato === FORMATOS_EXPORTACAO.CSV) {
     await garantirFeature(tenantId, CRM_FEATURES.MASSA);
   }
-  const campos = [...(await listarCamposDoTenant(tenantId)), ...CAMPOS_EXTRAS_PLANILHA, ...CAMPOS_SO_EXPORTACAO];
+  const campos = [
+    ...(await listarCamposDoTenant(tenantId)),
+    ...CAMPOS_EXTRAS_PLANILHA,
+    ...CAMPOS_SO_EXPORTACAO,
+  ];
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
   colunas ??= await colunasPadrao(tenantId, usuarioId);
 
@@ -101,16 +118,24 @@ export async function exportarLeads(tenantId, { colunas, filtro = {}, formato = 
     });
   }
 
-  const camposExportados = colunas.map((chave) => /** @type {CampoExportavel} */ (campoPorChave.get(chave)));
+  const camposExportados = colunas.map(
+    (chave) => /** @type {CampoExportavel} */ (campoPorChave.get(chave)),
+  );
   const temUsuario = camposExportados.some(
     (campo) => campo.chave === 'usuarioResponsavelId' || campo.tipo === TIPOS_CAMPO.USUARIO,
   );
   const responsaveis = temUsuario
-    ? new Map((await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.id, usuario.nome]))
+    ? new Map(
+        (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.id, usuario.nome]),
+      )
     : new Map();
   const cabecalho = camposExportados.map((campo) => campo.label);
-  const linhas = itens.map((lead) => camposExportados.map((campo) => valorParaPlanilha(lead, campo, { responsaveis })));
-  return formato === FORMATOS_EXPORTACAO.CSV ? gerarCsv(cabecalho, linhas) : gerarPlanilha(cabecalho, linhas);
+  const linhas = itens.map((lead) =>
+    camposExportados.map((campo) => valorParaPlanilha(lead, campo, { responsaveis })),
+  );
+  return formato === FORMATOS_EXPORTACAO.CSV
+    ? gerarCsv(cabecalho, linhas)
+    : gerarPlanilha(cabecalho, linhas);
 }
 
 /**
@@ -140,7 +165,8 @@ export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}
   let valor;
   if (campo.chave === 'valor') valor = lead.valor;
   else if (campo.chave === 'funilEstagio') valor = lead.estagio_nome;
-  else if (campo.chave === 'usuarioResponsavelId') valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
+  else if (campo.chave === 'usuarioResponsavelId')
+    valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
   else if (campo.chave === 'createdAt') valor = lead.created_at;
   else if (campo.camada === CAMADA.CAMADA_3) valor = lead.custom_fields?.[campo.chave];
   else valor = lead[CAMADA_1_CAMPOS[campo.chave] ?? CAMADA_2_CAMPOS[campo.chave]];
@@ -149,7 +175,8 @@ export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}
   // Campo de lista (M3): a planilha mostra o nome da opção, não a key.
   if (campo.opcoesLista) {
     const nomes = new Map(campo.opcoesLista.map((opcao) => [opcao.key, opcao.label]));
-    if (Array.isArray(valor)) return valor.map((key) => nomes.get(key) ?? key).join(SEPARADOR_LISTA);
+    if (Array.isArray(valor))
+      return valor.map((key) => nomes.get(key) ?? key).join(SEPARADOR_LISTA);
     return nomes.get(valor) ?? valor;
   }
   if (Array.isArray(valor)) return valor.join(SEPARADOR_LISTA);
@@ -160,7 +187,8 @@ export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}
   if (typeof valor === 'string' && MASCARAS[campo.tipo]) return MASCARAS[campo.tipo](valor);
   // M11: usuário pelo nome; endereço e período numa linha.
   if (campo.tipo === TIPOS_CAMPO.USUARIO) return responsaveis.get(String(valor)) ?? null;
-  if (campo.tipo === TIPOS_CAMPO.ENDERECO && typeof valor === 'object') return enderecoEmLinha(valor);
+  if (campo.tipo === TIPOS_CAMPO.ENDERECO && typeof valor === 'object')
+    return enderecoEmLinha(valor);
   if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS && typeof valor === 'object') {
     return `${diaBR(valor.de)}${SEPARADOR_PERIODO}${diaBR(valor.ate)}`;
   }

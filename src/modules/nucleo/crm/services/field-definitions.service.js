@@ -7,8 +7,16 @@ import {
   editarCampoPersonalizado,
   existeValorDoCampo,
 } from '../adapters/crm-fields.repository.js';
-import { CAMPOS_SISTEMA, CONTEXTOS_VISIBILIDADE, FIELD_DEFINITION_TIPOS, TIPOS_COM_OPCOES } from '../constants.js';
-import { garantirLabelDisponivel, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
+import {
+  CAMPOS_SISTEMA,
+  CONTEXTOS_VISIBILIDADE,
+  FIELD_DEFINITION_TIPOS,
+  TIPOS_COM_OPCOES,
+} from '../constants.js';
+import {
+  garantirLabelDisponivel,
+  listarConfiguracaoCampos,
+} from './configuracoes-campos.service.js';
 import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service.js';
 
 /** Chaves dos campos do sistema — personalizado não pode reusar nenhuma. */
@@ -55,7 +63,8 @@ export async function criarNovaDefinicao(tenantId, input) {
   // Chave igual à de um campo do sistema (ex: "Empresa" → `empresa`)
   // deixaria duas entradas com a mesma `chave` no form, no filtro e no
   // mapeamento de import.
-  const definicaoExistente = CHAVES_SISTEMA.has(chave) || (await buscarPersonalizadoAtivoPorChave(tenantId, chave));
+  const definicaoExistente =
+    CHAVES_SISTEMA.has(chave) || (await buscarPersonalizadoAtivoPorChave(tenantId, chave));
   if (definicaoExistente) {
     throw erroDeConflito('label', 'Já existe um campo com esse nome');
   }

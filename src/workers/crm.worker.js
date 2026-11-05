@@ -9,9 +9,18 @@ import {
   NOTIFICACAO_ESFRIANDO,
   PURGA_LIXEIRA,
 } from '#modules/nucleo/crm/constants.js';
-import { opcoesDoWorkerCnpj, processarEnriquecimento } from '#modules/nucleo/crm/services/cnpj-enriquecimento.service.js';
-import { agendarPurgaDaLixeira, purgarLixeiras } from '#modules/nucleo/crm/services/arquivo.service.js';
-import { agendarResumoDeEsfriando, notificarLeadsEsfriando } from '#modules/nucleo/crm/services/inatividade.service.js';
+import {
+  opcoesDoWorkerCnpj,
+  processarEnriquecimento,
+} from '#modules/nucleo/crm/services/cnpj-enriquecimento.service.js';
+import {
+  agendarPurgaDaLixeira,
+  purgarLixeiras,
+} from '#modules/nucleo/crm/services/arquivo.service.js';
+import {
+  agendarResumoDeEsfriando,
+  notificarLeadsEsfriando,
+} from '#modules/nucleo/crm/services/inatividade.service.js';
 import { processarImportacao } from '#modules/nucleo/crm/services/import.service.js';
 
 /**
@@ -36,11 +45,13 @@ const FAILURE_EXIT_CODE = 1;
 const JOBS_DE_MANUTENCAO = Object.freeze({
   [PURGA_LIXEIRA.JOB]: {
     executar: () => purgarLixeiras(),
-    resumir: (relatorio) => `purga: ${relatorio.apagados} lead(s) em ${relatorio.tenants} tenant(s)`,
+    resumir: (relatorio) =>
+      `purga: ${relatorio.apagados} lead(s) em ${relatorio.tenants} tenant(s)`,
   },
   [NOTIFICACAO_ESFRIANDO.JOB]: {
     executar: () => notificarLeadsEsfriando(),
-    resumir: (relatorio) => `esfriando: ${relatorio.notificacoes} notificação(ões) em ${relatorio.tenants} tenant(s)`,
+    resumir: (relatorio) =>
+      `esfriando: ${relatorio.notificacoes} notificação(ões) em ${relatorio.tenants} tenant(s)`,
   },
 });
 
@@ -54,22 +65,32 @@ async function main() {
     { connection: conexao(), concurrency: 1 },
   );
   importacao.on('completed', (job) => console.info(`[crm-import] job ${job.data.jobId} concluído`));
-  importacao.on('failed', (job, erro) => console.error(`[crm-import] job ${job?.data.jobId} falhou:`, erro));
+  importacao.on('failed', (job, erro) =>
+    console.error(`[crm-import] job ${job?.data.jobId} falhou:`, erro),
+  );
   importacao.on('error', (erro) => console.error('[crm-import] erro de conexão:', erro));
 
-  const manutencao = new Worker(MANUTENCAO_FILA, (job) => JOBS_DE_MANUTENCAO[job.name]?.executar(), {
-    connection: conexao(),
-    concurrency: 1,
-  });
+  const manutencao = new Worker(
+    MANUTENCAO_FILA,
+    (job) => JOBS_DE_MANUTENCAO[job.name]?.executar(),
+    {
+      connection: conexao(),
+      concurrency: 1,
+    },
+  );
   manutencao.on('completed', (job, relatorio) => {
     const tipo = JOBS_DE_MANUTENCAO[job.name];
     if (!tipo || !relatorio) return;
     console.info(`[crm-manutencao] ${tipo.resumir(relatorio)}`);
     for (const falha of relatorio.falhas) {
-      console.error(`[crm-manutencao] ${job.name} falhou no tenant ${falha.tenantId}: ${falha.erro}`);
+      console.error(
+        `[crm-manutencao] ${job.name} falhou no tenant ${falha.tenantId}: ${falha.erro}`,
+      );
     }
   });
-  manutencao.on('failed', (job, erro) => console.error(`[crm-manutencao] ${job?.name} falhou:`, erro));
+  manutencao.on('failed', (job, erro) =>
+    console.error(`[crm-manutencao] ${job?.name} falhou:`, erro),
+  );
   manutencao.on('error', (erro) => console.error('[crm-manutencao] erro de conexão:', erro));
 
   // O limiter vale pra fila inteira — uma fila por provedor de CNPJ.
@@ -82,7 +103,9 @@ async function main() {
       console.info(`[crm-cnpj] lead ${job.data.leadId}: ${relatorio.campos.join(', ')}`);
     }
   });
-  cnpj.on('failed', (job, erro) => console.error(`[crm-cnpj] lead ${job?.data.leadId} falhou:`, erro.message));
+  cnpj.on('failed', (job, erro) =>
+    console.error(`[crm-cnpj] lead ${job?.data.leadId} falhou:`, erro.message),
+  );
   cnpj.on('error', (erro) => console.error('[crm-cnpj] erro de conexão:', erro));
 
   await agendarPurgaDaLixeira(config.REDIS_URL);
@@ -95,7 +118,9 @@ async function main() {
   process.once('SIGINT', () => void encerrar());
   process.once('SIGTERM', () => void encerrar());
 
-  console.info(`[crm] aguardando jobs nas filas "${IMPORT_FILA}", "${MANUTENCAO_FILA}" e "${CNPJ_FILA}"`);
+  console.info(
+    `[crm] aguardando jobs nas filas "${IMPORT_FILA}", "${MANUTENCAO_FILA}" e "${CNPJ_FILA}"`,
+  );
 }
 
 main().catch((erro) => {

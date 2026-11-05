@@ -17,9 +17,7 @@
             "camada": 2
           },
           "condicao": {
-            "categorias": [
-              "perdido"
-            ]
+            "categorias": ["perdido"]
           },
           "efeito": {
             "obrigatorio": true
@@ -33,9 +31,7 @@
         "categoriaDoStatus": "perdido"
       },
       "esperado": {
-        "obrigatorios": [
-          "motivoPerda"
-        ],
+        "obrigatorios": ["motivoPerda"],
         "ocultos": []
       }
     },
@@ -55,9 +51,7 @@
             "camada": 2
           },
           "condicao": {
-            "categorias": [
-              "perdido"
-            ]
+            "categorias": ["perdido"]
           },
           "efeito": {
             "obrigatorio": true
@@ -91,9 +85,7 @@
             "camada": 2
           },
           "condicao": {
-            "categorias": [
-              "perdido"
-            ]
+            "categorias": ["perdido"]
           },
           "efeito": {
             "obrigatorio": true
@@ -127,10 +119,7 @@
             "camada": 2
           },
           "condicao": {
-            "status": [
-              "proposta",
-              "negociacao"
-            ]
+            "status": ["proposta", "negociacao"]
           },
           "efeito": {
             "obrigatorio": true
@@ -144,9 +133,7 @@
         "categoriaDoStatus": "aberto"
       },
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     },
@@ -166,12 +153,8 @@
             "camada": 2
           },
           "condicao": {
-            "status": [
-              "proposta"
-            ],
-            "categorias": [
-              "aberto"
-            ]
+            "status": ["proposta"],
+            "categorias": ["aberto"]
           },
           "efeito": {
             "obrigatorio": true
@@ -224,9 +207,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     },
@@ -295,10 +276,7 @@
               "camada": 1
             },
             "operador": "e_um_dos",
-            "valor": [
-              "indicacao",
-              "evento"
-            ]
+            "valor": ["indicacao", "evento"]
           },
           "efeito": {
             "obrigatorio": false,
@@ -312,9 +290,7 @@
       "contexto": {},
       "esperado": {
         "obrigatorios": [],
-        "ocultos": [
-          "segmento"
-        ]
+        "ocultos": ["segmento"]
       }
     },
     {
@@ -341,10 +317,7 @@
               "camada": 1
             },
             "operador": "e_um_dos",
-            "valor": [
-              "indicacao",
-              "evento"
-            ]
+            "valor": ["indicacao", "evento"]
           },
           "efeito": {
             "obrigatorio": false,
@@ -405,9 +378,7 @@
             "camada": 3
           },
           "condicao": {
-            "categorias": [
-              "ganho"
-            ]
+            "categorias": ["ganho"]
           },
           "efeito": {
             "obrigatorio": true
@@ -423,9 +394,7 @@
       },
       "esperado": {
         "obrigatorios": [],
-        "ocultos": [
-          "segmento"
-        ]
+        "ocultos": ["segmento"]
       }
     },
     {
@@ -530,16 +499,11 @@
         }
       ],
       "lead": {
-        "tags": [
-          "b2b",
-          "vip"
-        ]
+        "tags": ["b2b", "vip"]
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "nota"
-        ],
+        "obrigatorios": ["nota"],
         "ocultos": []
       }
     },
@@ -585,9 +549,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "aniversario"
-        ],
+        "obrigatorios": ["aniversario"],
         "ocultos": []
       }
     },
@@ -674,9 +636,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "nota"
-        ],
+        "obrigatorios": ["nota"],
         "ocultos": []
       }
     },
@@ -719,9 +679,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "nota"
-        ],
+        "obrigatorios": ["nota"],
         "ocultos": []
       }
     },
@@ -787,9 +745,7 @@
       "lead": {},
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "nota"
-        ],
+        "obrigatorios": ["nota"],
         "ocultos": []
       }
     },
@@ -829,9 +785,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     },
@@ -879,9 +833,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     },
@@ -974,9 +926,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     },
@@ -1017,9 +967,7 @@
       },
       "contexto": {},
       "esperado": {
-        "obrigatorios": [
-          "empresa"
-        ],
+        "obrigatorios": ["empresa"],
         "ocultos": []
       }
     }

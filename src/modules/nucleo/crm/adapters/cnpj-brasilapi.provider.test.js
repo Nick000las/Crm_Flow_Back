@@ -10,7 +10,11 @@ afterEach(() => {
 
 describe('provedorBrasilApi', () => {
   it('manda User-Agent (sem ele o firewall da BrasilAPI responde 403)', async () => {
-    const fetchFalso = vi.fn(async () => ({ ok: true, status: HTTP_STATUS.OK, json: async () => ({ razao_social: 'ACME' }) }));
+    const fetchFalso = vi.fn(async () => ({
+      ok: true,
+      status: HTTP_STATUS.OK,
+      json: async () => ({ razao_social: 'ACME' }),
+    }));
     vi.stubGlobal('fetch', fetchFalso);
     await provedorBrasilApi.consultar(CNPJ);
     const [, opcoes] = fetchFalso.mock.calls[0];

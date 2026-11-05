@@ -1,7 +1,4 @@
-import {
-  HTTP_ERROR_STATUS_RANGE,
-  HTTP_STATUS,
-} from '#shared/constants/index.js';
+import { HTTP_ERROR_STATUS_RANGE, HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 
 const KNOWN_ERROR_CODES = new Set(Object.values(ERROR_CODES));
@@ -55,7 +52,11 @@ export function erroDeValidacao(campo, mensagem, mensagemDoCampo = mensagem) {
 
 /** 404 `RESOURCE_NOT_FOUND`. @param {string} mensagem */
 export function erroNaoEncontrado(mensagem) {
-  return new AppError({ statusCode: HTTP_STATUS.NOT_FOUND, code: ERROR_CODES.RESOURCE_NOT_FOUND, message: mensagem });
+  return new AppError({
+    statusCode: HTTP_STATUS.NOT_FOUND,
+    code: ERROR_CODES.RESOURCE_NOT_FOUND,
+    message: mensagem,
+  });
 }
 
 /**
@@ -121,9 +122,7 @@ function isPublicFieldMap(value) {
       (messages) =>
         Array.isArray(messages) &&
         messages.length > 0 &&
-        messages.every(
-          (message) => typeof message === 'string' && message.trim().length > 0,
-        ),
+        messages.every((message) => typeof message === 'string' && message.trim().length > 0),
     )
   );
 }
@@ -143,8 +142,7 @@ function areAllowedPublicHeaders(value) {
     isRecord(value) &&
     Object.entries(value).every(
       ([name, headerValue]) =>
-        ALLOWED_PUBLIC_HEADERS.has(name.toLowerCase()) &&
-        typeof headerValue === 'string',
+        ALLOWED_PUBLIC_HEADERS.has(name.toLowerCase()) && typeof headerValue === 'string',
     )
   );
 }

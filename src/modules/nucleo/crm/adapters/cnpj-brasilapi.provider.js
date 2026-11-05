@@ -54,7 +54,9 @@ export function converterRespostaBrasilApi(resposta) {
     cnae: [cnaeCodigo, cnaeDescricao].filter(Boolean).join(' - ') || undefined,
     // Às vezes o tipo ("RUA") vem separado, às vezes já no logradouro.
     logradouro:
-      tipoLogradouro && logradouro && !logradouro.toUpperCase().startsWith(tipoLogradouro.toUpperCase())
+      tipoLogradouro &&
+      logradouro &&
+      !logradouro.toUpperCase().startsWith(tipoLogradouro.toUpperCase())
         ? `${tipoLogradouro} ${logradouro}`
         : logradouro,
     numero: texto(resposta.numero),
@@ -91,8 +93,12 @@ export const provedorBrasilApi = Object.freeze({
       throw erroTransitorio('BrasilAPI indisponível', erro);
     }
 
-    if (resposta.status === HTTP_STATUS.NOT_FOUND) return { status: STATUS_CNPJ.NAO_ENCONTRADO, dados: {} };
-    if (resposta.status === HTTP_STATUS.TOO_MANY_REQUESTS || resposta.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+    if (resposta.status === HTTP_STATUS.NOT_FOUND)
+      return { status: STATUS_CNPJ.NAO_ENCONTRADO, dados: {} };
+    if (
+      resposta.status === HTTP_STATUS.TOO_MANY_REQUESTS ||
+      resposta.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR
+    ) {
       throw erroTransitorio(`BrasilAPI respondeu ${resposta.status}`);
     }
     if (!resposta.ok) throw new Error(`BrasilAPI recusou a consulta (${resposta.status})`);

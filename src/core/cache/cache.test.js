@@ -77,7 +77,12 @@ describe('store Redis', () => {
     const store = criarStoreRedis(redis);
 
     await store.set('features:t1', ['crm.listas'], TTL_SEGUNDOS);
-    expect(redis.set).toHaveBeenCalledWith('cache:features:t1', '["crm.listas"]', 'EX', TTL_SEGUNDOS);
+    expect(redis.set).toHaveBeenCalledWith(
+      'cache:features:t1',
+      '["crm.listas"]',
+      'EX',
+      TTL_SEGUNDOS,
+    );
     await expect(store.get('features:t1')).resolves.toEqual(['crm.listas']);
 
     await store.del(['features:t1']);

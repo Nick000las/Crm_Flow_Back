@@ -7,7 +7,10 @@ import {
   criarLead as criarLeadRepository,
   atualizarLead as atualizarLeadRepository,
 } from '../adapters/leads.repository.js';
-import { buscarUsuarioAtivoDoTenant, listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
+import {
+  buscarUsuarioAtivoDoTenant,
+  listarUsuariosAtivosDoTenant,
+} from '../adapters/usuarios.repository.js';
 import {
   camposDoContexto,
   camposParaFiltro,
@@ -16,11 +19,19 @@ import {
   exigidoNaCriacao,
 } from './field-schema.service.js';
 import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
-import { camposDeDuplicidadeAlterados, encontrarDuplicados, garantirSemDuplicados } from './duplicidade.service.js';
+import {
+  camposDeDuplicidadeAlterados,
+  encontrarDuplicados,
+  garantirSemDuplicados,
+} from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
-import { garantirScoreNaoEditado, limitesDaFaixa, recalcularScoreDosLeads } from './score.service.js';
+import {
+  garantirScoreNaoEditado,
+  limitesDaFaixa,
+  recalcularScoreDosLeads,
+} from './score.service.js';
 import { basePadraoDoTenant, comDadosLgpdNaCriacao, erroDoLeadNaoEditado } from './lgpd.service.js';
 import {
   carregarContextoDistribuicao,
@@ -29,9 +40,18 @@ import {
   notificarAtribuicao,
 } from './distribuicao.service.js';
 import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
-import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
+import {
+  comPrimeiroNomeNaCriacao,
+  comPrimeiroNomeNaEdicao,
+  precisaDoLeadAtual,
+} from './primeiro-nome.service.js';
 import { validarRegras } from './regras-campos.service.js';
-import { normalizarTelefone, normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
+import {
+  normalizarTelefone,
+  normalizarValorDoTipo,
+  valorAusente,
+  valorValidoParaTipo,
+} from './tipos-campo.service.js';
 import {
   contatoNaBusca,
   garantirEscritaPermitida,
@@ -84,7 +104,9 @@ const DOCUMENTOS_NATIVOS = Object.freeze(
  */
 export async function buscarLeadFormatado(tenantId, leadId, { papel } = {}) {
   const [lead, schema] = await Promise.all([
-    relogioDaInatividade(tenantId).then((inatividade) => buscarLeadPorId(tenantId, leadId, { inatividade })),
+    relogioDaInatividade(tenantId).then((inatividade) =>
+      buscarLeadPorId(tenantId, leadId, { inatividade }),
+    ),
     obterSchemaDoPapel(tenantId, papel),
   ]);
 
@@ -156,18 +178,30 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   // — um escolhido, mesmo o próprio criador, é respeitado.
   const contextoDistribuicao =
     input.usuarioResponsavelId === undefined ? await carregarContextoDistribuicao(tenantId) : null;
-  const atribuicao = contextoDistribuicao ? await distribuir(tenantId, contextoDistribuicao, comListas) : null;
+  const atribuicao = contextoDistribuicao
+    ? await distribuir(tenantId, contextoDistribuicao, comListas)
+    : null;
   const criado = await criarLeadRepository(
     tenantId,
     {
       ...comCustomFieldsArmazenaveis(comListas, definicoes),
-      usuarioResponsavelId: atribuicao ? atribuicao.usuarioId : (input.usuarioResponsavelId ?? usuarioId),
+      usuarioResponsavelId: atribuicao
+        ? atribuicao.usuarioId
+        : (input.usuarioResponsavelId ?? usuarioId),
       atribuidoPorRegraId: atribuicao?.regraId ?? null,
     },
-    { autorId: usuarioId ?? null, detalhes: atribuicao ? detalhesDaAtribuicao(atribuicao) : undefined },
+    {
+      autorId: usuarioId ?? null,
+      detalhes: atribuicao ? detalhesDaAtribuicao(atribuicao) : undefined,
+    },
   );
   if (atribuicao) {
-    await notificarAtribuicao(tenantId, { leadId: criado.id, leadNome: input.nome, atribuicao, criadorId: usuarioId });
+    await notificarAtribuicao(tenantId, {
+      leadId: criado.id,
+      leadNome: input.nome,
+      atribuicao,
+      criadorId: usuarioId,
+    });
   }
   // Enriquecimento por CNPJ (M11b, modo automático): depois de salvo, na fila; nunca falha o POST.
   await agendarEnriquecimento(tenantId, [{ leadId: criado.id, cnpj: input.cnpj }]);
@@ -230,7 +264,10 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
     tenantId,
     leadId,
     comCustomFieldsArmazenaveis(comListas, definicoes),
-    { autorId: usuarioId ?? null, montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }) },
+    {
+      autorId: usuarioId ?? null,
+      montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
+    },
     { inatividade: await relogioDaInatividade(tenantId) },
   );
 
@@ -272,8 +309,13 @@ export async function regrasAplicaveis(tenantId, schema) {
 export function errosDasRegras(schema, regras, lead) {
   if (regras.length === 0) return [];
   const listas = schema.listas ?? {};
-  const labelDoStatus = Object.fromEntries((listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => [opcao.key, opcao.label]));
-  return validarRegras(regras, lead, { categoriaDoStatus: categoriaDoStatus(listas, lead.status), labelDoStatus });
+  const labelDoStatus = Object.fromEntries(
+    (listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => [opcao.key, opcao.label]),
+  );
+  return validarRegras(regras, lead, {
+    categoriaDoStatus: categoriaDoStatus(listas, lead.status),
+    labelDoStatus,
+  });
 }
 
 /**
@@ -285,7 +327,9 @@ export function errosDasRegras(schema, regras, lead) {
  */
 export function leadParaApi(linha, { campos, definicoes }) {
   const lead = Object.fromEntries(
-    campos.filter((campo) => campo.coluna).map((campo) => [campo.chave, linha[campo.coluna] ?? null]),
+    campos
+      .filter((campo) => campo.coluna)
+      .map((campo) => [campo.chave, linha[campo.coluna] ?? null]),
   );
   lead.customFields = customFieldsParaApi(definicoes, linha.custom_fields ?? {});
   return lead;
@@ -299,7 +343,9 @@ export function leadParaApi(linha, { campos, definicoes }) {
  * @param {Record<string, any>} input
  */
 export function aplicarEdicao(atual, input) {
-  const definidos = Object.fromEntries(Object.entries(input).filter(([, valor]) => valor !== undefined));
+  const definidos = Object.fromEntries(
+    Object.entries(input).filter(([, valor]) => valor !== undefined),
+  );
   return {
     ...atual,
     ...definidos,
@@ -326,7 +372,9 @@ async function validarRegrasNaEdicao(tenantId, leadId, input, schema) {
   if (regras.length === 0) return;
   const atual = await buscarLeadPorId(tenantId, leadId);
   if (!atual) throw leadNaoEncontrado();
-  lancarErroDasRegras(errosDasRegras(schema, regras, aplicarEdicao(leadParaApi(atual, schema), input)));
+  lancarErroDasRegras(
+    errosDasRegras(schema, regras, aplicarEdicao(leadParaApi(atual, schema), input)),
+  );
 }
 
 /**
@@ -351,7 +399,9 @@ export async function checarDuplicados(tenantId, { leadId, ...dados }) {
  * @param {boolean | undefined} ignorarDuplicados
  */
 async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplicados) {
-  const tocaDuplicidade = Object.values(CAMPOS_DUPLICIDADE).some(({ chave }) => typeof input[chave] === 'string');
+  const tocaDuplicidade = Object.values(CAMPOS_DUPLICIDADE).some(
+    ({ chave }) => typeof input[chave] === 'string',
+  );
   if (!tocaDuplicidade || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return;
 
   const atual = await buscarLeadPorId(tenantId, leadId);
@@ -425,7 +475,9 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
   }
   // Faixa de score (M14): a chave da faixa vira os limites (exige `crm.score`).
   if (filtro.faixaScore) await garantirFeature(tenantId, CRM_FEATURES.SCORE);
-  const faixaDoScore = filtro.faixaScore ? await limitesDaFaixa(tenantId, filtro.faixaScore) : undefined;
+  const faixaDoScore = filtro.faixaScore
+    ? await limitesDaFaixa(tenantId, filtro.faixaScore)
+    : undefined;
   const condicoes = montarCondicoes({ ...filtro, faixaDoScore }, camposParaFiltro(schema), {
     // M13: campo oculto pro papel não entra na busca textual (revelaria o valor).
     identificador: identificadorVisivel(identificador, schema),
@@ -433,7 +485,10 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
     comArquivo,
     agora: inatividade ?? undefined,
   });
-  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, { ...paginacao, inatividade });
+  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, {
+    ...paginacao,
+    inatividade,
+  });
 
   return {
     itens: itens.map((lead) => formatarLead(lead, schema)),
@@ -524,15 +579,26 @@ function comDocumentosNormalizados(input) {
  */
 async function validarUsuariosDosCampos(tenantId, definicoes, customFields) {
   const comUsuario = definicoes.filter(
-    (definicao) => definicao.tipo === TIPOS_CAMPO.USUARIO && !valorAusente(customFields?.[definicao.chave]),
+    (definicao) =>
+      definicao.tipo === TIPOS_CAMPO.USUARIO && !valorAusente(customFields?.[definicao.chave]),
   );
   if (comUsuario.length === 0) return;
-  const ativos = new Set((await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => usuario.id.toLowerCase()));
+  const ativos = new Set(
+    (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => usuario.id.toLowerCase()),
+  );
   const invalido = comUsuario.find(
-    (definicao) => !ativos.has(String(/** @type {Record<string, unknown>} */ (customFields)[definicao.chave]).toLowerCase()),
+    (definicao) =>
+      !ativos.has(
+        String(
+          /** @type {Record<string, unknown>} */ (customFields)[definicao.chave],
+        ).toLowerCase(),
+      ),
   );
   if (invalido) {
-    throw erroDeValidacao('customFields', `"${invalido.label}" precisa ser um usuário ativo desta conta`);
+    throw erroDeValidacao(
+      'customFields',
+      `"${invalido.label}" precisa ser um usuário ativo desta conta`,
+    );
   }
 }
 
@@ -595,7 +661,10 @@ function validarObrigatoriosNaCriacao(campos, input) {
  */
 function formatarLead(lead, { campos, definicoes }) {
   // `telefone` é nullable desde a migration 0009 (lead só com e-mail).
-  const leadFormatado = { ...lead, telefone: lead.telefone ? formatarTelefoneBR(lead.telefone) : null };
+  const leadFormatado = {
+    ...lead,
+    telefone: lead.telefone ? formatarTelefoneBR(lead.telefone) : null,
+  };
   const ligados = new Set(campos.map((campo) => campo.chave));
 
   if ('custom_fields' in lead) {

@@ -6,7 +6,13 @@ import {
   purgarLixeira,
   restaurarDaLixeira,
 } from '../adapters/leads.repository.js';
-import { arquivarLead, desarquivarLead, excluirLead, purgarLixeiras, restaurarLead } from './arquivo.service.js';
+import {
+  arquivarLead,
+  desarquivarLead,
+  excluirLead,
+  purgarLixeiras,
+  restaurarLead,
+} from './arquivo.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
 
 vi.mock('#core/tenant/module-access.js', () => ({ listarTenantsDoModulo: vi.fn() }));
@@ -17,7 +23,9 @@ vi.mock('../adapters/leads.repository.js', () => ({
   purgarLixeira: vi.fn(),
   restaurarDaLixeira: vi.fn(),
 }));
-vi.mock('./leads.service.js', () => ({ buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })) }));
+vi.mock('./leads.service.js', () => ({
+  buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })),
+}));
 
 const TENANT = 'tenant-1';
 const LEAD = 'lead-1';
@@ -68,7 +76,9 @@ describe('restaurar', () => {
   it('só restaura o que foi excluído dentro dos últimos 30 dias (relógio falso)', async () => {
     restaurarDaLixeira.mockResolvedValueOnce({ id: LEAD });
     await expect(restaurarLead(TENANT, LEAD)).resolves.toEqual({ id: LEAD });
-    expect(restaurarDaLixeira).toHaveBeenCalledWith(TENANT, LEAD, TRINTA_DIAS_ANTES, { autorId: null });
+    expect(restaurarDaLixeira).toHaveBeenCalledWith(TENANT, LEAD, TRINTA_DIAS_ANTES, {
+      autorId: null,
+    });
   });
 
   it('fora do prazo, o lead não existe mais → 404', async () => {

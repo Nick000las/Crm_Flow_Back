@@ -1,11 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { CAMADA } from '../constants.js';
 import casosCompartilhados from '../testing/regras.casos.json';
-import { avaliarCondicao, avaliarRegras, resolverRegras, validarRegras } from './regras-campos.service.js';
+import {
+  avaliarCondicao,
+  avaliarRegras,
+  resolverRegras,
+  validarRegras,
+} from './regras-campos.service.js';
 
-const MOTIVO = { id: 'f-motivo', chave: 'motivoPerda', label: 'Motivo da perda', tipo: 'selecao', camada: CAMADA.CAMADA_2 };
-const FONTE = { id: 'f-fonte', chave: 'fonteLead', label: 'Origem', tipo: 'selecao', camada: CAMADA.CAMADA_1 };
-const SEGMENTO = { id: 'f-segmento', chave: 'segmento', label: 'Segmento', tipo: 'selecao', camada: CAMADA.CAMADA_3 };
+const MOTIVO = {
+  id: 'f-motivo',
+  chave: 'motivoPerda',
+  label: 'Motivo da perda',
+  tipo: 'selecao',
+  camada: CAMADA.CAMADA_2,
+};
+const FONTE = {
+  id: 'f-fonte',
+  chave: 'fonteLead',
+  label: 'Origem',
+  tipo: 'selecao',
+  camada: CAMADA.CAMADA_1,
+};
+const SEGMENTO = {
+  id: 'f-segmento',
+  chave: 'segmento',
+  label: 'Segmento',
+  tipo: 'selecao',
+  camada: CAMADA.CAMADA_3,
+};
 const NOTA_ALTA = 9;
 const NOTA_BAIXA = 3;
 const NOTA_MINIMA = 5;
@@ -42,8 +65,13 @@ describe('avaliarCondicao', () => {
 
 describe('validarRegras', () => {
   it('mensagem com o porquê; personalizado aponta pra customFields', () => {
-    expect(validarRegras([regraMotivo], { status: 'perdido' }, { categoriaDoStatus: 'perdido' })).toEqual([
-      { campo: 'motivoPerda', mensagem: '"Motivo da perda" é obrigatório quando o status é perdido' },
+    expect(
+      validarRegras([regraMotivo], { status: 'perdido' }, { categoriaDoStatus: 'perdido' }),
+    ).toEqual([
+      {
+        campo: 'motivoPerda',
+        mensagem: '"Motivo da perda" é obrigatório quando o status é perdido',
+      },
     ]);
 
     const regraSegmento = {
@@ -56,19 +84,30 @@ describe('validarRegras', () => {
       efeito: { obrigatorio: true, visivel: false },
     };
     expect(validarRegras([regraSegmento], { fonteLead: 'evento', customFields: {} })).toEqual([
-      { campo: 'customFields', mensagem: '"Segmento" é obrigatório por causa do valor de "Origem"' },
+      {
+        campo: 'customFields',
+        mensagem: '"Segmento" é obrigatório por causa do valor de "Origem"',
+      },
     ]);
   });
 
   it('com o valor preenchido, nenhum erro', () => {
     expect(
-      validarRegras([regraMotivo], { status: 'perdido', motivoPerda: 'preco' }, { categoriaDoStatus: 'perdido' }),
+      validarRegras(
+        [regraMotivo],
+        { status: 'perdido', motivoPerda: 'preco' },
+        { categoriaDoStatus: 'perdido' },
+      ),
     ).toEqual([]);
   });
 
   it('status pela key mostra o label da opção', () => {
     const regra = { ...regraMotivo, condicao: { status: ['perdido_preco'] } };
-    const [erro] = validarRegras([regra], { status: 'perdido_preco' }, { labelDoStatus: { perdido_preco: 'Perdido: preço' } });
+    const [erro] = validarRegras(
+      [regra],
+      { status: 'perdido_preco' },
+      { labelDoStatus: { perdido_preco: 'Perdido: preço' } },
+    );
     expect(erro.mensagem).toContain('quando o status é Perdido: preço');
   });
 });
@@ -97,11 +136,26 @@ describe('resolverRegras', () => {
   });
 
   it('alvo ou campo da condição fora do schema (excluído/desligado): a regra some', () => {
-    const base = { kind: 'required_from_status', condition: { categorias: ['perdido'] }, effect: {}, position: 0, is_active: true, system_key: null };
+    const base = {
+      kind: 'required_from_status',
+      condition: { categorias: ['perdido'] },
+      effect: {},
+      position: 0,
+      is_active: true,
+      system_key: null,
+    };
     expect(resolverRegras([{ ...base, id: 'r1', field_id: 'f-nao-existe' }], campos)).toEqual([]);
     expect(
       resolverRegras(
-        [{ ...base, id: 'r2', field_id: 'f-motivo', kind: 'conditional', condition: { campoId: 'f-sumiu', operador: 'vazio' } }],
+        [
+          {
+            ...base,
+            id: 'r2',
+            field_id: 'f-motivo',
+            kind: 'conditional',
+            condition: { campoId: 'f-sumiu', operador: 'vazio' },
+          },
+        ],
         campos,
       ),
     ).toEqual([]);

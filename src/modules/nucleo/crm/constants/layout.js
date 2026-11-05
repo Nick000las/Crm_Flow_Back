@@ -16,7 +16,13 @@ export const LIMITES_LAYOUT = Object.freeze({
 /** Propriedades de lista que o override mescla com o padrão (regra do HubSpot). */
 export const LISTAS_MESCLADAS = Object.freeze(['subtitulo', 'destaques', 'colunas']);
 
-export const PROPRIEDADES_LAYOUT = Object.freeze(['identificador', 'subtitulo', 'destaques', 'secoes', 'colunas']);
+export const PROPRIEDADES_LAYOUT = Object.freeze([
+  'identificador',
+  'subtitulo',
+  'destaques',
+  'secoes',
+  'colunas',
+]);
 
 /**
  * Referências fixas: `coluna` é a propriedade do lead lido
@@ -24,8 +30,18 @@ export const PROPRIEDADES_LAYOUT = Object.freeze(['identificador', 'subtitulo', 
  */
 export const REFERENCIAS_FIXAS = Object.freeze({
   'lead.valor': { chave: 'valor', label: 'Valor', tipo: 'monetario', coluna: 'valor' },
-  'lead.responsavel': { chave: 'usuarioResponsavelId', label: 'Responsável', tipo: 'usuario', coluna: 'usuario_responsavel_id' },
-  'lead.estagio': { chave: 'funilEstagio', label: 'Estágio do funil', tipo: 'texto', coluna: 'estagio_nome' },
+  'lead.responsavel': {
+    chave: 'usuarioResponsavelId',
+    label: 'Responsável',
+    tipo: 'usuario',
+    coluna: 'usuario_responsavel_id',
+  },
+  'lead.estagio': {
+    chave: 'funilEstagio',
+    label: 'Estágio do funil',
+    tipo: 'texto',
+    coluna: 'estagio_nome',
+  },
   'lead.criadoEm': { chave: 'createdAt', label: 'Criado em', tipo: 'data', coluna: 'created_at' },
 });
 
@@ -33,7 +49,13 @@ export const REFERENCIAS_FIXAS = Object.freeze({
  * Campos do sistema que podem ser o identificador (spec §1). Personalizado
  * pode, se for de texto.
  */
-export const IDENTIFICADORES_DO_SISTEMA = Object.freeze(['nome', 'empresa', 'cnpj', 'cpf', 'email']);
+export const IDENTIFICADORES_DO_SISTEMA = Object.freeze([
+  'nome',
+  'empresa',
+  'cnpj',
+  'cpf',
+  'email',
+]);
 
 /** Identificador que é documento: a busca compara só os dígitos. */
 export const IDENTIFICADORES_NUMERICOS = Object.freeze(['cnpj', 'cpf']);
@@ -51,5 +73,13 @@ export const LAYOUT_INICIAL = Object.freeze({
   subtitulo: ['email', 'telefone'],
   destaques: ['lead.valor', 'status', 'lead.responsavel'],
   secoes: [],
-  colunas: ['telefone', 'email', 'status', 'fonteLead', 'lead.valor', 'lead.responsavel', 'lead.criadoEm'],
+  colunas: [
+    'telefone',
+    'email',
+    'status',
+    'fonteLead',
+    'lead.valor',
+    'lead.responsavel',
+    'lead.criadoEm',
+  ],
 });

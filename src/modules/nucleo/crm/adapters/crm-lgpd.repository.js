@@ -19,9 +19,8 @@ const FIRST_RESULT_INDEX = 0;
  * @returns {Promise<ConfigLgpdLinha | undefined>}
  */
 export function buscarConfigLgpd(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT base_legal_padrao FROM modulo_crm.crm_lgpd_config WHERE tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
   );
@@ -51,9 +50,8 @@ export function salvarConfigLgpd(tenantId, { basePadrao }) {
  * @returns {Promise<{ anonimizado: boolean } | undefined>}
  */
 export function buscarSituacaoLgpd(tenantId, leadId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT (anonimizado_em IS NOT NULL) AS anonimizado FROM modulo_crm.leads
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
@@ -82,7 +80,10 @@ export function buscarSituacaoLgpd(tenantId, leadId) {
  */
 export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
   const { NOME, TITULO_ATIVIDADE, COLUNAS_PII, CHAVES_PII, DETALHES_PII, GUC } = ANONIMIZACAO;
-  const limpar = Prisma.join(COLUNAS_PII.map((coluna) => Prisma.sql`${Prisma.raw(coluna)} = NULL`), ', ');
+  const limpar = Prisma.join(
+    COLUNAS_PII.map((coluna) => Prisma.sql`${Prisma.raw(coluna)} = NULL`),
+    ', ',
+  );
 
   return getTenantClient(tenantId, async (tx) => {
     const linhas = await tx.$queryRaw`
@@ -142,7 +143,11 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
     `;
 
     const resumo = { leads: ids.length, atividades, eventos };
-    await inserirEvento(tx, tenantId, leadId, { tipo: TIPOS_EVENTO_LEAD.ANONIMIZADO, autorId, detalhes: resumo });
+    await inserirEvento(tx, tenantId, leadId, {
+      tipo: TIPOS_EVENTO_LEAD.ANONIMIZADO,
+      autorId,
+      detalhes: resumo,
+    });
     await tx.$executeRaw`
       INSERT INTO audit_log (tenant_id, usuario_id, acao, entidade, entidade_id, detalhes)
       VALUES (

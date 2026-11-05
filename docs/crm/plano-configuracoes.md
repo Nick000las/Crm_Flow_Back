@@ -5,11 +5,14 @@ Base: [`especificacao-configuracoes.md`](./especificacao-configuracoes.md) (15/1
 **Status:** plano aprovado em 2026-10-15. M0 e M1 concluídos; M1.8 (aposentadoria) antecipada em 2026-10-15 — sem produção, a flag `crm.campos_v2`, a escrita dupla e as tabelas antigas saíram (migration 0014). M2 concluído no back (falta o front). Migrations até a 0023 aplicadas no banco de dev. Revisão geral feita em 2026-10-15 (seção "Revisão pós-M2"). M3 concluído no back em 2026-10-15, M4, M6 e M7 (back e front) e M5 em 2026-10-16, M8 e M9 em 2026-10-17 (faltam os fronts do M5, do M8 e do M9), M10, M11 (em duas etapas, M11a e M11b) e M12 no back em 2026-10-18 (migrations até a 0026 aplicadas no banco de dev; faltam os fronts), M13 e M14 no back em 2026-10-26 (M13 sem migration; 0027 do M14 aplicada no banco de dev; faltam os fronts), M15 e M16 no back em 2026-10-27 (0028 e 0029 aplicadas no banco de dev; M16 sem migration; faltam os fronts). Com isso, a Fase 3 está completa no back; falta estabilizar e remover as flags.
 
 ## Contexto
+
 O CRM já tem:
+
 - leads com 3 camadas de campo, filtro, views, import/export, RBAC, módulo contratado e responsável;
 - no front: lista, ficha (drawer), form dinâmico, página Campos e wizard de import.
 
 A especificação transforma a página "Campos" numa área **Configurações** com 9 subseções e cobre as 6 lacunas do diagnóstico:
+
 1. visibilidade única;
 2. ordem numérica;
 3. sem identificador;
@@ -22,6 +25,7 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 ## Decisões de arquitetura (já tomadas)
 
 **A. Registro único de campos (`crm_field`)**
+
 - **Contrato dos campos do sistema:** a constante da Camada 1 continua sendo o contrato (coluna, tipo, validador). Ela ganha **flags de capacidade** (`canHide`, `canMakeOptional`, `canRename`), validadas no back.
 - **O que vai para `crm_field`:** só a configuração por tenant (label, ordem, ativo).
 - **Tabelas filhas** com FK para `crm_field.id`: visibilidade por contexto, regras e permissões.
@@ -34,6 +38,7 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 - **Migração:** atrás de feature flag, com **escrita dupla por uma release** antes de aposentar as tabelas antigas.
 
 **B. Listas (`crm_option`) por chave estável**
+
 - **Chave:** `unique (tenant_id, kind, key)`. A `key` é gerada do label (slug, com sufixo se colidir) e é **imutável**; renomear muda só o label.
 - **Seed sem migrar leads:** os valores atuais dos CHECKs viram opções seed com as **mesmas chaves**. Os leads não mudam; só os CHECKs são removidos.
 - **Status ganha `category`** (`open`/`won`/`lost`).
@@ -47,12 +52,14 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 - **Opcional:** FK composta via coluna gerada stored constante. Antes de adotar, validar com um spike no Neon (M3).
 
 **C. Feature flags: rollout, não preço**
+
 - **Nada fica atrás de pagamento:** tudo faz parte do módulo CRM base.
 - **Para que servem as flags:** cada subseção nasce atrás de uma `tenant_module_feature` para liberação gradual e kill switch.
 - **Ciclo de vida:** ao estabilizar, a feature liga por padrão para todo tenant com CRM, e a flag **sai do código em 1 a 2 releases**.
 - **Custo variável:** features com custo variável (como provedor pago de CNPJ) podem ganhar cota no futuro, dentro do CRM.
 
 ## Convenções que valem para todo marco
+
 - **Back:**
   - camadas `controller → service → adapter`;
   - `getTenantClient` só em adapters;
@@ -74,6 +81,7 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 ## FASE 0: Plataforma (pré-requisito)
 
 ### M0. Infraestrutura compartilhada
+
 **Objetivo:** dar às fases seguintes flags, cache e fuso por tenant.
 
 - **0.1 Feature flags.**
@@ -89,14 +97,16 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 - **0.4 Job de deploy.** Script `pnpm crm:reconcile` que roda as reconciliações idempotentes em todos os tenants. Ele é usado a partir de M1.
 
 **Checklist**
+
 - [x] O helper e o preHandler de flag têm teste unitário (cache e invalidação).
 - [x] `/auth/me` devolve `featuresAtivas`, e há teste de rota.
 - [x] A abstração de cache tem testes com Redis mockado e com o fallback em memória.
 - [x] A migration do fuso foi aplicada e o RLS continua verde.
 
-**Pronto quando:** uma rota de teste protegida por flag responde 403 com a flag desligada e 200 com ela ligada, e o front esconde o item de menu correspondente. *(coberto por `feature-flags.test.js` no back e `acesso.test.js` no front)*
+**Pronto quando:** uma rota de teste protegida por flag responde 403 com a flag desligada e 200 com ela ligada, e o front esconde o item de menu correspondente. _(coberto por `feature-flags.test.js` no back e `acesso.test.js` no front)_
 
 **Como ficou (M0)**
+
 - **Flags:** `#core/tenant/feature-flags.js` (`listarFeaturesAtivas`, `featureAtiva(tenantId, featureKey)`, `invalidarFeatures`, `exigirFeature` → 403 `FEATURE_NOT_ENABLED`). A chave já carrega o módulo (`crm.campos_v2`), por isso a assinatura não recebe `moduleKey`. Cada módulo declara o catálogo em `Module.featureFlags` (substitui o `requiredFeatureFlags`, que não era usado); o CRM usa `CRM_FEATURES` (`constants.js`). Admin: `GET /admin/features`, `PUT /admin/tenants/:id/features` (substitui o conjunto; lista vazia = kill switch) e `features` no `GET /admin/tenants/:id`. Front: `temFeature(user, flag)`, `feature` em `podeVer`/registry/`RequireRole` (sem `featuresAtivas` = desligada) e a seção "Feature flags" no detalhe do tenant.
 - **Cache:** `#core/cache/cache.js` (`cacheGet/Set/Del`, `lerComCache`, `encerrarCache`), com chave prefixada `cache:` no Redis. Falha do Redis vira miss. `module-access.js` continua com o cache próprio em memória.
 - **Fuso:** `tenants.fuso_horario` (migration 0011), validado e normalizado por `fusoHorarioSchema` (`#shared/validators`), editável em `PUT /admin/tenants/:id` e no card Identidade do admin.
@@ -107,6 +117,7 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 ## FASE 1: Fundação de configuração
 
 ### M1. `crm_field` e resolver de schema (flag `crm.campos_v2` — removida)
+
 **Objetivo:** ter uma única fonte de metadado de campos para todos os consumidores, sem perder dado.
 
 - **1.1 Schema.**
@@ -139,15 +150,17 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 - **1.8 Aposentadoria** (release seguinte): remover a escrita dupla e as tabelas antigas, e retirar a flag.
 
 **Checklist**
-- [x] Rodar `reconcileSystemFields` duas vezes não duplica nada (teste). *(unitário: `campos-escrita-dupla.test.js`/`campos-reconcile.service.test.js`; no Postgres: `campos-v2.db.test.js`, pendente de rodar)*
-- [ ] O backfill é idempotente: rodar de novo não altera nada, e as contagens batem antes e depois. *(coberto por `campos-v2.db.test.js` — rodar com `CRM_DB_TESTS=1` numa branch de dev depois da 0012)*
-- [x] Com a flag ligada e desligada, `/crm/leads/fields`, a busca, o import e o export devolvem o mesmo resultado num tenant migrado (teste de paridade). *(unitário em `field-schema.service.test.js`; busca/filtro no banco em `campos-v2.db.test.js`)*
+
+- [x] Rodar `reconcileSystemFields` duas vezes não duplica nada (teste). _(unitário: `campos-escrita-dupla.test.js`/`campos-reconcile.service.test.js`; no Postgres: `campos-v2.db.test.js`, pendente de rodar)_
+- [ ] O backfill é idempotente: rodar de novo não altera nada, e as contagens batem antes e depois. _(coberto por `campos-v2.db.test.js` — rodar com `CRM_DB_TESTS=1` numa branch de dev depois da 0012)_
+- [x] Com a flag ligada e desligada, `/crm/leads/fields`, a busca, o import e o export devolvem o mesmo resultado num tenant migrado (teste de paridade). _(unitário em `field-schema.service.test.js`; busca/filtro no banco em `campos-v2.db.test.js`)_
 - [x] A invalidação de cache é testada: alterar um label reflete na próxima leitura.
-- [x] Os testes atuais de leads, filtro, import e export continuam verdes sem mudança de expectativa. *(só os mocks mudaram: flag desligada + cache zerado)*
+- [x] Os testes atuais de leads, filtro, import e export continuam verdes sem mudança de expectativa. _(só os mocks mudaram: flag desligada + cache zerado)_
 
 **Pronto quando:** um tenant migrado opera inteiro pelo modelo novo, com a flag ligada, sem diferença observável no front.
 
 **Aposentadoria antecipada (2026-10-15).** Sem produção, os itens 1.5 e 1.8 viraram uma conversão única:
+
 - **Migration 0014:**
   - semeia os campos do sistema (snapshot do contrato) e copia os personalizados com o mesmo `id`;
   - reescreve `custom_fields` só por `id`;
@@ -161,6 +174,7 @@ O objetivo deste plano é ordenar essa entrega em fases, marcos (M) e subpartes.
 O que está abaixo descreve a etapa intermediária, mantida como histórico.
 
 **Como ficou (M1)**
+
 - **Schema** (migration 0012): `crm_field` (`system_key` nulo = personalizado; `chave` = slug da API; `is_required`/`is_active`), `crm_field_visibility` (contexto como linha), `crm_field_rule` e `crm_field_permission` vazias. Filhas com FK composta `(tenant_id, field_id)`, que impede filho de outro tenant. Índices únicos parciais: um `system_key` por tenant e `chave` única só entre personalizados **ativos** (excluir libera a chave). Sem CHECK em `type`: os tipos crescem em M2/M11.
 - **Contrato:** `CAMPOS_SISTEMA` + `CONTEXTOS_VISIBILIDADE` em `constants.js`, derivados das constantes de camada, com `canHide/canMakeOptional/canRename`.
 - **Reconcile:** `services/campos-reconcile.service.js` (passos `campos-sistema`, `campos-personalizados`, `custom-fields-por-id`) em `PASSOS` do CRM. Roda no `pnpm crm:reconcile`, na criação do tenant e na contratação do módulo (`#core/tenant/reconcile.js`, best-effort) e de forma preguiçosa no resolver.
@@ -174,6 +188,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **1.8 Aposentadoria (próxima release):** remover a escrita dupla e as tabelas antigas, rodar um passo de reconcile que apague as chaves por `chave` dos personalizados em `custom_fields` e retirar a flag `crm.campos_v2`.
 
 ### M2. Área Configurações, visibilidade por contexto, ordenação e tipos MVP
+
 **Objetivo:** fechar as lacunas 1 e 2, e criar a casca das 9 subseções.
 
 - **2.0 Navegação.**
@@ -199,15 +214,17 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - Cada tipo tem validador no contrato, renderizador no front e conversão no import, filtro e export.
 
 **Checklist**
-- [x] Teste de rota: OPERADOR → 403 na escrita. *(`crm.routes.test.js`: papel conferido antes das flags)*
-- [x] Desligar "Filtros" de um campo o tira do construtor de filtro, e o back rejeita um filtro por ele. *(`field-schema.service.test.js`; vale pra busca, export e views salvas)*
-- [x] A reordenação é atômica, e "voltar ao padrão" é testado. *(um UPDATE com `unnest … WITH ORDINALITY` numa transação)*
-- [x] Cada tipo novo é validado no form, no PUT, no import (linha inválida aparece no Revisar), no filtro (operadores por tipo) e no export (formatação). *(no back; o renderizador de cada tipo fica com o front)*
-- [ ] A ordenação funciona sem mouse (navegação por teclado). *(front)*
+
+- [x] Teste de rota: OPERADOR → 403 na escrita. _(`crm.routes.test.js`: papel conferido antes das flags)_
+- [x] Desligar "Filtros" de um campo o tira do construtor de filtro, e o back rejeita um filtro por ele. _(`field-schema.service.test.js`; vale pra busca, export e views salvas)_
+- [x] A reordenação é atômica, e "voltar ao padrão" é testado. _(um UPDATE com `unnest … WITH ORDINALITY` numa transação)_
+- [x] Cada tipo novo é validado no form, no PUT, no import (linha inválida aparece no Revisar), no filtro (operadores por tipo) e no export (formatação). _(no back; o renderizador de cada tipo fica com o front)_
+- [ ] A ordenação funciona sem mouse (navegação por teclado). _(front)_
 
 **Pronto quando:** o DONO esconde um campo só da tabela e o reordena, e o OPERADOR vê o efeito nos quatro contextos.
 
 **Como ficou (M2, back)**
+
 - **Rotas novas** (`controllers/configuracoes.controller.js`), **sem feature flag** (a flag `crm.configuracoes` foi removida quando o front apagou a página Campos antiga; leitura para qualquer papel, escrita só DONO/MASTER):
   - `GET /crm/configuracoes/campos`: todos os campos ativos, inclusive ocultos, com `id`, `labelPadrao`, `visibilidade` por contexto e `capacidades`.
   - `PUT /crm/configuracoes/campos/:id`: `{ label?, obrigatorio?, visibilidade? }` parcial; `label: null` volta ao nome padrão.
@@ -215,6 +232,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - `POST /crm/configuracoes/campos/ordem/padrao`.
 
   Escrita só DONO/MASTER; o papel é conferido antes da flag.
+
 - **Regras de capacidade no back** (`services/configuracoes-campos.service.js`):
   - **Ocultar:** só campo com `canHide`. A Camada 1 abriu para `fonteLead`, `tags` e `ultimaInteracaoEm`; `nome`, `email`, `telefone` e `status` nunca somem.
   - **Obrigatoriedade:** obrigatoriedade fixa (`nome`/`email`/`telefone`) não muda, e campo obrigatório precisa aparecer em `create_form`.
@@ -233,6 +251,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Desvio:** o Zod gerado pelo resolver (pendente desde 1.6) ficou de fora outra vez. A validação por tipo agora é única (`tipos-campo.service.js`) e compartilhada por form, PUT, import e filtro, o que cobre o objetivo; a geração de schema Zod em si volta a ser avaliada no M8 (regras condicionais).
 
 ### M3. Listas configuráveis (flag `crm.listas`)
+
 **Objetivo:** fechar a lacuna 4 (Status, Origem, Motivo de perda, Tipos de atividade, Tags).
 
 - **3.1 Schema.**
@@ -256,12 +275,14 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - A cor da opção aparece no `OpcaoBadge` sem quebrar o contraste AA (texto com contraste calculado).
 
 **Checklist**
+
 - [x] Os leads existentes continuam válidos depois da migration, sem nenhum `UPDATE` em `leads` (conferido no dev: todo valor gravado tem opção).
 - [x] Renomear "Perdido" não quebra a regra baseada em `category` (teste em `listas.service.test.js`).
 - [x] Excluir uma opção em uso → 409; desativar → some dos seletores (`opcoes`), mas o lead antigo exibe com selo (`opcoesLista[].ativo`). O selo em si é do front.
 - [x] Filtro, import e export funcionam com opção nova e com opção inativa (filtro por key; import casa key ou nome de opção ativa; export sai com o nome).
 
 **Como ficou (back, 2026-10-15):**
+
 - **Schema (migration 0016):** `crm_option` com `kind` direto (sem `crm_option_list`): `status`, `fonte_lead`, `motivo_perda`, `tipo_atividade`, `tag`. Colunas `key` (imutável, é o que o lead grava), `label`, `color` (`#RRGGBB`), `position`, `category` (`aberto`/`ganho`/`perdido`, obrigatória em status e proibida no resto, por CHECK) e `is_active`; `unique(tenant_id, kind, key)`, RLS e FK de tenant. Os CHECKs de `status`, `fonte_lead` e `motivo_perda` em `leads` saíram.
 - **Seed (reconcile, passo `listas-padrao`):** cada lista semeada uma vez. Tenant com lead recebe as keys antigas (as dos CHECKs, mais "Negociação"); sem lead, os padrões da spec. Tipo de atividade entra com o padrão da spec pra todos. Toda tag já gravada num lead vira opção com key = label = o texto. O resolver semeia de forma preguiçosa se faltar lista.
 - **Resolver:** `obterSchemaCampos` traz `listas` (por kind, com as inativas) no mesmo cache dos campos. Campo de lista (`status`, `fonteLead`, `motivoPerda`, `tags`) sai com `lista`, `opcoes` (keys ativas; `null` em tags, que é livre) e `opcoesLista` (`key, label, color, category, ativo`).
@@ -279,6 +300,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 **Pronto quando:** o DONO cria uma origem nova com cor, renomeia um status e desativa um motivo de perda, e nenhum lead antigo é afetado.
 
 ### M4. Layout do lead (flag `crm.layout`)
+
 **Objetivo:** fechar a lacuna 3 (identificador, subtítulo, destaques, seções e colunas padrão).
 
 - **4.1 Schema.**
@@ -302,12 +324,14 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - colunas padrão quando não há view salva.
 
 **Checklist**
+
 - [x] Teste da mescla padrão + override, incluindo um campo novo adicionado depois do override (unidade e contra o banco).
 - [x] Buscar `12.345.678/0001-90` e `12345678000190` acha o mesmo lead (teste contra o banco; com 20 mil leads simulados, a busca usa `idx_leads_cnpj_digitos` e leva 0,1 ms).
 - [x] O fallback do identificador é testado (função pura no front, fechado em 2026-10-16). No back, identificador oculto na ficha já cai pro Nome.
 - [x] O OPERADOR não consegue alterar o padrão do tenant (403).
 
 **Como ficou (back, 2026-10-16):**
+
 - **Schema (migration 0017):** `crm_layout_config` (uma linha por tenant, `layout` JSONB) e `crm_user_layout_override` (por usuário, `layout` parcial + `padrao_visto`), as duas com RLS e FK. Índices de expressão `(tenant_id, regexp_replace(cnpj|cpf, '[^0-9]', '', 'g') text_pattern_ops)`.
 - **Formato:** `{ identificador, subtitulo[] (até 2), destaques[] (até 4), secoes[{ nome, campos[] }] (até 12), colunas[] }`. Cada item é o `id` de um campo em `crm_field` ou uma referência fixa: `lead.valor`, `lead.responsavel`, `lead.estagio`, `lead.criadoEm` (dados do lead que não são campos configuráveis; sem elas, os destaques de exemplo da spec não seriam configuráveis). Sem FK pros ids: referência a campo inativo ou oculto some na leitura.
 - **Layout inicial (sem linha no banco):** identificador Nome; subtítulo E-mail · Telefone; destaques Valor, Status, Responsável; sem seções; colunas Telefone, E-mail, Status, Origem, Valor, Responsável, Criado em.
@@ -322,6 +346,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 **Pronto quando:** um tenant B2B configura CNPJ como identificador e Empresa · Cidade como subtítulo, e a tabela, o drawer e a busca refletem isso.
 
 ### M5. Arquivar e lixeira (flag `crm.arquivo`)
+
 **Objetivo:** fechar a lacuna 5 na parte destrutiva.
 
 - **5.1 Schema.** `leads.archived_at` e `leads.deleted_at`, com índices parciais.
@@ -338,11 +363,13 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - filtro "Arquivados".
 
 **Checklist**
+
 - [x] Teste de que nenhuma consulta de lead vaza registro com `deleted_at` (busca, detalhe, export, import/dedup e contagem) — contra o banco, em `campos.db.test.js`.
 - [x] Restaurar dentro de 30 dias funciona; o job purga depois do prazo (teste com relógio falso em `arquivo.service.test.js` e, contra o banco, um lead excluído há 31 dias).
 - [x] Ninguém consegue editar um lead da lixeira (404).
 
 **Como ficou (back, 2026-10-16):**
+
 - **Schema (migration 0018):** `leads.archived_at` e `leads.deleted_at` (TIMESTAMP em UTC, como `created_at`), com os índices parciais `idx_leads_arquivados` e `idx_leads_lixeira`. Um lead pode ter os dois: restaurar devolve ele pra onde estava (arquivado continua arquivado).
 - **Situação na busca:** `situacao: ativos | arquivados | lixeira` (padrão `ativos`) em `POST /crm/leads/search`, nas views salvas e no export. `montarCondicoes` sempre começa pela condição da situação, então nenhuma consulta montada ali vê a lixeira sem pedir. A lixeira só mostra o que foi excluído há menos de 30 dias: passado o prazo, o lead já conta como apagado mesmo antes da purga. Lead da lixeira volta com `purga_em`.
 - **Fora da busca:** detalhe e edição ignoram a lixeira (404); a deduplicação do import também (reimportar cria de novo), mas conta o arquivado, que continua existindo. Export da lixeira → 400.
@@ -362,6 +389,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 > **Ordem ajustada em relação à spec:** atividades e histórico vêm **antes** da inatividade, porque "atividade concluída" e "atividade agendada pausa" são os gatilhos do contador. A timeline completa na interface continua na Fase 3 (M16).
 
 ### M6. Atividades e histórico (base) (flag `crm.atividades`)
+
 **Objetivo:** criar a entidade de atividade e o registro de mudanças, que a inatividade, a mesclagem e a timeline usam.
 
 - **6.1 Schema.**
@@ -374,11 +402,13 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **6.3 Front (mínimo).** Aba "Atividades" no drawer: registrar, concluir e listar.
 
 **Checklist**
+
 - [x] Concluir uma atividade e mudar o status atualizam `ultima_interacao_em`; editar um campo não atualiza (D1 fechada; teste contra o banco).
 - [x] O evento guarda o antes e o depois só dos campos alterados (teste puro do diff e contra o banco). Na leitura, campo desligado ou personalizado excluído sai do diff; a permissão por campo entra quando o M13 existir.
 - [x] RLS e isolamento verdes (`rls-coverage`, `fk-coverage`, `tenant-isolation`).
 
 **Como ficou (back, 2026-10-16):**
+
 - **Schema (migration 0019):** `crm_activity` (`tipo` = key da lista `tipo_atividade`, sem FK como as outras listas; `agendada_para`, `concluida_em`, `autor_id` com `ON DELETE SET NULL`) e `crm_lead_event` (`tipo`, `autor_id`, `diff` JSONB, `created_at`). As duas com RLS, FK pro tenant e `ON DELETE CASCADE` no lead (a purga do M5 leva junto).
 - **Append-only:** trigger barra qualquer UPDATE em `crm_lead_event`, menos mudar `lead_id` (a mesclagem do M7 vai mover o histórico) e `autor_id` virar NULL (usuário removido). DELETE fica liberado porque o evento segue o lead. **Não reaproveita o `audit_log` do core:** lá o DELETE é bloqueado por trigger, o que impediria a purga, e o formato é de ação administrativa, não de diff.
 - **Eventos gravados:** `criado`, `atualizado`, `arquivado`, `desarquivado`, `excluido`, `restaurado`, sempre na mesma transação da mudança e com o autor do token. São gravados com ou sem a flag; ela só libera a leitura. Arquivar o que já está arquivado não grava nada. O import ainda não grava evento (autor = sistema): fica pro M7, que refaz a deduplicação do import.
@@ -388,6 +418,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Rotas (`controllers/atividades.controller.js`), atrás de `crm.atividades`, qualquer papel:** `GET /crm/atividades/tipos` (opções da lista pro formulário, sem depender de `crm.listas`, pedido do front em 2026-10-16), `GET`/`POST /crm/leads/:id/atividades`, `PUT`/`DELETE /crm/leads/:id/atividades/:atividadeId` e `GET /crm/leads/:id/historico?pagina=&tamanho=`.
 
 ### M7. Duplicidade e mesclagem (flag `crm.duplicidade`)
+
 **Objetivo:** detecção configurável de duplicados e uma mesclagem segura.
 
 - **7.1 Schema.** `crm_duplicate_rule` (campos, método e ação `warn`/`block`, ativo).
@@ -398,6 +429,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - CPF só com dígitos.
 
   Colunas ou índices normalizados para a busca ser rápida.
+
 - **7.3 Aplicação:** `POST`/`PUT` de lead (`warn` devolve candidatos, `block` responde 409 com o id existente), import (o Revisar marca a linha com pular, atualizar ou criar, substituindo o dedup fixo de hoje) e API.
 - **7.4 Mesclagem.**
   - `POST /crm/leads/merge` com escolha campo a campo.
@@ -410,12 +442,14 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Fase 2 da spec:** o "Nome + Empresa aproximado" (`pg_trgm`) fica atrás de um spike de extensão no Neon.
 
 **Checklist**
+
 - [x] Os normalizadores têm casos com e sem 9 e com e sem +55 (teste puro; as mesmas chaves conferidas contra as funções SQL no dev).
 - [x] `warn` deixa salvar (confirmando), e `block` impede e devolve o existente pra abrir (teste contra o banco).
 - [x] A mesclagem é atômica; se falhar no meio, nada muda (teste contra o banco: falha de FK depois de mover as atividades, e as atividades continuam no secundário).
 - [x] O import aplica as mesmas regras do form (teste contra o banco, incluindo a linha repetida dentro da planilha).
 
 **Como ficou (back, 2026-10-16):**
+
 - **Decisões do usuário:** "Avisar" pede confirmação antes de salvar (409 `DUPLICATE_WARNING`; salva com `ignorarDuplicados: true`); mesclar é só DONO/MASTER.
 - **Normalização no banco (migration 0020):** colunas geradas `dedup_email`, `dedup_telefone`, `dedup_cnpj`, `dedup_cpf`, com as funções IMMUTABLE `modulo_crm.chave_telefone` (só dígitos, sem 55, sem o 9 depois do DDD) e `chave_documento` (maiúsculas, só [0-9A-Z]: cobre o CNPJ alfanumérico). Índices `(tenant_id, coluna) WHERE deleted_at IS NULL`. Os normalizadores JS (`chaveTelefone`, `chaveDocumento`, `chaveEmail` em `tipos-campo.service.js`) são o espelho das funções SQL.
 - **Busca do identificador (M4):** CNPJ/CPF passam a usar `dedup_cnpj`/`dedup_cpf` com prefixo; os índices de dígitos da 0017 saíram. Com isso o CNPJ alfanumérico também é encontrado.
@@ -426,6 +460,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Rotas:** `GET`/`PUT /crm/configuracoes/duplicidade` (leitura qualquer papel, escrita DONO/MASTER) e `POST /crm/leads/merge` (DONO/MASTER), atrás de `crm.duplicidade`; `POST /crm/leads/duplicados` e o `ignorarDuplicados` não dependem da flag.
 
 ### M8. Obrigatoriedade por status e condicional (flag `crm.regras`)
+
 **Objetivo:** "Status = Perdido exige Motivo" e regras do tipo "se A = X, B fica visível e/ou obrigatório".
 
 - **8.1** `crm_field_rule` com `kind` (`required`, `required_from_status`, `conditional`) e `condition` em JSONB, aproveitando o mesmo vocabulário de operadores do filtro.
@@ -434,11 +469,13 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **8.4** Seed da regra `category=lost → motivo_perda obrigatório`, desligável.
 
 **Checklist**
+
 - [x] Teste de que uma edição parcial que muda só o status para "lost" sem motivo dá 400 (unidade e contra o banco).
 - [x] O import reporta a linha que viola uma regra (validate: nos `erros` da linha; worker: atualização que violaria vai pro relatório e não grava).
 - [ ] A função pura do front e o avaliador do back concordam: os casos estão em `src/modules/nucleo/crm/testing/regras.casos.json` (17 casos, o back roda todos); falta o front rodar os mesmos.
 
 **Como ficou (back, 2026-10-17):**
+
 - **Decisões do usuário:** "obrigatório a partir de um status" = conjunto de status e/ou categorias (não depende da ordem dos status); uma condição por regra (pra "A ou C", duas regras pro mesmo campo).
 - **Schema (migration 0022):** `crm_field_rule` já existia vazia desde a 0012 (filha de `crm_field`, FK composta com o tenant); ganhou `effect`, `system_key` (unique parcial) e `updated_at`, e o CHECK de `kind` ficou só com `required_from_status` e `conditional` (o "sempre obrigatório" é o `is_required` do M2). Nomes de coluna em inglês, como a 0012.
 - **Formato:** `required_from_status` → `condition = { status?, categorias? }`, efeito sempre obrigatório; `conditional` → `condition = { campoId, operador, valor? }` com os operadores do filtro (validados pelo mesmo `montarCondicoes`), `effect = { obrigatorio?, visivel? }`. O alvo é `field_id` (o `id` de `crm_field`, mesma referência do layout).
@@ -449,6 +486,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Rotas (`controllers/regras.controller.js`), atrás de `crm.regras`:** `GET /crm/configuracoes/regras` (qualquer papel — o formulário usa) e `POST`/`PUT /:id`/`DELETE /:id` (DONO/MASTER). **Ajuste do plano:** `GET /crm/leads/fields` NÃO ganhou `regras` (mudaria a resposta de lista pra objeto e quebraria o contrato); o formulário lê `GET /crm/configuracoes/regras`.
 
 ### M9. Lead esfriando (flag `crm.inatividade`)
+
 **Objetivo:** dias até esfriar por status, com indicador, filtro, view e notificação.
 
 - **9.1** `crm_stale_config` (opção de status → dias), com seed das sugestões e `won`/`lost` desligados.
@@ -462,11 +500,13 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - Job diário às 8h no fuso do tenant (M0.3).
 
 **Checklist**
+
 - [x] Teste do cálculo com relógio falso: limite, pausa por atividade agendada e reset por interação (contra o banco, `agora` como parâmetro).
 - [x] O job é idempotente e não gera notificação duplicada no mesmo dia (unique `chave_dedup` com a data local; teste contra o banco roda duas vezes).
 - [x] O filtro "Esfriando" e o indicador batem com o cálculo do back (mesma expressão SQL; o front não calcula, só mostra `esfriando_desde`).
 
 **Como ficou (back, 2026-10-17):**
+
 - **Decisões do usuário:** calcular na leitura (sem `stale_since` gravado nem job de recálculo); resumo diário por usuário ("Você tem N leads esfriando"); os esfriando sem responsável (ou com responsável desativado) vão num resumo à parte pros DONOs ativos. D5 fechada: notificação no core.
 - **Desvios do plano/spec:** (1) **nada é gravado no lead** — `esfriando_desde` sai de uma expressão SQL única (`adapters/crm-inatividade.sql.js`), usada pela leitura, pelo filtro e pelo job; mudar o relógio, os dias ou uma atividade vale na próxima leitura. (2) **Sem `crm_stale_config`**: os dias são a coluna `crm_option.stale_days` (só status; NULL = desligado), que segue o ciclo de vida da opção.
 - **Regra:** base = `GREATEST(COALESCE(ultima_interacao_em, created_at), maior agendada_para de atividade em aberto)`; esfria em base + dias. Atividade agendada pausa até a data dela; vencida e não concluída conta dali. Reset = o que já mexe em `ultima_interacao_em` (status, atividade concluída — D1). Arquivado/lixeira nunca esfria.
@@ -478,6 +518,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Job:** `crm-manutencao`, de hora em hora (`notificar-esfriando`); em cada tenant com o CRM ativo e a flag ligada, só a partir das 8h no fuso do tenant; chave `crm.esfriando:<data local>`. O worker despacha os jobs da fila pelo nome.
 
 ### M10. Edição em massa, exportação aprimorada e primeiro nome (flag `crm.massa`)
+
 - **10.1** Checkbox na tabela e uma barra de ações: Status, Responsável, Tags e Origem (depois, campos personalizados).
   - No back, `PATCH /crm/leads/bulk` com limite de quantidade.
   - Aplica regras, permissões e duplicidade por lead e devolve um relatório por id.
@@ -486,12 +527,14 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **10.4** Confirmar que o passo Mapear lista os campos personalizados como destino (já lista; cobrir com teste).
 
 **Checklist**
+
 - [x] O relatório da edição em massa traz o resultado parcial (teste com um lead atualizado, um barrado por regra do M8, um inexistente e um sem mudança).
-- [x] O CSV sai no formato do Excel pt-BR (separador `;`, BOM UTF-8, vírgula decimal; teste do conteúdo). *(abrir no Excel de verdade fica pro smoke)*
+- [x] O CSV sai no formato do Excel pt-BR (separador `;`, BOM UTF-8, vírgula decimal; teste do conteúdo). _(abrir no Excel de verdade fica pro smoke)_
 - [x] O primeiro nome é derivado e editável (teste puro das regras e do import).
 - [x] O passo Mapear lista os personalizados como destino (teste em `import.service.test.js`).
 
 **Como ficou (back, 2026-10-18):**
+
 - **Decisões do usuário:** edição em massa pra qualquer papel (como o PUT de um lead); tags por adicionar/remover; seleção por lista de ids; o primeiro nome segue o Nome enquanto não foi editado à mão.
 - **Edição em massa (`PATCH /crm/leads/bulk`, atrás de `crm.massa`):** `{ ids (1–200, sem repetir), alteracoes: { status?, fonteLead?, usuarioResponsavelId? (null tira), tags?: { adicionar?, remover? } } }`, com ao menos uma alteração. Lead a lead, em sequência, pelo mesmo `atualizarLeadExistente` do PUT: opção ativa, responsável ativo, regras do M8 contra o lead resultante, histórico e `ultima_interacao_em` ao mudar o status. Só o que muda em cada lead entra; lead sem mudança sai `inalterado` (sem evento). Tags: as do lead menos as removidas (casadas por key, nome ou slug, `buscadorDeTags`) mais as adicionadas; texto novo vira tag como no formulário. Resposta 200 sempre: `{ total, atualizados, inalterados, falhas, resultados: [{ id, ok, inalterado?, erro?: { statusCode, code, message, fields? } }] }`. Erro que não é de negócio sai genérico (`INTERNAL_ERROR`), sem detalhe de banco. Cada lead tem as suas transações: não é tudo-ou-nada.
 - **Export (`POST /crm/export`):** `formato: xlsx | csv` (padrão xlsx) e `colunas` opcional. Sem `colunas`, saem as da tabela do usuário: o identificador e as colunas do layout efetivo (M4). Com isso o export passou a aceitar `usuarioResponsavelId` (nome do responsável ativo; desativado sai vazio) e `createdAt`, só no export (não viram destino do import). CSV: `;`, BOM UTF-8, CRLF, vírgula decimal, data `dd/mm/aaaa` (UTC, como o .xlsx) e apóstrofo na frente de texto que começa com `= + - @` (CSV injection). **Flag `crm.massa` desligada:** `csv` → 403 e `colunas` continua obrigatória (400). "Herdar a view" é do front: ele já manda os filtros da view; o back só resolve as colunas.
@@ -499,6 +542,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Mapear (10.4):** já listava os personalizados; agora tem teste.
 
 ### M11. Tipos de campo avançados e enriquecimento por CNPJ (flag `crm.cnpj`)
+
 - **11.1 Tipos "Depois" da spec:**
   - CPF, CNPJ (incluindo o alfanumérico) e CEP, com máscara e dígito verificador;
   - endereço;
@@ -513,14 +557,16 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **11.4** Configuração: ligar e desligar, modo manual (lupa) ou automático, mapeamento entre dado da Receita e campo, e se sobrescreve. Cada consulta gera um evento na timeline (M6).
 
 **Checklist**
+
 - [x] O cache evita uma segunda chamada (teste com o provedor mockado; o TTL de 30 dias é conferido na leitura).
-- [x] O rate limit é respeitado: limiter do BullMQ no worker (`opcoesDoWorkerCnpj`, testado); 429 do provedor volta pra fila. *(o throttling em si é do BullMQ; conferir no smoke com Redis)*
+- [x] O rate limit é respeitado: limiter do BullMQ no worker (`opcoesDoWorkerCnpj`, testado); 429 do provedor volta pra fila. _(o throttling em si é do BullMQ; conferir no smoke com Redis)_
 - [x] "Não sobrescrever" é respeitado (só preenche o vazio; teste do job).
 - [x] Uma falha do provedor não bloqueia salvar o lead (fila e provedor fora do ar testados; a lupa responde 503 e o formulário segue).
 
 **Decisões do usuário (2026-10-18):** entregar em duas etapas (M11a tipos, M11b CNPJ); CPF/CNPJ/CEP nativos passam a usar os tipos novos só nas escritas novas; só BrasilAPI por enquanto (adapter pronto pra um pago); a lupa mostra os dados e o usuário aplica no formulário.
 
 **Como ficou (M11a, back, 2026-10-18):** tipos novos, sem migration (`crm_field.type` não tem CHECK) e **sem flag** (como os tipos MVP do M2).
+
 - **Formato gravado:**
   - `cpf`: 11 dígitos, com dígito verificador; todos iguais é recusado.
   - `cnpj`: 14 caracteres `[0-9A-Z]` (`chaveDocumento`), DV do CNPJ alfanumérico (caractere = ASCII − 48, pesos 2–9); cobre o numérico.
@@ -541,6 +587,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Fora do escopo:** o identificador do layout continua só com personalizado de texto.
 
 **Como ficou (M11b, back, 2026-10-18):** enriquecimento por CNPJ, atrás de `crm.cnpj`. Migration 0025 **ainda não aplicada**.
+
 - **Schema (migration 0025):**
   - `crm_cnpj_cache`, **global**: sem `tenant_id` nem RLS, de propósito (dado público; o mesmo CNPJ em dois tenants custa uma chamada). Guarda `cnpj` (PK), `status` (`ok`/`nao_encontrado`), `dados` no formato do CRM, `provedor` e `consultado_em`. TTL de 30 dias conferido na leitura. A exceção está documentada na migration e travada em `rls-coverage.test.js` (a tabela tem que continuar sem `tenant_id`).
   - `crm_cnpj_config`: uma linha por tenant, com RLS. Guarda `ativo`, `modo` (`manual`/`automatico`), `sobrescrever` e `mapeamento` (dado da Receita → `id` do campo). Sem linha = padrão: ligado, manual, sem sobrescrever; razão social → Empresa, município → Cidade, UF, CEP, endereço → Endereço, só os campos ativos no tenant.
@@ -580,6 +627,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 ## FASE 3: Gestão e diferenciais
 
 ### M12. Distribuição automática (flag `crm.distribuicao`)
+
 - **12.1** `crm_assignment_rule` (posição, condições em JSONB, usuário ou grupo de destino, ativo) e grupos de usuários: `crm_user_group` e membros, com gestão na própria subseção.
 - **12.2 Motor.**
   - A primeira regra que casar decide; um grupo distribui em round-robin.
@@ -591,11 +639,13 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **12.4** Notificação in-app ao responsável, reaproveitando M9.4.
 
 **Checklist:** um teste de concorrência (N criações simultâneas) mostra distribuição justa e sem colisão; a regra que atribuiu aparece no lead; o import em lote distribui de forma consistente.
+
 - [x] Concorrência contra o banco: 30 escolhas simultâneas entre 3 usuários dão 10 para cada, e 4 leads simultâneos numa regra de grupo de 2 dão 2 para cada (`services/distribuicao.db.test.js`, `CRM_DB_TESTS=1`).
 - [x] A regra que atribuiu aparece no lead (`atribuido_por_regra_id`/`_nome`) e no evento `criado` do histórico.
 - [x] Import: 6 linhas com 3 vendedores dão 2 para cada, com uma notificação agrupada por pessoa (`import.service.test.js`).
 
 **Como ficou (back, 2026-10-18):**
+
 - **Decisões do usuário:**
   - o ponteiro do rodízio fica no banco, não no Redis;
   - a presença (`usuarios.presenca`) fica de fora, porque nada a atualiza hoje; só usuários inativos são pulados;
@@ -624,15 +674,18 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - Limites: 50 regras, 10 condições, 30 grupos e 200 membros.
 
 ### M13. Permissão por campo (flag `crm.permissoes`)
+
 - **13.1** `crm_field_permission` (campo, papel e acesso `edit`/`view`/`hidden`). DONO e MASTER ignoram.
 - **13.2** Aplicada no **back**: leitura remove o oculto, escrita rejeita o "só ver" e o oculto, e filtro, export, import, histórico e edição em massa respeitam a regra.
 - **13.3** No front, campo "só ver" desabilitado com tooltip "sem permissão"; campo oculto não aparece.
 
 **Checklist:** o OPERADOR não consegue filtrar, exportar nem ver no histórico um campo oculto (testes de rota para cada caminho).
+
 - [x] Contra o banco (`services/permissoes.db.test.js`): com e-mail e um personalizado ocultos e o status "só ver", o OPERADOR não lê esses campos (lead, lista, `GET /crm/leads/fields`), não filtra pelo oculto (400), não acha o lead pelo e-mail na busca textual, não vê o diff no histórico e recebe 403 ao gravar (PUT, criação, massa). O DONO vê e edita tudo.
 - [x] Export e import seguem só de gestão: o OPERADOR recebe 403 (teste de rota). As rotas passam o papel do token aos services (testes de rota).
 
 **Como ficou (back, 2026-10-26):**
+
 - **Decisões do usuário:** campo "só ver" ou oculto no payload dá **403** e não é ignorado em silêncio. A obrigatoriedade (do campo ou de regra do M8) **não vale** para quem não pode preencher. **Só o OPERADOR** é configurável, porque DONO e MASTER ignoram. A API já recebe o papel como chave, para quando surgirem papéis novos.
 - **Schema:** sem migration. A `crm_field_permission` da 0012 é usada como estava, com uma linha só para restrição (sem linha = `edit`). As permissões entram no schema de campos em cache e são invalidadas ao salvar.
 - **Mecanismo:** um "schema do papel" (`services/permissoes.service.js`, `obterSchemaDoPapel`), que é o schema de campos sem os ocultos e com `acesso` em cada campo. Leitura (`formatarLead`), filtro (`camposParaFiltro`), histórico (`descritorDoDiff`) e layout já tiravam campo desligado a partir do schema, e o oculto sai pelo mesmo caminho. As rotas passam `{ papel: role }` e, sem papel (worker, job, import, export), vale o schema inteiro. Sem a flag `crm.permissoes`, ninguém é restringido.
@@ -651,16 +704,19 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Testes:** os testes unitários que montam o schema real mockam agora os adapters de regras, permissões e usuários. Antes, alguns iam ao banco de verdade sem ninguém notar (ficaram lentos e instáveis com o Neon lento). Os arquivos `*.db.test.js` usam um timeout maior.
 
 ### M14. Pontuação de leads (flag `crm.score`)
+
 - **14.1** `crm_score_rule` (condição e pontos, podendo ser negativos) e `crm_score_band` (mínimo, máximo, rótulo e cor), com seed Frio, Morno e Quente.
 - **14.2** O score fica em `leads.score`, recalculado ao salvar o lead e em job assíncrono quando as regras mudam.
 - **14.3** O score vira campo do sistema: tabela, filtros, destaque e faixa colorida.
 - O score de engajamento (com decaimento) fica para quando existir o omnichannel.
 
 **Checklist:** o recálculo em lote é idempotente e mostra progresso; o filtro por faixa funciona; uma regra com campo inativo é ignorada.
+
 - [x] Contra o banco (`services/score.db.test.js`): salvar as regras recalcula todos com o progresso gravado, e recalcular de novo dá os mesmos scores. O filtro `faixaScore` traz cada lead na sua faixa. Uma regra sobre um campo personalizado excluído deixa de contar no recálculo.
 - [x] Testes puros (`score.service.test.js`): a expressão (uma parcela por regra, condições com E, regra inválida ignorada), as faixas (inclusivas, sobreposição dá 400) e o cursor do recálculo em lotes.
 
 **Como ficou (back, 2026-10-26):**
+
 - **Decisões do usuário:**
   - o score **reusa o campo nativo "Lead score"** (`lead_score`, Camada 2), em vez da coluna nova `leads.score` do plano. Com a flag `crm.score` ele é calculado e só leitura (`leadScore` no payload dá 400, inclusive mapeado no import); sem a flag, volta a ser manual;
   - o recálculo é **na hora, em lotes**, e não num job da fila, para funcionar sem Redis;
@@ -676,6 +732,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
   - em todos os leads do tenant ao salvar as regras, ou por `POST …/score/recalcular`.
 
   O recálculo do score não gera evento no histórico, porque não é edição de ninguém.
+
 - **Recálculo em lote:** lotes de 500 por ordem de id (cursor = último id), incluindo arquivados e lixeira. O progresso (`total`, `processados`, `emAndamento`, `concluidoEm`) fica em `crm_score_config` e aparece no GET enquanto roda. O PUT responde no fim.
 - **Faixas:** em `crm_score_band`, com `chave` (o que o filtro usa), `rotulo`, `minimo`/`maximo` inclusivos (nulo = sem limite) e `cor`. Sem linha no tenant, valem as padrão do código, sem seed no banco. Faixas sobrepostas ou com chave repetida dão 400; um buraco entre faixas é permitido.
 - **Filtro:** `faixaScore: '<chave>'` na busca (`POST /crm/leads/search`), que também vale para o export. Exige a flag. O filtro numérico normal do campo Lead score continua funcionando.
@@ -689,16 +746,19 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Fora do M14:** o score de engajamento com decaimento, como o plano prevê. Mudanças fora das regras (excluir um campo, mudar o tipo de um campo) só refletem no próximo recálculo.
 
 ### M15. Base legal LGPD (flag `crm.lgpd`)
+
 - **15.1** Colunas `legal_basis`, `legal_basis_at`, `origem_registro` e `marketing_opt_out_at` como campos do sistema.
 - **15.2** Configuração: base legal padrão e obrigatoriedade, com um passo extra no wizard de import (base legal do lote).
 - **15.3** Pedido do titular: **anonimizar** o lead, preservando estatísticas (sem PII nos eventos), com registro de auditoria.
 
 **Checklist:** a anonimização remove PII do lead, das atividades e dos eventos; o import exige a base legal quando ela é obrigatória.
+
 - [x] Contra o banco (`services/lgpd.db.test.js`): o lead manual nasce com origem "manual", a base padrão e as datas; trocar a base renova a data e limpar a apaga; o opt-out guarda a data da primeira vez; obrigatória sem base nem padrão dá 400 no campo.
 - [x] Import (`import.service.test.js`): a base do lote preenche as linhas sem a sua; obrigatória sem coluna e sem lote barra o mapeamento; os campos carimbados ficam fora do mapeamento.
 - [x] Anonimização contra o banco (`lgpd.db.test.js`): o lead e o mesclado nele perdem a PII (o personalizado numérico fica), a atividade e o histórico ficam sem vestígio, o evento `anonimizado` e a linha na `audit_log` existem. Editar ou anonimizar de novo dá 409. DELETE direto na `audit_log` continua barrado, e a exclusão do tenant no fim passa.
 
 **Como ficou (back, 2026-10-27):**
+
 - **Decisões do usuário:**
   - anonimizar **mantém o lead** para as estatísticas e apaga só o que identifica a pessoa. É irreversível, e o lead fica travado para edição;
   - a origem do registro é **automática e só leitura**;
@@ -728,6 +788,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - **Migrations:** 0028 (CRM) traz as colunas, `anonimizado_em`, a constraint "e-mail ou telefone", `crm_lgpd_config` (com RLS) e o trigger do histórico; 0029 (core) traz o trigger da `audit_log`.
 
 ### M16. Timeline completa no drawer (flag `crm.timeline`)
+
 - **16.1** O drawer ganha as abas Dados · Atividades · Histórico.
   - O Histórico mostra mudanças de campo com autor e data, mesclagens, enriquecimentos e atribuições, a partir de `crm_lead_event`.
 - **16.2** Paginação, filtro por tipo de evento e respeito à permissão de campo.
@@ -740,6 +801,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 - [x] `permissoes.db.test.js`: a edição que só mexeu em campos ocultos para o OPERADOR some da lista e do total dele.
 
 **Como ficou (back, 2026-10-27):**
+
 - **Decisões do usuário:** o filtro é **por categoria**, e uma edição **só de campos ocultos** para o papel **some** do histórico, na lista e no total.
 - **O que já existia** (M6/M13): `GET /crm/leads/:id/historico` paginado, com autor e data, e o diff já sem os campos desligados ou ocultos para o papel. A M16 no back só acrescenta o que faltava; as abas são trabalho do front.
 - **Categorias** (`CATEGORIAS_EVENTO`). Um evento pode ter mais de uma:
@@ -761,6 +823,7 @@ O que está abaixo descreve a etapa intermediária, mantida como histórico.
 ## Revisão pós-M2 (2026-10-15)
 
 Correções:
+
 - **Lint de fronteira:** não checava nenhum import por alias `#...`. Resolver próprio (`eslint-resolver-imports.cjs`); o core deixou de importar `#api/modules.js` e lê os módulos de `#core/registry/modules.js` (preenchido por `buildApp`).
 - **Admin:** recontratar módulo desligado (soft-disable) agora reativa a linha e reconcilia.
 - **FKs de tenant (migration 0015):** 22 tabelas de módulo estavam sem FK pra `tenants` no banco de dev (drift: a 0001 usa `CREATE TABLE IF NOT EXISTS` sobre tabelas que já existiam). FK criada em todas (`NOT VALID` onde há órfão); `fk_leads_usuario_responsavel` virou `ON DELETE SET NULL`. Teste `pnpm test:fk-coverage`.
@@ -776,6 +839,7 @@ Organização: regras por tipo num arquivo só (`tipos-campo.service.js`: valida
 Pendente/decisão do usuário: órfãos no dev (2 leads, 4 estágios sem tenant; FK `NOT VALID` até limpar); juntar 0012–0015 só se a produção ainda não tiver aplicado nenhuma delas; Prettier adiado (reformataria o repositório inteiro).
 
 ## Decisões abertas (resolver no início do marco indicado)
+
 - ~~**D1 (M6):** editar um campo reseta o contador de inatividade? A spec propõe que não.~~ **Fechada em 2026-10-16:** não reseta, como a spec propõe. Contam como interação: concluir uma atividade e mudar o status (ver M6, "Como ficou").
 - **D2 (M1):** o contrato HTTP continua com `chave` e só o armazenamento usa `id`? Recomendado: sim.
 - ~~**D3 (M3):** adotar ou não a FK composta, depois do spike no Neon.~~ **Fechada em 2026-10-15:** não adotada (ver M3, "Como ficou").
@@ -784,6 +848,7 @@ Pendente/decisão do usuário: órfãos no dev (2 leads, 4 estágios sem tenant;
 - **D6 (Kanban):** o identificador do layout vale nos cards do Kanban quando a integração existir. Fica fora deste plano.
 
 ## Verificação geral
+
 - **Gates de cada marco** (seção Convenções) e o checklist do marco, todos marcados.
 - **Teste de paridade em M1** antes de ligar a flag para qualquer tenant real.
 - **Smoke test** de cada marco em branch de dev do Neon, com DONO e OPERADOR, cobrindo o caminho feliz e cada regra de bloqueio.

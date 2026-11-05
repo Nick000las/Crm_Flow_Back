@@ -18,7 +18,10 @@ const { imports = {} } = JSON.parse(fs.readFileSync(path.join(raiz, 'package.jso
 
 /** `[prefixo, destino]`, ex: `['#core/', './src/core/']` — só padrões com `*`. */
 const mapeamentos = Object.entries(imports)
-  .filter(([padrao, destino]) => padrao.endsWith('*') && typeof destino === 'string' && destino.endsWith('*'))
+  .filter(
+    ([padrao, destino]) =>
+      padrao.endsWith('*') && typeof destino === 'string' && destino.endsWith('*'),
+  )
   .map(([padrao, destino]) => [padrao.slice(0, -1), destino.slice(0, -1)]);
 
 exports.interfaceVersion = 2;

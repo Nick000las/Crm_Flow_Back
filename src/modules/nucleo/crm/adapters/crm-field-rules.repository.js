@@ -58,9 +58,8 @@ export function semearRegrasDoSistema(tenantId, regras) {
  * @returns {Promise<RegraLinha>}
  */
 export function inserirRegra(tenantId, regra) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       INSERT INTO modulo_crm.crm_field_rule (tenant_id, field_id, kind, condition, effect, is_active, position)
       VALUES (
         ${tenantId}::uuid, ${regra.campoId}::uuid, ${regra.kind}, ${JSON.stringify(regra.condicao)}::jsonb,
@@ -81,9 +80,8 @@ export function inserirRegra(tenantId, regra) {
  * @returns {Promise<RegraLinha | undefined>}
  */
 export function atualizarRegra(tenantId, regraId, regra) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE modulo_crm.crm_field_rule
       SET field_id = ${regra.campoId}::uuid, condition = ${JSON.stringify(regra.condicao)}::jsonb,
           effect = ${JSON.stringify(regra.efeito)}::jsonb, is_active = ${regra.ativo}, updated_at = now()
@@ -99,9 +97,8 @@ export function atualizarRegra(tenantId, regraId, regra) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function excluirRegra(tenantId, regraId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       DELETE FROM modulo_crm.crm_field_rule
       WHERE id = ${regraId}::uuid AND tenant_id = ${tenantId}::uuid AND system_key IS NULL
       RETURNING id

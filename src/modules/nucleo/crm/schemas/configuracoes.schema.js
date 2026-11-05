@@ -2,14 +2,18 @@ import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
 import { LISTA_CONTEXTOS_VISIBILIDADE } from '../constants.js';
 
-const booleano = (mensagem) => z.boolean({ required_error: mensagem, invalid_type_error: mensagem });
+const booleano = (mensagem) =>
+  z.boolean({ required_error: mensagem, invalid_type_error: mensagem });
 
 // Parcial: só os contextos enviados mudam. `.strict()` rejeita contexto
 // inventado em vez de ignorá-lo em silêncio.
 const visibilidadeSchema = z
   .object(
     Object.fromEntries(
-      LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [contexto, booleano('Informe verdadeiro ou falso').optional()]),
+      LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [
+        contexto,
+        booleano('Informe verdadeiro ou falso').optional(),
+      ]),
     ),
   )
   .strict();
@@ -33,7 +37,8 @@ export const atualizarCampoBodySchema = z
   })
   .strict()
   .refine(
-    (body) => body.label !== undefined || body.obrigatorio !== undefined || body.visibilidade !== undefined,
+    (body) =>
+      body.label !== undefined || body.obrigatorio !== undefined || body.visibilidade !== undefined,
     'Informe ao menos uma mudança',
   );
 
@@ -48,7 +53,9 @@ export const reordenarCamposBodySchema = z.object({
 export const contextoCamposQuerySchema = z.object({
   contexto: z
     .enum(/** @type {[string, ...string[]]} */ ([...LISTA_CONTEXTOS_VISIBILIDADE]), {
-      errorMap: () => ({ message: `Contexto deve ser um de: ${LISTA_CONTEXTOS_VISIBILIDADE.join(', ')}` }),
+      errorMap: () => ({
+        message: `Contexto deve ser um de: ${LISTA_CONTEXTOS_VISIBILIDADE.join(', ')}`,
+      }),
     })
     .optional(),
 });

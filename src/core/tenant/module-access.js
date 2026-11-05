@@ -75,7 +75,10 @@ export async function listarTenantsAtivosDoModulo(moduleKey) {
     select: { tenantId: true, tenant: { select: { fusoHorario: true } } },
     orderBy: { tenantId: 'asc' },
   });
-  return linhas.map((linha) => ({ tenantId: linha.tenantId, fusoHorario: linha.tenant.fusoHorario }));
+  return linhas.map((linha) => ({
+    tenantId: linha.tenantId,
+    fusoHorario: linha.tenant.fusoHorario,
+  }));
 }
 
 /**

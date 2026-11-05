@@ -39,16 +39,28 @@ const ID_SCORE = '00000000-0000-0000-0000-0000000000a3';
 const CAMPOS = [
   { id: ID_ORIGEM, chave: 'fonteLead', label: 'Origem', tipo: 'texto', camada: CAMADA.CAMADA_1 },
   { id: ID_SALARIO, chave: 'salario', label: 'Salário', tipo: 'numero', camada: CAMADA.CAMADA_3 },
-  { id: ID_SCORE, chave: 'leadScore', label: 'Lead score', tipo: 'numero', camada: CAMADA.CAMADA_2 },
+  {
+    id: ID_SCORE,
+    chave: 'leadScore',
+    label: 'Lead score',
+    tipo: 'numero',
+    camada: CAMADA.CAMADA_2,
+  },
 ];
 // O score liga o campo Lead score ao salvar; aqui ele já está visível.
 vi.mock('./configuracoes-campos.service.js', () => ({
   listarConfiguracaoCampos: vi.fn(async () => [
-    { id: ID_SCORE, chave: 'leadScore', visibilidade: { create_form: false, detail: true, table: true, filter: true } },
+    {
+      id: ID_SCORE,
+      chave: 'leadScore',
+      visibilidade: { create_form: false, detail: true, table: true, filter: true },
+    },
   ]),
   atualizarConfiguracaoCampo: vi.fn(),
 }));
-vi.mock('./field-schema.service.js', () => ({ obterSchemaCampos: vi.fn(async () => ({ campos: CAMPOS })) }));
+vi.mock('./field-schema.service.js', () => ({
+  obterSchemaCampos: vi.fn(async () => ({ campos: CAMPOS })),
+}));
 
 const PONTOS_SITE = 20;
 const PONTOS_SALARIO = 15;
@@ -108,10 +120,18 @@ describe('expressaoDoScore', () => {
       expressaoDoScore(
         [
           { ativo: false, pontos: 1, condicoes: [] },
-          { ativo: true, pontos: 1, condicoes: [{ campoId: '00000000-0000-0000-0000-00000000dead', operador: 'vazio' }] },
+          {
+            ativo: true,
+            pontos: 1,
+            condicoes: [{ campoId: '00000000-0000-0000-0000-00000000dead', operador: 'vazio' }],
+          },
           { ativo: true, pontos: 1, condicoes: [{ campoId: ID_SCORE, operador: 'nao_vazio' }] },
           // "contem" não vale pra número (o tipo do campo mudou depois de salvar a regra).
-          { ativo: true, pontos: 1, condicoes: [{ campoId: ID_SALARIO, operador: 'contem', valor: 'x' }] },
+          {
+            ativo: true,
+            pontos: 1,
+            condicoes: [{ campoId: ID_SALARIO, operador: 'contem', valor: 'x' }],
+          },
         ],
         CAMPOS,
       ),
@@ -132,7 +152,10 @@ describe('faixas', () => {
   });
 
   it('nunca salvou: o filtro usa as padrão; faixa inexistente → 400 em filtros.faixaScore', async () => {
-    expect(await limitesDaFaixa(TENANT, 'morno')).toEqual({ minimo: INICIO_MORNO, maximo: FIM_MORNO });
+    expect(await limitesDaFaixa(TENANT, 'morno')).toEqual({
+      minimo: INICIO_MORNO,
+      maximo: FIM_MORNO,
+    });
     await expect(limitesDaFaixa(TENANT, 'fervendo')).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { 'filtros.faixaScore': [expect.any(String)] },
@@ -140,7 +163,11 @@ describe('faixas', () => {
   });
 
   it('normalizarFaixas: chave do rótulo; sobreposição ou chave repetida → 400; buraco pode', () => {
-    expect(normalizarFaixas([{ rotulo: 'Muito Quente', minimo: INICIO_MUITO_QUENTE, maximo: null, cor: '#000000' }])[0].chave).toBe('muito_quente');
+    expect(
+      normalizarFaixas([
+        { rotulo: 'Muito Quente', minimo: INICIO_MUITO_QUENTE, maximo: null, cor: '#000000' },
+      ])[0].chave,
+    ).toBe('muito_quente');
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
     expect(() =>
       normalizarFaixas([
@@ -166,15 +193,32 @@ describe('faixas', () => {
 describe('recalcularTodos', () => {
   it('em lotes pelo cursor do último id, gravando o progresso; flag desligada não faz nada', async () => {
     const lote = LIMITES_SCORE.LOTE_RECALCULO;
-    const primeiro = Array.from({ length: lote }, (_, i) => `id-${String(i).padStart(DIGITOS_ID, '0')}`);
+    const primeiro = Array.from(
+      { length: lote },
+      (_, i) => `id-${String(i).padStart(DIGITOS_ID, '0')}`,
+    );
     contarLeadsDoTenant.mockResolvedValue(lote + 1);
     gravarScoresEmLote.mockResolvedValueOnce(primeiro).mockResolvedValueOnce(['id-9999']);
 
     expect(await recalcularTodos(TENANT)).toEqual({ total: lote + 1, processados: lote + 1 });
     expect(gravarScoresEmLote).toHaveBeenNthCalledWith(1, TENANT, expect.anything(), null, lote);
-    expect(gravarScoresEmLote).toHaveBeenNthCalledWith(SEGUNDO_LOTE, TENANT, expect.anything(), primeiro.at(-1), lote);
-    expect(registrarProgressoRecalculo).toHaveBeenCalledWith(TENANT, { total: lote + 1, processados: 0, inicio: true });
-    expect(registrarProgressoRecalculo).toHaveBeenLastCalledWith(TENANT, { total: lote + 1, processados: lote + 1, concluido: true });
+    expect(gravarScoresEmLote).toHaveBeenNthCalledWith(
+      SEGUNDO_LOTE,
+      TENANT,
+      expect.anything(),
+      primeiro.at(-1),
+      lote,
+    );
+    expect(registrarProgressoRecalculo).toHaveBeenCalledWith(TENANT, {
+      total: lote + 1,
+      processados: 0,
+      inicio: true,
+    });
+    expect(registrarProgressoRecalculo).toHaveBeenLastCalledWith(TENANT, {
+      total: lote + 1,
+      processados: lote + 1,
+      concluido: true,
+    });
 
     vi.clearAllMocks();
     featureAtiva.mockResolvedValue(false);
@@ -189,7 +233,10 @@ describe('salvarConfigScore', () => {
   it('grava e recalcula todos', async () => {
     contarLeadsDoTenant.mockResolvedValue(0);
     gravarScoresEmLote.mockResolvedValue([]);
-    await salvarConfigScore(TENANT, { regras: [{ nome: ' Site ', ativo: true, pontos: PONTOS_SITE, condicoes: [doSite] }], faixas });
+    await salvarConfigScore(TENANT, {
+      regras: [{ nome: ' Site ', ativo: true, pontos: PONTOS_SITE, condicoes: [doSite] }],
+      faixas,
+    });
     expect(salvarRegrasEFaixas).toHaveBeenCalledWith(
       TENANT,
       [{ nome: 'Site', ativo: true, pontos: PONTOS_SITE, condicoes: [doSite] }],
@@ -199,12 +246,22 @@ describe('salvarConfigScore', () => {
   });
 
   it('400: campo inexistente, sobre o próprio score, operador que não serve, condições demais', async () => {
-    const tentar = (condicoes) => salvarConfigScore(TENANT, { regras: [{ nome: 'R', ativo: true, pontos: 1, condicoes }], faixas });
+    const tentar = (condicoes) =>
+      salvarConfigScore(TENANT, {
+        regras: [{ nome: 'R', ativo: true, pontos: 1, condicoes }],
+        faixas,
+      });
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
     await expect(tentar([{ campoId: TENANT, operador: 'vazio' }])).rejects.toMatchObject(invalido);
-    await expect(tentar([{ campoId: ID_SCORE, operador: 'nao_vazio' }])).rejects.toMatchObject(invalido);
-    await expect(tentar([{ campoId: ID_SALARIO, operador: 'contem', valor: 'x' }])).rejects.toMatchObject(invalido);
-    await expect(tentar(Array.from({ length: ACIMA_DO_LIMITE }, () => doSite))).rejects.toMatchObject(invalido);
+    await expect(tentar([{ campoId: ID_SCORE, operador: 'nao_vazio' }])).rejects.toMatchObject(
+      invalido,
+    );
+    await expect(
+      tentar([{ campoId: ID_SALARIO, operador: 'contem', valor: 'x' }]),
+    ).rejects.toMatchObject(invalido);
+    await expect(
+      tentar(Array.from({ length: ACIMA_DO_LIMITE }, () => doSite)),
+    ).rejects.toMatchObject(invalido);
     expect(salvarRegrasEFaixas).not.toHaveBeenCalled();
   });
 });

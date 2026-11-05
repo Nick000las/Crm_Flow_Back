@@ -18,7 +18,9 @@ import { obterPermissoes, salvarPermissoes } from '../services/permissoes.servic
  * @param {import('fastify').FastifyInstance} app
  */
 export function registrarRotasPermissoes(app) {
-  const apenasGestao = { preHandler: [requireRole(PAPEIS_GESTAO), exigirFeature(CRM_FEATURES.PERMISSOES)] };
+  const apenasGestao = {
+    preHandler: [requireRole(PAPEIS_GESTAO), exigirFeature(CRM_FEATURES.PERMISSOES)],
+  };
 
   app.get('/crm/configuracoes/permissoes', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;

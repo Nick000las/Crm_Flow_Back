@@ -29,7 +29,8 @@ const TENANT_CLIENT_PROIBIDO = {
 
 const FASTIFY_PROIBIDO = {
   name: 'fastify',
-  message: 'Só `controllers/` e `#api/` conhecem Fastify. services/ e adapters/ são HTTP-agnósticos.',
+  message:
+    'Só `controllers/` e `#api/` conhecem Fastify. services/ e adapters/ são HTTP-agnósticos.',
 };
 
 /**

@@ -21,9 +21,8 @@ import { getTenantClient } from '#core/db/tenantClient.js';
  * @returns {Promise<CacheCnpj | undefined>}
  */
 export function buscarCacheCnpj(tenantId, cnpj, validoDesde) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT cnpj, status, dados, provedor, consultado_em FROM modulo_crm.crm_cnpj_cache
       WHERE cnpj = ${cnpj} AND consultado_em >= ${validoDesde}
     `.then((linhas) => linhas[0]),
@@ -53,9 +52,8 @@ export function gravarCacheCnpj(tenantId, { cnpj, status, dados, provedor }) {
  * @returns {Promise<ConfigCnpjGravada | undefined>}
  */
 export function buscarConfigCnpj(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT ativo, modo, sobrescrever, mapeamento FROM modulo_crm.crm_cnpj_config
       WHERE tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[0]),

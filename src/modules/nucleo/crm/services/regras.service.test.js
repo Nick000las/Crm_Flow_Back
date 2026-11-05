@@ -10,7 +10,9 @@ import { CAMADA } from '../constants.js';
 import { criarRegra, editarRegra, removerRegra } from './regras.service.js';
 
 // M13: sem permissão configurada (o schema real lê a tabela).
-vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
+  listarPermissoes: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn(),
   inserirRegra: vi.fn(async () => ({ id: 'nova' })),
@@ -19,8 +21,22 @@ vi.mock('../adapters/crm-field-rules.repository.js', () => ({
 }));
 
 const CAMPOS = [
-  { id: 'f-motivo', chave: 'motivoPerda', label: 'Motivo da perda', tipo: 'selecao', camada: CAMADA.CAMADA_2, opcoes: ['preco'] },
-  { id: 'f-fonte', chave: 'fonteLead', label: 'Origem', tipo: 'selecao', camada: CAMADA.CAMADA_1, opcoes: ['evento', 'site'] },
+  {
+    id: 'f-motivo',
+    chave: 'motivoPerda',
+    label: 'Motivo da perda',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_2,
+    opcoes: ['preco'],
+  },
+  {
+    id: 'f-fonte',
+    chave: 'fonteLead',
+    label: 'Origem',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_1,
+    opcoes: ['evento', 'site'],
+  },
   { id: 'f-empresa', chave: 'empresa', label: 'Empresa', tipo: 'texto', camada: CAMADA.CAMADA_2 },
 ];
 vi.mock('./field-schema.service.js', () => ({
@@ -60,7 +76,11 @@ beforeEach(() => {
 
 describe('criarRegra', () => {
   it('por status: normaliza e o efeito é sempre obrigatório', async () => {
-    await criarRegra(TENANT, { kind: 'required_from_status', campoId: 'f-empresa', condicao: { status: ['proposta', 'proposta'] } });
+    await criarRegra(TENANT, {
+      kind: 'required_from_status',
+      campoId: 'f-empresa',
+      condicao: { status: ['proposta', 'proposta'] },
+    });
     expect(inserirRegra).toHaveBeenCalledWith(TENANT, {
       kind: 'required_from_status',
       campoId: 'f-empresa',
@@ -71,22 +91,49 @@ describe('criarRegra', () => {
   });
 
   it.each([
-    ['campo alvo inexistente', { kind: 'required_from_status', campoId: 'f-x', condicao: { categorias: ['perdido'] } }, 'campo ativo'],
-    ['sem status nem categoria', { kind: 'required_from_status', campoId: 'f-empresa', condicao: {} }, 'ao menos um status'],
-    ['status que não existe', { kind: 'required_from_status', campoId: 'f-empresa', condicao: { status: ['xpto'] } }, 'não é uma opção'],
+    [
+      'campo alvo inexistente',
+      { kind: 'required_from_status', campoId: 'f-x', condicao: { categorias: ['perdido'] } },
+      'campo ativo',
+    ],
+    [
+      'sem status nem categoria',
+      { kind: 'required_from_status', campoId: 'f-empresa', condicao: {} },
+      'ao menos um status',
+    ],
+    [
+      'status que não existe',
+      { kind: 'required_from_status', campoId: 'f-empresa', condicao: { status: ['xpto'] } },
+      'não é uma opção',
+    ],
     [
       'operador que não serve pro tipo',
-      { kind: 'conditional', campoId: 'f-empresa', condicao: { campoId: 'f-fonte', operador: 'entre', valor: { de: 1 } }, efeito: { obrigatorio: true } },
+      {
+        kind: 'conditional',
+        campoId: 'f-empresa',
+        condicao: { campoId: 'f-fonte', operador: 'entre', valor: { de: 1 } },
+        efeito: { obrigatorio: true },
+      },
       'Operador',
     ],
     [
       'condição sobre o próprio campo',
-      { kind: 'conditional', campoId: 'f-empresa', condicao: { campoId: 'f-empresa', operador: 'vazio' }, efeito: { obrigatorio: true } },
+      {
+        kind: 'conditional',
+        campoId: 'f-empresa',
+        condicao: { campoId: 'f-empresa', operador: 'vazio' },
+        efeito: { obrigatorio: true },
+      },
       'outro campo',
     ],
     [
       'efeito vazio',
-      { kind: 'conditional', campoId: 'f-empresa', condicao: { campoId: 'f-fonte', operador: 'vazio' }, efeito: {} },
+      {
+        kind: 'conditional',
+        campoId: 'f-empresa',
+        condicao: { campoId: 'f-fonte', operador: 'vazio' },
+        efeito: {},
+      },
       'obrigatório e/ou visível',
     ],
   ])('%s → 400', async (_nome, input, mensagem) => {
@@ -98,21 +145,36 @@ describe('criarRegra', () => {
 describe('editar e remover', () => {
   it('regra do sistema: liga/desliga sim; mudar conteúdo → 409; excluir → 409', async () => {
     await editarRegra(TENANT, 'r-sistema', { ativo: false });
-    expect(atualizarRegra).toHaveBeenCalledWith(TENANT, 'r-sistema', expect.objectContaining({ ativo: false, campoId: 'f-motivo' }));
+    expect(atualizarRegra).toHaveBeenCalledWith(
+      TENANT,
+      'r-sistema',
+      expect.objectContaining({ ativo: false, campoId: 'f-motivo' }),
+    );
 
-    await expect(editarRegra(TENANT, 'r-sistema', { campoId: 'f-empresa' })).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
-    await expect(removerRegra(TENANT, 'r-sistema')).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
+    await expect(editarRegra(TENANT, 'r-sistema', { campoId: 'f-empresa' })).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.CONFLICT,
+    });
+    await expect(removerRegra(TENANT, 'r-sistema')).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.CONFLICT,
+    });
     expect(excluirRegra).not.toHaveBeenCalled();
   });
 
   it('regra do usuário: edição mescla com a atual e revalida; inexistente → 404', async () => {
-    await editarRegra(TENANT, 'r-usuario', { condicao: { campoId: 'f-fonte', operador: 'e_um_dos', valor: ['evento', 'site'] } });
+    await editarRegra(TENANT, 'r-usuario', {
+      condicao: { campoId: 'f-fonte', operador: 'e_um_dos', valor: ['evento', 'site'] },
+    });
     expect(atualizarRegra).toHaveBeenCalledWith(
       TENANT,
       'r-usuario',
-      expect.objectContaining({ campoId: 'f-empresa', efeito: { obrigatorio: true, visivel: false } }),
+      expect.objectContaining({
+        campoId: 'f-empresa',
+        efeito: { obrigatorio: true, visivel: false },
+      }),
     );
-    await expect(editarRegra(TENANT, 'r-x', { ativo: true })).rejects.toThrow('Regra não encontrada');
+    await expect(editarRegra(TENANT, 'r-x', { ativo: true })).rejects.toThrow(
+      'Regra não encontrada',
+    );
     await expect(removerRegra(TENANT, 'r-usuario')).resolves.toEqual({ removido: true });
   });
 });

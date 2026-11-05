@@ -85,9 +85,8 @@ export function listarNotificacoesDoUsuario(tenantId, usuarioId, { limite, offse
  * @returns {Promise<Notificacao | undefined>}
  */
 export function marcarNotificacaoLida(tenantId, usuarioId, notificacaoId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE notificacoes SET lida_em = COALESCE(lida_em, now())
       WHERE id = ${notificacaoId}::uuid AND tenant_id = ${tenantId}::uuid AND usuario_id = ${usuarioId}::uuid
       RETURNING ${COLUNAS}

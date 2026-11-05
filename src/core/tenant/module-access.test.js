@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
-import { moduloAtivo, invalidarAcessoModulo, exigirModuloAtivo, listarModulosAtivos } from './module-access.js';
+import {
+  moduloAtivo,
+  invalidarAcessoModulo,
+  exigirModuloAtivo,
+  listarModulosAtivos,
+} from './module-access.js';
 
 const findMany = vi.fn();
 
@@ -72,7 +77,9 @@ describe('exigirModuloAtivo', () => {
 
   it('deixa passar quando o módulo está ativo', async () => {
     findMany.mockResolvedValue(contratados(['crm']));
-    await expect(exigirModuloAtivo('crm')({ tenantContext: { tenantId: TENANT_A } })).resolves.toBeUndefined();
+    await expect(
+      exigirModuloAtivo('crm')({ tenantContext: { tenantId: TENANT_A } }),
+    ).resolves.toBeUndefined();
   });
 });
 

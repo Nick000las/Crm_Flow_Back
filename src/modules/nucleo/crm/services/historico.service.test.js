@@ -5,14 +5,24 @@ import { listarEventosDoLead } from '../adapters/crm-lead-events.repository.js';
 import { garantirFeature } from '#core/tenant/feature-flags.js';
 import { buscarNomesDeUsuarios } from '../adapters/usuarios.repository.js';
 import { CAMADA } from '../constants.js';
-import { categoriasDoEvento, diffDoLead, listarHistorico, visiveisDoSchema } from './historico.service.js';
+import {
+  categoriasDoEvento,
+  diffDoLead,
+  listarHistorico,
+  visiveisDoSchema,
+} from './historico.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 
 vi.mock('../adapters/leads.repository.js', () => ({ buscarLeadPorId: vi.fn() }));
 vi.mock('../adapters/crm-lead-events.repository.js', () => ({ listarEventosDoLead: vi.fn() }));
 vi.mock('./field-schema.service.js', () => ({ obterSchemaCampos: vi.fn() }));
-vi.mock('../adapters/usuarios.repository.js', () => ({ buscarNomesDeUsuarios: vi.fn(async () => new Map()) }));
-vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn(), garantirFeature: vi.fn() }));
+vi.mock('../adapters/usuarios.repository.js', () => ({
+  buscarNomesDeUsuarios: vi.fn(async () => new Map()),
+}));
+vi.mock('#core/tenant/feature-flags.js', () => ({
+  featureAtiva: vi.fn(),
+  garantirFeature: vi.fn(),
+}));
 
 const ID_SEGMENTO = '11111111-1111-1111-1111-111111111111';
 const ID_EXCLUIDO = '22222222-2222-2222-2222-222222222222';
@@ -59,7 +69,11 @@ describe('diffDoLead', () => {
     expect(diffDoLead(LEAD, depois)).toEqual([
       { campo: 'status', antes: 'novo', depois: 'ganho' },
       { campo: 'tags', antes: ['vip'], depois: ['vip', 'b2b'] },
-      { campo: 'dataConversao', antes: '2026-10-01T00:00:00.000Z', depois: '2026-10-16T00:00:00.000Z' },
+      {
+        campo: 'dataConversao',
+        antes: '2026-10-01T00:00:00.000Z',
+        depois: '2026-10-16T00:00:00.000Z',
+      },
       { campo: 'valor', antes: VALOR_ANTES, depois: VALOR_DEPOIS },
     ]);
   });
@@ -67,7 +81,13 @@ describe('diffDoLead', () => {
   it('estágio guarda o id e o nome do momento', () => {
     const depois = { ...LEAD, funil_estagio_id: 'estagio-2', estagio_nome: 'Proposta' };
     expect(diffDoLead(LEAD, depois)).toEqual([
-      { campo: 'funilEstagioId', antes: 'estagio-1', depois: 'estagio-2', antesNome: 'Contato', depoisNome: 'Proposta' },
+      {
+        campo: 'funilEstagioId',
+        antes: 'estagio-1',
+        depois: 'estagio-2',
+        antesNome: 'Contato',
+        depoisNome: 'Proposta',
+      },
     ]);
   });
 
@@ -80,9 +100,9 @@ describe('diffDoLead', () => {
 
   it('`ignorar` tira o campo do diff (interação atualizada pela regra de status)', () => {
     const depois = { ...LEAD, status: 'ganho', ultima_interacao_em: new Date() };
-    expect(diffDoLead(LEAD, depois, { ignorar: ['ultimaInteracaoEm'] }).map((entrada) => entrada.campo)).toEqual([
-      'status',
-    ]);
+    expect(
+      diffDoLead(LEAD, depois, { ignorar: ['ultimaInteracaoEm'] }).map((entrada) => entrada.campo),
+    ).toEqual(['status']);
   });
 });
 
@@ -92,7 +112,13 @@ describe('listarHistorico', () => {
     buscarLeadPorId.mockResolvedValue({ id: 'lead-1' });
     obterSchemaCampos.mockResolvedValue({
       campos: [
-        { chave: 'status', label: 'Situação', tipo: 'selecao', camada: CAMADA.CAMADA_1, opcoesLista: [{ key: 'ganho' }] },
+        {
+          chave: 'status',
+          label: 'Situação',
+          tipo: 'selecao',
+          camada: CAMADA.CAMADA_1,
+          opcoesLista: [{ key: 'ganho' }],
+        },
         { chave: 'segmento', label: 'Segmento', tipo: 'texto', camada: CAMADA.CAMADA_3 },
       ],
       definicoes: [
@@ -104,7 +130,9 @@ describe('listarHistorico', () => {
 
   it('lead na lixeira ou inexistente → 404', async () => {
     buscarLeadPorId.mockResolvedValueOnce(undefined);
-    await expect(listarHistorico('tenant-1', 'lead-x', PAGINA)).rejects.toThrow('Lead não encontrado');
+    await expect(listarHistorico('tenant-1', 'lead-x', PAGINA)).rejects.toThrow(
+      'Lead não encontrado',
+    );
   });
 
   it('descreve o diff pelo schema de agora; campo desligado ou excluído sai', async () => {
@@ -130,7 +158,11 @@ describe('listarHistorico', () => {
 
     const { itens, total } = await listarHistorico('tenant-1', 'lead-1', PAGINA);
     expect(total).toBe(1);
-    expect(itens[0]).toMatchObject({ id: 'ev-1', tipo: 'atualizado', autor: { id: 'u-1', nome: 'Dono' } });
+    expect(itens[0]).toMatchObject({
+      id: 'ev-1',
+      tipo: 'atualizado',
+      autor: { id: 'u-1', nome: 'Dono' },
+    });
     expect(itens[0].diff.map((entrada) => [entrada.chave, entrada.label])).toEqual([
       ['status', 'Situação'], // label renomeado vale pro histórico antigo
       ['segmento', 'Segmento'],
@@ -143,7 +175,12 @@ describe('listarHistorico', () => {
   it('responsável e personalizado "usuario" com nome; CNPJ do enriquecimento só pra quem vê o CNPJ', async () => {
     const DONO = '33333333-3333-3333-3333-333333333333';
     const VENDEDOR = '44444444-4444-4444-4444-444444444444';
-    buscarNomesDeUsuarios.mockResolvedValueOnce(new Map([[DONO, 'Dono'], [VENDEDOR, 'Vendedor']]));
+    buscarNomesDeUsuarios.mockResolvedValueOnce(
+      new Map([
+        [DONO, 'Dono'],
+        [VENDEDOR, 'Vendedor'],
+      ]),
+    );
     listarEventosDoLead.mockResolvedValueOnce({
       total: DOIS_EVENTOS,
       itens: [
@@ -153,20 +190,33 @@ describe('listarHistorico', () => {
           created_at: new Date(),
           diff: [{ campo: 'usuarioResponsavelId', antes: DONO, depois: VENDEDOR }],
         },
-        { id: 'ev-3', tipo: 'enriquecido', created_at: new Date(), diff: [], detalhes: { cnpj: '11222333000181', provedor: 'brasilapi' } },
+        {
+          id: 'ev-3',
+          tipo: 'enriquecido',
+          created_at: new Date(),
+          diff: [],
+          detalhes: { cnpj: '11222333000181', provedor: 'brasilapi' },
+        },
       ],
     });
 
     const { itens } = await listarHistorico('tenant-1', 'lead-1', PAGINA);
     expect(buscarNomesDeUsuarios).toHaveBeenCalledWith('tenant-1', [DONO, VENDEDOR]);
     expect(itens[0]).toMatchObject({ categorias: ['campos', 'atribuicao'] });
-    expect(itens[0].diff[0]).toMatchObject({ chave: 'usuarioResponsavelId', antesNome: 'Dono', depoisNome: 'Vendedor' });
+    expect(itens[0].diff[0]).toMatchObject({
+      chave: 'usuarioResponsavelId',
+      antesNome: 'Dono',
+      depoisNome: 'Vendedor',
+    });
     expect(itens[1].detalhes).toEqual({ provedor: 'brasilapi' }); // CNPJ não está nos campos ligados
     // A visibilidade vai pro SQL (edição só de campo oculto some do total).
     expect(listarEventosDoLead).toHaveBeenCalledWith(
       'tenant-1',
       'lead-1',
-      expect.objectContaining({ categorias: [], visiveis: expect.objectContaining({ campoIds: [ID_SEGMENTO] }) }),
+      expect.objectContaining({
+        categorias: [],
+        visiveis: expect.objectContaining({ campoIds: [ID_SEGMENTO] }),
+      }),
     );
     expect(garantirFeature).not.toHaveBeenCalled();
   });
@@ -180,15 +230,19 @@ describe('listarHistorico', () => {
 
 describe('timeline (M16): funções puras', () => {
   it('categoriasDoEvento: edição, troca de responsável, distribuição, mesclagem, ciclo', () => {
-    expect(categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'status' }] })).toEqual(['campos']);
-    expect(categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'usuarioResponsavelId' }] })).toEqual([
+    expect(categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'status' }] })).toEqual([
       'campos',
-      'atribuicao',
     ]);
-    expect(categoriasDoEvento({ tipo: 'criado', diff: [], detalhes: { distribuicao: { origem: 'regra' } } })).toEqual([
-      'atribuicao',
-      'ciclo',
-    ]);
+    expect(
+      categoriasDoEvento({ tipo: 'atualizado', diff: [{ campo: 'usuarioResponsavelId' }] }),
+    ).toEqual(['campos', 'atribuicao']);
+    expect(
+      categoriasDoEvento({
+        tipo: 'criado',
+        diff: [],
+        detalhes: { distribuicao: { origem: 'regra' } },
+      }),
+    ).toEqual(['atribuicao', 'ciclo']);
     expect(categoriasDoEvento({ tipo: 'mesclado', diff: [] })).toEqual(['mesclagem']);
     expect(categoriasDoEvento({ tipo: 'enriquecido', diff: [] })).toEqual(['enriquecimento']);
     expect(categoriasDoEvento({ tipo: 'anonimizado', diff: null })).toEqual(['ciclo']);

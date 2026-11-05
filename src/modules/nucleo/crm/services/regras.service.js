@@ -36,7 +36,10 @@ export async function listarRegras(tenantId) {
  * @param {NovaRegra} input
  */
 export async function criarRegra(tenantId, input) {
-  const [schema, existentes] = await Promise.all([obterSchemaCampos(tenantId), buscarRegrasDoTenant(tenantId)]);
+  const [schema, existentes] = await Promise.all([
+    obterSchemaCampos(tenantId),
+    buscarRegrasDoTenant(tenantId),
+  ]);
   if (existentes.length >= LIMITES_REGRAS.POR_TENANT) {
     throw erroDeValidacao('kind', `Use no máximo ${LIMITES_REGRAS.POR_TENANT} regras`);
   }
@@ -53,11 +56,16 @@ export async function criarRegra(tenantId, input) {
  * @param {Partial<NovaRegra>} input
  */
 export async function editarRegra(tenantId, regraId, input) {
-  const [schema, linhas] = await Promise.all([obterSchemaCampos(tenantId), buscarRegrasDoTenant(tenantId)]);
+  const [schema, linhas] = await Promise.all([
+    obterSchemaCampos(tenantId),
+    buscarRegrasDoTenant(tenantId),
+  ]);
   const atual = linhas.find((linha) => linha.id === regraId);
   if (!atual) throw regraNaoEncontrada();
 
-  const mudaConteudo = ['campoId', 'condicao', 'efeito'].some((chave) => input[chave] !== undefined);
+  const mudaConteudo = ['campoId', 'condicao', 'efeito'].some(
+    (chave) => input[chave] !== undefined,
+  );
   if (atual.system_key && mudaConteudo) {
     throw erroDeConflito('id', 'A regra do sistema só pode ser ligada ou desligada');
   }
@@ -88,7 +96,8 @@ export async function removerRegra(tenantId, regraId) {
   const linhas = await buscarRegrasDoTenant(tenantId);
   const atual = linhas.find((linha) => linha.id === regraId);
   if (!atual) throw regraNaoEncontrada();
-  if (atual.system_key) throw erroDeConflito('id', 'A regra do sistema não pode ser excluída; desligue-a');
+  if (atual.system_key)
+    throw erroDeConflito('id', 'A regra do sistema não pode ser excluída; desligue-a');
 
   await excluirRegra(tenantId, regraId);
   await invalidarSchemaCampos(tenantId);
@@ -127,18 +136,24 @@ function normalizarRegra({ kind, campoId, condicao, efeito }, { campos, listas }
     }
     const keys = new Set((listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => opcao.key));
     const desconhecido = status.find((key) => !keys.has(key));
-    if (desconhecido) throw erroDeValidacao('condicao', `"${desconhecido}" não é uma opção de Status`);
+    if (desconhecido)
+      throw erroDeValidacao('condicao', `"${desconhecido}" não é uma opção de Status`);
     const categoriaInvalida = categorias.find((categoria) => !CATEGORIAS.has(categoria));
-    if (categoriaInvalida) throw erroDeValidacao('condicao', `"${categoriaInvalida}" não é uma categoria de status`);
+    if (categoriaInvalida)
+      throw erroDeValidacao('condicao', `"${categoriaInvalida}" não é uma categoria de status`);
     return { kind, campoId, condicao: { status, categorias }, efeito: { obrigatorio: true } };
   }
 
   const campo = porId.get(condicao.campoId);
   if (!campo) throw erroDeValidacao('condicao', 'Escolha um campo ativo para a condição');
-  if (condicao.campoId === campoId) throw erroDeValidacao('condicao', 'A condição precisa ser sobre outro campo');
+  if (condicao.campoId === campoId)
+    throw erroDeValidacao('condicao', 'A condição precisa ser sobre outro campo');
   try {
     // Mesmas regras de operador × tipo e de formato de valor do filtro.
-    montarCondicoes({ filtros: [{ chave: campo.chave, operador: condicao.operador, valor: condicao.valor }] }, [campo]);
+    montarCondicoes(
+      { filtros: [{ chave: campo.chave, operador: condicao.operador, valor: condicao.valor }] },
+      [campo],
+    );
   } catch (erro) {
     throw erroDeValidacao('condicao', erro instanceof Error ? erro.message : 'Condição inválida');
   }
@@ -149,7 +164,12 @@ function normalizarRegra({ kind, campoId, condicao, efeito }, { campos, listas }
     throw erroDeValidacao('efeito', 'A regra precisa tornar o campo obrigatório e/ou visível');
   }
   const valor = ['vazio', 'nao_vazio'].includes(condicao.operador) ? undefined : condicao.valor;
-  return { kind, campoId, condicao: { campoId: condicao.campoId, operador: condicao.operador, valor }, efeito: { obrigatorio, visivel } };
+  return {
+    kind,
+    campoId,
+    condicao: { campoId: condicao.campoId, operador: condicao.operador, valor },
+    efeito: { obrigatorio, visivel },
+  };
 }
 
 function regraNaoEncontrada() {

@@ -10,9 +10,13 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   garantirScoreNaoEditado: vi.fn(),
 }));
 vi.mock('../adapters/leads.repository.js', () => ({ mesclarLeads: vi.fn() }));
-vi.mock('./leads.service.js', () => ({ buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })) }));
+vi.mock('./leads.service.js', () => ({
+  buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })),
+}));
 vi.mock('./field-schema.service.js', () => ({
-  obterSchemaCampos: vi.fn(async () => ({ definicoes: [{ id: 'id-segmento', chave: 'segmento' }] })),
+  obterSchemaCampos: vi.fn(async () => ({
+    definicoes: [{ id: 'id-segmento', chave: 'segmento' }],
+  })),
 }));
 
 const VALOR_PRINCIPAL = 100;
@@ -87,13 +91,21 @@ describe('montarMesclagem (pura)', () => {
 
 describe('mesclarLeads', () => {
   it('o mesmo lead dos dois lados → 400', async () => {
-    await expect(mesclarLeads('t', { principalId: 'a', secundarioId: 'a' })).rejects.toThrow('dois leads diferentes');
+    await expect(mesclarLeads('t', { principalId: 'a', secundarioId: 'a' })).rejects.toThrow(
+      'dois leads diferentes',
+    );
     expect(mesclarLeadsRepository).not.toHaveBeenCalled();
   });
 
   it('escolha do personalizado chega pela chave da API e vai pro repository pelo id', async () => {
-    mesclarLeadsRepository.mockImplementationOnce(async (_tenant, _ids, { montar }) => montar(PRINCIPAL, SECUNDARIO));
-    await mesclarLeads('t', { principalId: 'p', secundarioId: 's', escolhas: { segmento: 'secundario' } }, 'u-dono');
+    mesclarLeadsRepository.mockImplementationOnce(async (_tenant, _ids, { montar }) =>
+      montar(PRINCIPAL, SECUNDARIO),
+    );
+    await mesclarLeads(
+      't',
+      { principalId: 'p', secundarioId: 's', escolhas: { segmento: 'secundario' } },
+      'u-dono',
+    );
 
     const [, ids, opcoes] = mesclarLeadsRepository.mock.calls[0];
     expect(ids).toEqual({ principalId: 'p', secundarioId: 's' });
@@ -103,6 +115,8 @@ describe('mesclarLeads', () => {
 
   it('algum dos dois inexistente ou na lixeira → 404', async () => {
     mesclarLeadsRepository.mockResolvedValueOnce(undefined);
-    await expect(mesclarLeads('t', { principalId: 'p', secundarioId: 's' })).rejects.toThrow('Lead não encontrado');
+    await expect(mesclarLeads('t', { principalId: 'p', secundarioId: 's' })).rejects.toThrow(
+      'Lead não encontrado',
+    );
   });
 });

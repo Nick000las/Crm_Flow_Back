@@ -34,7 +34,8 @@ const RETORNO_DEFINICAO_SQL = Prisma.raw(
  *
  * @param {string[] | null | undefined} opcoes
  */
-const opcoesJson = (opcoes) => (opcoes === null || opcoes === undefined ? null : JSON.stringify(opcoes));
+const opcoesJson = (opcoes) =>
+  opcoes === null || opcoes === undefined ? null : JSON.stringify(opcoes);
 
 /**
  * Todos os campos do tenant (ativos e inativos), com a visibilidade por
@@ -119,9 +120,8 @@ function inserirVisibilidade(tx, tenantId, fieldId, visivel) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function buscarPersonalizadoAtivoPorChave(tenantId, chave) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id FROM modulo_crm.crm_field
       WHERE tenant_id = ${tenantId}::uuid AND chave = ${chave} AND system_key IS NULL AND is_active
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
@@ -135,7 +135,10 @@ export function buscarPersonalizadoAtivoPorChave(tenantId, chave) {
  * @param {{ chave: string, label: string, tipo: string, opcoes: string[] | null, obrigatorio: boolean, ordem: number }} campo
  * @returns {Promise<FieldDefinition>}
  */
-export function criarCampoPersonalizado(tenantId, { chave, label, tipo, opcoes, obrigatorio, ordem }) {
+export function criarCampoPersonalizado(
+  tenantId,
+  { chave, label, tipo, opcoes, obrigatorio, ordem },
+) {
   return getTenantClient(tenantId, async (tx) => {
     const [criado] = await tx.$queryRaw`
       INSERT INTO modulo_crm.crm_field
@@ -159,9 +162,8 @@ export function criarCampoPersonalizado(tenantId, { chave, label, tipo, opcoes, 
  * @returns {Promise<FieldDefinition | undefined>}
  */
 export function editarCampoPersonalizado(tenantId, fieldId, { label, tipo, opcoes, obrigatorio }) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE modulo_crm.crm_field
       SET label = ${label}, type = ${tipo}, options = ${opcoesJson(opcoes)}::jsonb,
           is_required = ${obrigatorio}, updated_at = now()
@@ -180,9 +182,8 @@ export function editarCampoPersonalizado(tenantId, fieldId, { label, tipo, opcoe
  * @returns {Promise<boolean>}
  */
 export function existeValorDoCampo(tenantId, fieldId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT EXISTS (
         SELECT 1 FROM modulo_crm.leads
         WHERE tenant_id = ${tenantId}::uuid AND custom_fields ? ${fieldId}
@@ -201,9 +202,8 @@ export function existeValorDoCampo(tenantId, fieldId) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function desativarCampoPersonalizado(tenantId, fieldId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE modulo_crm.crm_field
       SET is_active = false, updated_at = now()
       WHERE id = ${fieldId}::uuid AND tenant_id = ${tenantId}::uuid AND system_key IS NULL AND is_active
@@ -221,7 +221,11 @@ export function desativarCampoPersonalizado(tenantId, fieldId) {
  * @param {string} fieldId
  * @param {{ label?: string, isRequired?: boolean, visibilidade?: Record<string, boolean> }} mudancas
  */
-export function atualizarCampoConfigurado(tenantId, fieldId, { label, isRequired, visibilidade = {} }) {
+export function atualizarCampoConfigurado(
+  tenantId,
+  fieldId,
+  { label, isRequired, visibilidade = {} },
+) {
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
       UPDATE modulo_crm.crm_field

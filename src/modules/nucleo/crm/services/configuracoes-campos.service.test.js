@@ -16,13 +16,17 @@ import {
 import { invalidarSchemaCampos } from './field-schema.service.js';
 
 // Listas (M3): tenant já semeado com as keys antigas.
-vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
+vi.mock('../adapters/crm-options.repository.js', async () =>
+  (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes(),
+);
 // Regras (M8) e permissões (M13): o schema real lê as duas tabelas — sem mock, o teste ia ao banco.
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn().mockResolvedValue([]),
   semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
 }));
-vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
+  listarPermissoes: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../adapters/crm-fields.repository.js', () => ({
   buscarCamposDoTenant: vi.fn(),
   atualizarCampoConfigurado: vi.fn(),
@@ -39,7 +43,8 @@ const ID_PERSONALIZADO = '99999999-9999-9999-9999-999999999999';
 const ID_ANTIGO = '88888888-8888-8888-8888-888888888888';
 const POSICAO_PERSONALIZADO = 50;
 
-const todos = (visivel) => Object.fromEntries(LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [contexto, visivel]));
+const todos = (visivel) =>
+  Object.fromEntries(LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [contexto, visivel]));
 const idDoSistema = (systemKey) => `id-${systemKey}`;
 
 function linhas() {
@@ -126,7 +131,9 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
   it('campo que não pode ser ocultado → 400, sem gravar', async () => {
     await expect(
       atualizarConfiguracaoCampo(TENANT, idDoSistema('nome'), { visibilidade: { filter: false } }),
-    ).rejects.toMatchObject({ fields: { visibilidade: [expect.stringContaining('não pode ser ocultado')] } });
+    ).rejects.toMatchObject({
+      fields: { visibilidade: [expect.stringContaining('não pode ser ocultado')] },
+    });
     expect(atualizarCampoConfigurado).not.toHaveBeenCalled();
   });
 
@@ -136,19 +143,30 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
     ).rejects.toMatchObject({ fields: { obrigatorio: expect.any(Array) } });
 
     await atualizarConfiguracaoCampo(TENANT, idDoSistema('status'), { obrigatorio: true });
-    expect(atualizarCampoConfigurado).toHaveBeenCalledWith(TENANT, idDoSistema('status'), expect.objectContaining({
-      isRequired: true,
-    }));
+    expect(atualizarCampoConfigurado).toHaveBeenCalledWith(
+      TENANT,
+      idDoSistema('status'),
+      expect.objectContaining({
+        isRequired: true,
+      }),
+    );
   });
 
   it('obrigatório fora do formulário de criação → 400 (nas duas ordens)', async () => {
     await expect(
-      atualizarConfiguracaoCampo(TENANT, ID_PERSONALIZADO, { obrigatorio: true, visibilidade: { create_form: false } }),
-    ).rejects.toMatchObject({ fields: { visibilidade: [expect.stringContaining('formulário de criação')] } });
+      atualizarConfiguracaoCampo(TENANT, ID_PERSONALIZADO, {
+        obrigatorio: true,
+        visibilidade: { create_form: false },
+      }),
+    ).rejects.toMatchObject({
+      fields: { visibilidade: [expect.stringContaining('formulário de criação')] },
+    });
 
     // `nome` é obrigatório e nem pode ser ocultado — o erro de ocultar vem antes.
     await expect(
-      atualizarConfiguracaoCampo(TENANT, idDoSistema('nome'), { visibilidade: { create_form: false } }),
+      atualizarConfiguracaoCampo(TENANT, idDoSistema('nome'), {
+        visibilidade: { create_form: false },
+      }),
     ).rejects.toThrow();
   });
 
@@ -165,13 +183,17 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
   });
 
   it('personalizado não tem "padrão" pra voltar', async () => {
-    await expect(atualizarConfiguracaoCampo(TENANT, ID_PERSONALIZADO, { label: null })).rejects.toMatchObject({
+    await expect(
+      atualizarConfiguracaoCampo(TENANT, ID_PERSONALIZADO, { label: null }),
+    ).rejects.toMatchObject({
       fields: { label: expect.any(Array) },
     });
   });
 
   it('campo inexistente ou inativo → 404', async () => {
-    await expect(atualizarConfiguracaoCampo(TENANT, 'inativo', { label: 'x' })).rejects.toMatchObject({
+    await expect(
+      atualizarConfiguracaoCampo(TENANT, 'inativo', { label: 'x' }),
+    ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
   });
@@ -188,7 +210,9 @@ describe('ordem', () => {
   it('lista incompleta, repetida ou com id estranho → 400, sem gravar', async () => {
     const ids = (await listarConfiguracaoCampos(TENANT)).map((campo) => campo.id);
     for (const invalida of [ids.slice(1), [...ids, ids[0]], [...ids.slice(1), 'outro-tenant']]) {
-      await expect(reordenarCampos(TENANT, invalida)).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+      await expect(reordenarCampos(TENANT, invalida)).rejects.toMatchObject({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+      });
     }
     expect(reordenarCamposRepository).not.toHaveBeenCalled();
   });

@@ -3,7 +3,11 @@ import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
-import { grupoBodySchema, grupoIdParamSchema, salvarDistribuicaoBodySchema } from '../schemas/distribuicao.schema.js';
+import {
+  grupoBodySchema,
+  grupoIdParamSchema,
+  salvarDistribuicaoBodySchema,
+} from '../schemas/distribuicao.schema.js';
 import {
   criarGrupo,
   editarGrupo,

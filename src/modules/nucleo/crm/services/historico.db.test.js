@@ -19,7 +19,8 @@ import { reconciliarTenant } from './reconcile.service.js';
  * fim) — só roda com `CRM_DB_TESTS=1`, num banco de dev.
  */
 
-const rodar = process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
+const rodar =
+  process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
 
 const TAMANHO_SUFIXO_SUBDOMINIO = 8;
 const TAMANHO_PAGINA = 50;
@@ -40,22 +41,48 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
 
   beforeAll(async () => {
     await prisma.tenant.create({
-      data: { id: tenantId, nome: 'SMOKE timeline', subdomain: `smoke-tl-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}` },
+      data: {
+        id: tenantId,
+        nome: 'SMOKE timeline',
+        subdomain: `smoke-tl-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
+      },
     });
     await prisma.usuario.createMany({
       data: [
-        { id: donoId, tenantId, nome: 'Dona Ana', email: `smoke-${donoId}@smoke.test`, role: 'DONO', ativo: true },
-        { id: vendedorId, tenantId, nome: 'Vendedor Bruno', email: `smoke-${vendedorId}@smoke.test`, role: 'OPERADOR', ativo: true },
+        {
+          id: donoId,
+          tenantId,
+          nome: 'Dona Ana',
+          email: `smoke-${donoId}@smoke.test`,
+          role: 'DONO',
+          ativo: true,
+        },
+        {
+          id: vendedorId,
+          tenantId,
+          nome: 'Vendedor Bruno',
+          email: `smoke-${vendedorId}@smoke.test`,
+          role: 'OPERADOR',
+          ativo: true,
+        },
       ],
     });
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
     await prisma.tenantModuleFeature.createMany({
-      data: [CRM_FEATURES.ARQUIVO, CRM_FEATURES.TIMELINE].map((featureKey) => ({ tenantId, moduleKey: MODULO_CRM, featureKey })),
+      data: [CRM_FEATURES.ARQUIVO, CRM_FEATURES.TIMELINE].map((featureKey) => ({
+        tenantId,
+        moduleKey: MODULO_CRM,
+        featureKey,
+      })),
     });
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
 
-    ({ id: leadId } = await registrarNovoLead(tenantId, { nome: 'Lead timeline', email: 'tl@smoke.test' }, donoId));
+    ({ id: leadId } = await registrarNovoLead(
+      tenantId,
+      { nome: 'Lead timeline', email: 'tl@smoke.test' },
+      donoId,
+    ));
     await atualizarLeadExistente(tenantId, leadId, { status: 'ganho' }, donoId);
     await atualizarLeadExistente(tenantId, leadId, { usuarioResponsavelId: vendedorId }, donoId);
     // Inativo depois: o histórico antigo ainda mostra o nome.
@@ -86,13 +113,22 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
     const { itens, total } = await historico(['atribuicao']);
     expect(total).toBe(1);
     expect(itens[0].diff).toEqual([
-      expect.objectContaining({ chave: 'usuarioResponsavelId', antes: donoId, antesNome: 'Dona Ana', depoisNome: 'Vendedor Bruno' }),
+      expect.objectContaining({
+        chave: 'usuarioResponsavelId',
+        antes: donoId,
+        antesNome: 'Dona Ana',
+        depoisNome: 'Vendedor Bruno',
+      }),
     ]);
   });
 
   it('ciclo de vida, e mais de uma categoria (OU); total bate com a página', async () => {
     const ciclo = await historico(['ciclo']);
-    expect(ciclo.itens.map((evento) => evento.tipo)).toEqual(['desarquivado', 'arquivado', 'criado']);
+    expect(ciclo.itens.map((evento) => evento.tipo)).toEqual([
+      'desarquivado',
+      'arquivado',
+      'criado',
+    ]);
     expect(ciclo.total).toBe(EVENTOS_DO_CICLO);
 
     const misto = await historico(['ciclo', 'atribuicao']);
@@ -101,7 +137,9 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
   });
 
   it('filtrar sem a flag crm.timeline → 403 (sem filtro continua)', async () => {
-    await prisma.tenantModuleFeature.deleteMany({ where: { tenantId, featureKey: CRM_FEATURES.TIMELINE } });
+    await prisma.tenantModuleFeature.deleteMany({
+      where: { tenantId, featureKey: CRM_FEATURES.TIMELINE },
+    });
     await invalidarFeatures(tenantId);
     await expect(historico(['ciclo'])).rejects.toMatchObject({ statusCode: HTTP_STATUS.FORBIDDEN });
     expect((await historico()).total).toBe(EVENTOS);

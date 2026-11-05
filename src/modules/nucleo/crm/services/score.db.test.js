@@ -22,7 +22,8 @@ import { obterConfigScore, recalcularTodos, salvarConfigScore } from './score.se
  * — só roda com `CRM_DB_TESTS=1`, num banco de dev. Exige a 0027.
  */
 
-const rodar = process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
+const rodar =
+  process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
 
 const TAMANHO_SUFIXO_SUBDOMINIO = 8;
 const TAMANHO_PAGINA = 50;
@@ -49,20 +50,46 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
 
   beforeAll(async () => {
     await prisma.tenant.create({
-      data: { id: tenantId, nome: 'SMOKE score', subdomain: `smoke-score-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}` },
+      data: {
+        id: tenantId,
+        nome: 'SMOKE score',
+        subdomain: `smoke-score-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
+      },
     });
     await prisma.usuario.create({
-      data: { id: donoId, tenantId, nome: 'Dono', email: `smoke-${donoId}@smoke.test`, role: 'DONO', ativo: true },
+      data: {
+        id: donoId,
+        tenantId,
+        nome: 'Dono',
+        email: `smoke-${donoId}@smoke.test`,
+        role: 'DONO',
+        ativo: true,
+      },
     });
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
-    await prisma.tenantModuleFeature.create({ data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.SCORE } });
+    await prisma.tenantModuleFeature.create({
+      data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.SCORE },
+    });
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
-    await criarNovaDefinicao(tenantId, { label: 'Segmento', tipo: 'texto', obrigatorio: false, ordem: ORDEM_SEGMENTO });
+    await criarNovaDefinicao(tenantId, {
+      label: 'Segmento',
+      tipo: 'texto',
+      obrigatorio: false,
+      ordem: ORDEM_SEGMENTO,
+    });
 
     // Antes das regras: score 0 (flag ligada, nenhuma regra).
-    ({ id: ana } = await registrarNovoLead(tenantId, { nome: 'Ana', email: 'ana@vip.test', telefone: '11988887777' }, donoId));
-    ({ id: bia } = await registrarNovoLead(tenantId, { nome: 'Bia', email: 'bia@comum.test', customFields: { segmento: 'varejo' } }, donoId));
+    ({ id: ana } = await registrarNovoLead(
+      tenantId,
+      { nome: 'Ana', email: 'ana@vip.test', telefone: '11988887777' },
+      donoId,
+    ));
+    ({ id: bia } = await registrarNovoLead(
+      tenantId,
+      { nome: 'Bia', email: 'bia@comum.test', customFields: { segmento: 'varejo' } },
+      donoId,
+    ));
   });
 
   afterAll(async () => {
@@ -74,47 +101,83 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
   it('salvar as regras recalcula todos (com progresso), e recalcular de novo dá o mesmo', async () => {
     expect(await scoreDe(ana)).toBe(0);
     const { campos } = await obterSchemaCampos(tenantId);
-    const id = (chave) => /** @type {{ id: string }} */ (campos.find((campo) => campo.chave === chave)).id;
+    const id = (chave) =>
+      /** @type {{ id: string }} */ (campos.find((campo) => campo.chave === chave)).id;
 
     const config = await salvarConfigScore(tenantId, {
       regras: [
-        { nome: 'E-mail VIP', ativo: true, pontos: PONTOS_VIP, condicoes: [{ campoId: id('email'), operador: 'contem', valor: '@vip.test' }] },
-        { nome: 'Tem telefone', ativo: true, pontos: PONTOS_TELEFONE, condicoes: [{ campoId: id('telefone'), operador: 'nao_vazio' }] },
-        { nome: 'Varejo', ativo: true, pontos: PONTOS_SEGMENTO, condicoes: [{ campoId: id('segmento'), operador: 'igual', valor: 'varejo' }] },
+        {
+          nome: 'E-mail VIP',
+          ativo: true,
+          pontos: PONTOS_VIP,
+          condicoes: [{ campoId: id('email'), operador: 'contem', valor: '@vip.test' }],
+        },
+        {
+          nome: 'Tem telefone',
+          ativo: true,
+          pontos: PONTOS_TELEFONE,
+          condicoes: [{ campoId: id('telefone'), operador: 'nao_vazio' }],
+        },
+        {
+          nome: 'Varejo',
+          ativo: true,
+          pontos: PONTOS_SEGMENTO,
+          condicoes: [{ campoId: id('segmento'), operador: 'igual', valor: 'varejo' }],
+        },
         { nome: 'Desligada', ativo: false, pontos: PONTOS_DESLIGADA, condicoes: [] },
       ],
       faixas: FAIXAS_SCORE_PADRAO.map((faixa) => ({ ...faixa })),
     });
-    expect(config.recalculo).toMatchObject({ total: LEADS, processados: LEADS, emAndamento: false });
+    expect(config.recalculo).toMatchObject({
+      total: LEADS,
+      processados: LEADS,
+      emAndamento: false,
+    });
     expect(await scoreDe(ana)).toBe(SCORE_ANA);
     expect(await scoreDe(bia)).toBe(PONTOS_SEGMENTO);
 
     await recalcularTodos(tenantId);
     expect(await scoreDe(ana)).toBe(SCORE_ANA);
     expect(await scoreDe(bia)).toBe(PONTOS_SEGMENTO);
-    expect((await obterConfigScore(tenantId)).recalculo).toMatchObject({ processados: LEADS, emAndamento: false });
+    expect((await obterConfigScore(tenantId)).recalculo).toMatchObject({
+      processados: LEADS,
+      emAndamento: false,
+    });
   });
 
   it('ao salvar o lead: o score vem na resposta; Lead score no payload → 400', async () => {
-    const editada = await atualizarLeadExistente(tenantId, bia, { telefone: '11977776666' }, donoId);
+    const editada = await atualizarLeadExistente(
+      tenantId,
+      bia,
+      { telefone: '11977776666' },
+      donoId,
+    );
     expect(Number(editada.lead_score)).toBe(PONTOS_SEGMENTO + PONTOS_TELEFONE);
-    await expect(atualizarLeadExistente(tenantId, bia, { leadScore: SCORE_ANA }, donoId)).rejects.toMatchObject({
+    await expect(
+      atualizarLeadExistente(tenantId, bia, { leadScore: SCORE_ANA }, donoId),
+    ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
   });
 
   it('filtro por faixa', async () => {
     const naFaixa = async (faixaScore) =>
-      (await pesquisarLeads(tenantId, { faixaScore, filtros: [], paginacao: PAGINA })).itens.map((lead) => lead.id);
+      (await pesquisarLeads(tenantId, { faixaScore, filtros: [], paginacao: PAGINA })).itens.map(
+        (lead) => lead.id,
+      );
     expect(await naFaixa('quente')).toEqual([ana]);
     expect(await naFaixa('morno')).toEqual([bia]);
     expect(await naFaixa('frio')).toEqual([]);
-    await expect(naFaixa('fervendo')).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+    await expect(naFaixa('fervendo')).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+    });
   });
 
   it('regra com campo desligado é ignorada no recálculo', async () => {
     const { definicoes } = await obterSchemaCampos(tenantId);
-    const segmento = /** @type {{ id: string }} */ (definicoes.find((definicao) => definicao.chave === 'segmento'));
+    const segmento = /** @type {{ id: string }} */ (
+      definicoes.find((definicao) => definicao.chave === 'segmento')
+    );
     await removerDefinicao(tenantId, segmento.id);
     await recalcularTodos(tenantId);
     expect(await scoreDe(bia)).toBe(PONTOS_TELEFONE);

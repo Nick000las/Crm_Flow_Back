@@ -43,11 +43,14 @@ describeWithDatabase('Cobertura de RLS multi-tenant', () => {
     { schema: 'modulo_crm', tabela: 'crm_cnpj_cache' },
   ];
 
-  it.each(TABELAS_GLOBAIS)('tabela global $schema.$tabela continua sem tenant_id', async ({ schema, tabela }) => {
-    const colunas = await prisma.$queryRaw`
+  it.each(TABELAS_GLOBAIS)(
+    'tabela global $schema.$tabela continua sem tenant_id',
+    async ({ schema, tabela }) => {
+      const colunas = await prisma.$queryRaw`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = ${schema} AND table_name = ${tabela} AND column_name = 'tenant_id'
     `;
-    expect(colunas).toHaveLength(0);
-  });
+      expect(colunas).toHaveLength(0);
+    },
+  );
 });

@@ -13,6 +13,11 @@ const acessosDoPapel = z.record(
 );
 
 export const salvarPermissoesBodySchema = z
-  .object(Object.fromEntries(PAPEIS_COM_PERMISSAO.map((papel) => [papel, acessosDoPapel.optional()])))
+  .object(
+    Object.fromEntries(PAPEIS_COM_PERMISSAO.map((papel) => [papel, acessosDoPapel.optional()])),
+  )
   .strict()
-  .refine((body) => Object.values(body).some((acessos) => acessos !== undefined), 'Informe as permissões de ao menos um papel');
+  .refine(
+    (body) => Object.values(body).some((acessos) => acessos !== undefined),
+    'Informe as permissões de ao menos um papel',
+  );

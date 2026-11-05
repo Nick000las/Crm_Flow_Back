@@ -4,7 +4,10 @@ import { filtroLeadsSchema } from './leads-search.schema.js';
 
 export const salvarViewBodySchema = z.object({
   nome: z
-    .string({ required_error: 'Informe o nome da view', invalid_type_error: 'Informe um nome válido' })
+    .string({
+      required_error: 'Informe o nome da view',
+      invalid_type_error: 'Informe um nome válido',
+    })
     .trim()
     .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o nome da view'),
   filtros: filtroLeadsSchema,

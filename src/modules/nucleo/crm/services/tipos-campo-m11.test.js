@@ -75,14 +75,24 @@ describe('valorValidoParaTipo e normalização (M11)', () => {
     expect(normalizarValorDoTipo(TIPOS_CAMPO.CPF, '529.982.247-25')).toBe(CPF);
     expect(normalizarValorDoTipo(TIPOS_CAMPO.CNPJ, '12.abc.345/01de-35')).toBe(CNPJ_ALFANUMERICO);
     expect(normalizarValorDoTipo(TIPOS_CAMPO.HORA, '9:05')).toBe('09:05');
-    expect(normalizarValorDoTipo(TIPOS_CAMPO.INTERVALO_DATAS, { ate: '2026-02-10T00:00:00Z', de: '2026-02-01' })).toEqual({
+    expect(
+      normalizarValorDoTipo(TIPOS_CAMPO.INTERVALO_DATAS, {
+        ate: '2026-02-10T00:00:00Z',
+        de: '2026-02-01',
+      }),
+    ).toEqual({
       de: '2026-02-01',
       ate: '2026-02-10',
     });
   });
 
   it('endereço: só as partes preenchidas, na ordem fixa (sem diff falso no histórico)', () => {
-    const normalizado = normalizarValorDoTipo(TIPOS_CAMPO.ENDERECO, { uf: 'sp', logradouro: ' Rua X ', bairro: '', cep: '01310-100' });
+    const normalizado = normalizarValorDoTipo(TIPOS_CAMPO.ENDERECO, {
+      uf: 'sp',
+      logradouro: ' Rua X ',
+      bairro: '',
+      cep: '01310-100',
+    });
     expect(JSON.stringify(normalizado)).toBe('{"cep":"01310100","logradouro":"Rua X","uf":"SP"}');
   });
 
@@ -105,14 +115,18 @@ describe('converterCelula (M11)', () => {
   it('documentos com ou sem máscara; célula numérica recupera o zero da frente', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.CPF), '529.982.247-25')).toEqual({ valor: CPF });
     expect(converterCelula(campo(TIPOS_CAMPO.CEP), CEP_SEM_ZERO)).toEqual({ valor: '01310100' });
-    expect(converterCelula(campo(TIPOS_CAMPO.CNPJ), CNPJ_SEM_ZERO)).toEqual({ valor: '00000000000191' });
+    expect(converterCelula(campo(TIPOS_CAMPO.CNPJ), CNPJ_SEM_ZERO)).toEqual({
+      valor: '00000000000191',
+    });
     expect(converterCelula(campo(TIPOS_CAMPO.CPF), '123')).toHaveProperty('erro');
   });
 
   it('hora: texto, fração do dia do Excel e Date', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.HORA), '14:30')).toEqual({ valor: '14:30' });
     expect(converterCelula(campo(TIPOS_CAMPO.HORA), MEIO_DIA)).toEqual({ valor: '12:00' });
-    expect(converterCelula(campo(TIPOS_CAMPO.HORA), new Date('1899-12-30T08:15:00Z'))).toEqual({ valor: '08:15' });
+    expect(converterCelula(campo(TIPOS_CAMPO.HORA), new Date('1899-12-30T08:15:00Z'))).toEqual({
+      valor: '08:15',
+    });
   });
 
   it('período: duas datas ou uma só', () => {
@@ -122,13 +136,21 @@ describe('converterCelula (M11)', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.INTERVALO_DATAS), '05/03/2026')).toEqual({
       valor: { de: '2026-03-05', ate: '2026-03-05' },
     });
-    expect(converterCelula(campo(TIPOS_CAMPO.INTERVALO_DATAS), '10/02/2026 - 01/02/2026')).toHaveProperty('erro');
+    expect(
+      converterCelula(campo(TIPOS_CAMPO.INTERVALO_DATAS), '10/02/2026 - 01/02/2026'),
+    ).toHaveProperty('erro');
   });
 
   it('usuário pelo nome (sem diferenciar maiúscula); endereço numa célula vai pro logradouro', () => {
     const usuarios = new Map([['bia souza', USUARIO]]);
-    expect(converterCelula(campo(TIPOS_CAMPO.USUARIO, { usuarios }), 'Bia Souza')).toEqual({ valor: USUARIO });
-    expect(converterCelula(campo(TIPOS_CAMPO.USUARIO, { usuarios }), 'Carlos')).toHaveProperty('erro');
-    expect(converterCelula(campo(TIPOS_CAMPO.ENDERECO), 'Rua X, 10')).toEqual({ valor: { logradouro: 'Rua X, 10' } });
+    expect(converterCelula(campo(TIPOS_CAMPO.USUARIO, { usuarios }), 'Bia Souza')).toEqual({
+      valor: USUARIO,
+    });
+    expect(converterCelula(campo(TIPOS_CAMPO.USUARIO, { usuarios }), 'Carlos')).toHaveProperty(
+      'erro',
+    );
+    expect(converterCelula(campo(TIPOS_CAMPO.ENDERECO), 'Rua X, 10')).toEqual({
+      valor: { logradouro: 'Rua X, 10' },
+    });
   });
 });

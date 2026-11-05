@@ -36,6 +36,7 @@ O estado antes da implementação foi conferido em arquivo e em query.
   - `motivo_perda` (CHECK), `lead_score, proximo_followup`.
 
   A lista original tinha 18. **`lifecycle_stage`, `industria` e `porte_empresa` ficaram de fora por decisão**: não existem como coluna nem como opção de visibilidade. Se forem necessários para um tenant, o caminho é a Camada 3 (campo customizado).
+
 - **`tenant_lead_field_visibility`:** tabela nova com RLS. A `coluna` é validada no service contra `CAMADA_2_COLUNAS`.
 
 **[0010_crm_filtros_import](../prisma/migrations/0010_crm_filtros_import/migration.sql)**
@@ -51,7 +52,7 @@ Tudo segue o padrão de valores fechados do projeto: `CHECK (coluna IN (...))`, 
 
 As colunas novas em `leads` já ficam cobertas pela policy existente, porque o RLS é por linha.
 
-As três tabelas novas usam a mesma receita: `ENABLE ROW LEVEL SECURITY`, a policy `tenant_isolation` e um índice com `tenant_id`. O `GRANT` para o `app_tenant` vem das *default privileges* da migration 0004.
+As três tabelas novas usam a mesma receita: `ENABLE ROW LEVEL SECURITY`, a policy `tenant_isolation` e um índice com `tenant_id`. O `GRANT` para o `app_tenant` vem das _default privileges_ da migration 0004.
 
 `test:rls-coverage` e `test:tenant-isolation` passaram depois da 0010.
 
@@ -61,23 +62,23 @@ As três tabelas novas usam a mesma receita: `ENABLE ROW LEVEL SECURITY`, a poli
 
 Toda rota exige token válido e o módulo `crm` contratado pelo tenant (seção 3.1). A coluna **Papel** indica quem pode chamar; "todos" inclui OPERADOR.
 
-| Rota | Papel | O que faz |
-|---|---|---|
-| `GET /crm/leads?pagina=&tamanho=` | todos | Lista paginada, no mesmo formato do `/search`: `{ itens, total, pagina, tamanho }` |
-| `POST /crm/leads`, `GET/PUT/DELETE /crm/leads/:id` | todos | CRUD. O payload aceita as Camadas 1 e 2 no nível raiz, `customFields` para a Camada 3 e `usuarioResponsavelId` |
-| `GET /crm/leads/fields` | todos | Lista única de campos ativos (seção 5). Nas Camadas 1 e 2, cada item traz `coluna`, o nome da propriedade no lead lido (snake_case) |
-| `GET /crm/usuarios` | todos | Usuários ativos do tenant, `{ id, nome }[]`, para escolher o responsável |
-| `POST /crm/leads/search` | todos | Filtro combinado com paginação (seção 6) |
-| `GET /crm/field-visibility` | todos | Estado da visibilidade da Camada 2 |
-| `PUT /crm/field-visibility` | DONO/MASTER | Liga, desliga e reordena os campos da Camada 2 |
-| `GET /crm/field-definitions` | todos | Lista os campos da Camada 3 |
-| `POST/PUT/DELETE /crm/field-definitions…` (incluindo `reorder`) | DONO/MASTER | CRUD da Camada 3 |
-| `GET/POST /crm/filter-views`, `DELETE /crm/filter-views/:id` | todos | Views de filtro salvas, do usuário logado |
-| `POST /crm/import/preview` | DONO/MASTER | Multipart. Devolve o cabeçalho, as primeiras linhas e os campos mapeáveis, sem gravar nada |
-| `POST /crm/import/validate` | DONO/MASTER | Multipart com o arquivo e os campos `mapeamento` (JSON) e `estrategiaDuplicata`. Valida linha a linha e grava um job `pendente` |
-| `POST /crm/import/:jobId/confirm` | DONO/MASTER | Enfileira o job no BullMQ. Responde 503 `QUEUE_UNAVAILABLE` se não houver Redis |
-| `GET /crm/import/:jobId` | DONO/MASTER | Status e progresso, para polling |
-| `POST /crm/export` | DONO/MASTER | Recebe `{ colunas, filtro? }` e devolve o `.xlsx` direto na resposta |
+| Rota                                                            | Papel       | O que faz                                                                                                                           |
+| --------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /crm/leads?pagina=&tamanho=`                               | todos       | Lista paginada, no mesmo formato do `/search`: `{ itens, total, pagina, tamanho }`                                                  |
+| `POST /crm/leads`, `GET/PUT/DELETE /crm/leads/:id`              | todos       | CRUD. O payload aceita as Camadas 1 e 2 no nível raiz, `customFields` para a Camada 3 e `usuarioResponsavelId`                      |
+| `GET /crm/leads/fields`                                         | todos       | Lista única de campos ativos (seção 5). Nas Camadas 1 e 2, cada item traz `coluna`, o nome da propriedade no lead lido (snake_case) |
+| `GET /crm/usuarios`                                             | todos       | Usuários ativos do tenant, `{ id, nome }[]`, para escolher o responsável                                                            |
+| `POST /crm/leads/search`                                        | todos       | Filtro combinado com paginação (seção 6)                                                                                            |
+| `GET /crm/field-visibility`                                     | todos       | Estado da visibilidade da Camada 2                                                                                                  |
+| `PUT /crm/field-visibility`                                     | DONO/MASTER | Liga, desliga e reordena os campos da Camada 2                                                                                      |
+| `GET /crm/field-definitions`                                    | todos       | Lista os campos da Camada 3                                                                                                         |
+| `POST/PUT/DELETE /crm/field-definitions…` (incluindo `reorder`) | DONO/MASTER | CRUD da Camada 3                                                                                                                    |
+| `GET/POST /crm/filter-views`, `DELETE /crm/filter-views/:id`    | todos       | Views de filtro salvas, do usuário logado                                                                                           |
+| `POST /crm/import/preview`                                      | DONO/MASTER | Multipart. Devolve o cabeçalho, as primeiras linhas e os campos mapeáveis, sem gravar nada                                          |
+| `POST /crm/import/validate`                                     | DONO/MASTER | Multipart com o arquivo e os campos `mapeamento` (JSON) e `estrategiaDuplicata`. Valida linha a linha e grava um job `pendente`     |
+| `POST /crm/import/:jobId/confirm`                               | DONO/MASTER | Enfileira o job no BullMQ. Responde 503 `QUEUE_UNAVAILABLE` se não houver Redis                                                     |
+| `GET /crm/import/:jobId`                                        | DONO/MASTER | Status e progresso, para polling                                                                                                    |
+| `POST /crm/export`                                              | DONO/MASTER | Recebe `{ colunas, filtro? }` e devolve o `.xlsx` direto na resposta                                                                |
 
 ### 3.1. Acesso: módulo contratado e papéis
 
@@ -101,6 +102,7 @@ Toda rota exige token válido e o módulo `crm` contratado pelo tenant (seção 
 ### 3.3. Edição: omitir mantém, `null` limpa
 
 `PUT /crm/leads/:id` monta um SET dinâmico (`montarAtribuicoes` em [leads.repository.js](../src/modules/nucleo/crm/adapters/leads.repository.js)):
+
 - campo **omitido** mantém o valor;
 - campo **`null`** limpa a coluna (exceto `nome` e `funilEstagioId`);
 - em `customFields`, chave com valor faz merge e chave `null` é removida do JSONB.
@@ -108,6 +110,7 @@ Toda rota exige token válido e o módulo `crm` contratado pelo tenant (seção 
 O nome de coluna vem só de um mapa fechado, como no filtro.
 
 O service bloqueia, com 400:
+
 - limpar o único contato que restou (e-mail ou telefone);
 - limpar um campo obrigatório, seja da Camada 2 visível ou da Camada 3.
 
@@ -124,6 +127,7 @@ A lista de colunas de leitura é uma constante única (`COLUNAS_LEITURA` em [lea
 ## 5. Endpoint único de campos ativos (aprovado)
 
 `GET /crm/leads/fields` devolve `{ chave, label, tipo, camada, obrigatorio, ordem, opcoes? }[]`, com:
+
 - a Camada 1 fixa (`CAMPOS_CAMADA_1`);
 - a Camada 2 visível, com metadado de `CAMADA_2_METADADOS`;
 - a Camada 3, com as definições do tenant.
@@ -141,6 +145,7 @@ O import e o export aceitam ainda dois extras que não são campos de formulári
 **Operadores:** `igual`, `contem`, `entre` (com `{ de?, ate? }`), `e_um_dos`, `vazio` e `nao_vazio`. A compatibilidade com o tipo do campo vem de `OPERADORES_POR_TIPO`.
 
 **Montagem do SQL** ([lead-filter.service.js](../src/modules/nucleo/crm/services/lead-filter.service.js)): o SQL é montado com `Prisma.sql`/`Prisma.join`, nunca por concatenação.
+
 - **Camadas 1 e 2:** o nome da coluna sai só dos mapas fechados `CAMADA_1_CAMPOS` e `CAMADA_2_CAMPOS`.
 - **Camada 3:** a chave entra como parâmetro em `custom_fields->>$1`.
 - **Igualdade e seleção na Camada 3:** usam `@>`, que é o caso que o GIN acelera. Texto parcial e faixa numérica ou de data não usam o GIN. É o caveat já registrado no [plano anterior §2.4](./plano-campos-filtros-import-export.md#24-caveat-honesto-sobre-o-índice-gin-checkpoint-do-roteiro-ajustado).
@@ -168,6 +173,7 @@ O import e o export aceitam ainda dois extras que não são campos de formulári
    - números aceitam `1.234,50`.
 
    Os erros de **todas** as linhas são acumulados e apontam o número real da linha no Excel. Só as linhas válidas vão para o `payload` do job.
+
 3. **confirm:** faz uma transição condicional `pendente → processando`, para que duas confirmações não enfileirem o job duas vezes, e então enfileira. Se a fila falhar, o job volta para `pendente`.
 4. **worker** ([src/workers/crm.worker.js](../../src/workers/crm.worker.js), `pnpm worker:crm`): processo separado do HTTP. Chama `processarImportacao`.
    - **Deduplicação:** procura por e-mail (sem diferenciar maiúsculas) e, se não achar, por telefone comparando só os dígitos.

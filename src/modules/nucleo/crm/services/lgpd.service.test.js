@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { anonimizarLead, buscarConfigLgpd, buscarSituacaoLgpd } from '../adapters/crm-lgpd.repository.js';
+import {
+  anonimizarLead,
+  buscarConfigLgpd,
+  buscarSituacaoLgpd,
+} from '../adapters/crm-lgpd.repository.js';
 import { ORIGENS_REGISTRO } from '../constants.js';
-import { atualizarConfiguracaoCampo, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
+import {
+  atualizarConfiguracaoCampo,
+  listarConfiguracaoCampos,
+} from './configuracoes-campos.service.js';
 import {
   anonimizarLeadDoTitular,
   basePadraoDoTenant,
@@ -14,7 +21,10 @@ import {
 } from './lgpd.service.js';
 import { recalcularScoreDosLeads } from './score.service.js';
 
-vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn(), garantirFeature: vi.fn() }));
+vi.mock('#core/tenant/feature-flags.js', () => ({
+  featureAtiva: vi.fn(),
+  garantirFeature: vi.fn(),
+}));
 vi.mock('../adapters/crm-lgpd.repository.js', () => ({
   anonimizarLead: vi.fn(),
   buscarConfigLgpd: vi.fn(),
@@ -53,7 +63,12 @@ const camposLgpd = () => [
   { id: 'f1', chave: 'baseLegal', obrigatorio: false, visibilidade: { ...fechado } },
   { id: 'f2', chave: 'baseLegalEm', obrigatorio: false, visibilidade: { ...fechado } },
   { id: 'f3', chave: 'origemRegistro', obrigatorio: false, visibilidade: { ...fechado } },
-  { id: 'f4', chave: 'optOutMarketingEm', obrigatorio: false, visibilidade: { ...fechado, detail: true, table: true, filter: true } },
+  {
+    id: 'f4',
+    chave: 'optOutMarketingEm',
+    obrigatorio: false,
+    visibilidade: { ...fechado, detail: true, table: true, filter: true },
+  },
   { id: 'f5', chave: 'empresa', obrigatorio: false, visibilidade: { ...fechado } },
 ];
 
@@ -65,10 +80,14 @@ beforeEach(() => {
 
 describe('comDadosLgpdNaCriacao', () => {
   it('carimba origem e datas; a escolhida vence a padrão; opt-out vira data e sai do payload', () => {
-    const criado = comDadosLgpdNaCriacao({ nome: 'Ana', optOutMarketing: true }, ORIGENS_REGISTRO.MANUAL, {
-      basePadrao: 'legitimo_interesse',
-      agora: AGORA,
-    });
+    const criado = comDadosLgpdNaCriacao(
+      { nome: 'Ana', optOutMarketing: true },
+      ORIGENS_REGISTRO.MANUAL,
+      {
+        basePadrao: 'legitimo_interesse',
+        agora: AGORA,
+      },
+    );
     expect(criado).toEqual({
       nome: 'Ana',
       baseLegal: 'legitimo_interesse',
@@ -78,11 +97,19 @@ describe('comDadosLgpdNaCriacao', () => {
     });
     expect(criado).not.toHaveProperty('optOutMarketing');
 
-    const escolhida = comDadosLgpdNaCriacao({ baseLegal: 'consentimento' }, ORIGENS_REGISTRO.IMPORTACAO, {
-      basePadrao: 'outra',
-      agora: AGORA,
+    const escolhida = comDadosLgpdNaCriacao(
+      { baseLegal: 'consentimento' },
+      ORIGENS_REGISTRO.IMPORTACAO,
+      {
+        basePadrao: 'outra',
+        agora: AGORA,
+      },
+    );
+    expect(escolhida).toMatchObject({
+      baseLegal: 'consentimento',
+      baseLegalEm: AGORA,
+      origemRegistro: 'importacao',
     });
-    expect(escolhida).toMatchObject({ baseLegal: 'consentimento', baseLegalEm: AGORA, origemRegistro: 'importacao' });
 
     const semBase = comDadosLgpdNaCriacao({ nome: 'Bia' }, ORIGENS_REGISTRO.MANUAL);
     expect(semBase.baseLegal).toBeUndefined();
@@ -134,27 +161,38 @@ describe('anonimização', () => {
     anonimizarLead.mockResolvedValue({ ...RESUMO });
 
     expect(await anonimizarLeadDoTitular(TENANT, LEAD, DONO)).toEqual({ leadId: LEAD, ...RESUMO });
-    expect(anonimizarLead).toHaveBeenCalledWith(TENANT, LEAD, { autorId: DONO, mantidos: [ID_SALARIO, ID_SEGMENTO] });
+    expect(anonimizarLead).toHaveBeenCalledWith(TENANT, LEAD, {
+      autorId: DONO,
+      mantidos: [ID_SALARIO, ID_SEGMENTO],
+    });
     expect(recalcularScoreDosLeads).toHaveBeenCalledWith(TENANT, [LEAD]);
   });
 
   it('não existe → 404; já anonimizado (antes ou na corrida) → 409', async () => {
     buscarSituacaoLgpd.mockResolvedValueOnce(undefined);
-    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
+    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.NOT_FOUND,
+    });
 
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: true });
-    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
+    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.CONFLICT,
+    });
 
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: false });
     anonimizarLead.mockResolvedValueOnce(null);
-    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
+    await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.CONFLICT,
+    });
     expect(recalcularScoreDosLeads).not.toHaveBeenCalled();
   });
 
   it('edição sem linha: anonimizado → 409; senão o 404 de quem chamou', async () => {
     const naoEncontrado = new Error('404');
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: true });
-    expect(await erroDoLeadNaoEditado(TENANT, LEAD, naoEncontrado)).toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
+    expect(await erroDoLeadNaoEditado(TENANT, LEAD, naoEncontrado)).toMatchObject({
+      statusCode: HTTP_STATUS.CONFLICT,
+    });
     buscarSituacaoLgpd.mockResolvedValueOnce(undefined);
     expect(await erroDoLeadNaoEditado(TENANT, LEAD, naoEncontrado)).toBe(naoEncontrado);
   });

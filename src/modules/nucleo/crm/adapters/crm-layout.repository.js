@@ -15,9 +15,8 @@ const FIRST_RESULT_INDEX = 0;
  * @returns {Promise<LayoutRefs | undefined>} `undefined` = nunca configurado
  */
 export function buscarLayoutPadrao(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT layout FROM modulo_crm.crm_layout_config WHERE tenant_id = ${tenantId}::uuid
     `.then((rows) => rows[FIRST_RESULT_INDEX]?.layout),
   );
@@ -44,9 +43,8 @@ export function salvarLayoutPadrao(tenantId, layout) {
  * @returns {Promise<{ layout: Partial<LayoutRefs>, padraoVisto: Record<string, string[]> } | undefined>}
  */
 export function buscarOverride(tenantId, usuarioId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT layout, padrao_visto AS "padraoVisto"
       FROM modulo_crm.crm_user_layout_override
       WHERE tenant_id = ${tenantId}::uuid AND usuario_id = ${usuarioId}::uuid

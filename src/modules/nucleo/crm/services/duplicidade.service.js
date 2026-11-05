@@ -94,7 +94,10 @@ export async function encontrarDuplicados(tenantId, dados, { ignorarId = null, r
 
   const chaves = Object.fromEntries(
     ativas
-      .map((regra) => [regra.campo, CHAVE_DO_CAMPO[regra.campo](dados[CAMPOS_DUPLICIDADE[regra.campo].chave])])
+      .map((regra) => [
+        regra.campo,
+        CHAVE_DO_CAMPO[regra.campo](dados[CAMPOS_DUPLICIDADE[regra.campo].chave]),
+      ])
       .filter(([, chave]) => chave),
   );
   if (Object.keys(chaves).length === 0) return [];
@@ -118,7 +121,8 @@ export async function encontrarDuplicados(tenantId, dados, { ignorarId = null, r
  * @returns {Promise<RegraDuplicidade[]>}
  */
 export async function regrasDoImport(tenantId) {
-  if (await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE)) return (await obterRegras(tenantId)).regras;
+  if (await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))
+    return (await obterRegras(tenantId)).regras;
   return REGRAS_DUPLICIDADE_PADRAO.map((regra) => ({ ...regra }));
 }
 
@@ -136,17 +140,23 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
   const acaoPorCampo = new Map(ativas.map((regra) => [regra.campo, regra.acao]));
   const chavesDe = (dados) =>
     ativas
-      .map((regra) => [regra.campo, CHAVE_DO_CAMPO[regra.campo](dados[CAMPOS_DUPLICIDADE[regra.campo].chave])])
+      .map((regra) => [
+        regra.campo,
+        CHAVE_DO_CAMPO[regra.campo](dados[CAMPOS_DUPLICIDADE[regra.campo].chave]),
+      ])
       .filter(([, chave]) => chave);
 
   /** @type {Record<string, Set<string>>} */
   const chavesPorCampo = {};
   for (const item of itens) {
-    for (const [campo, chave] of chavesDe(item.dados)) (chavesPorCampo[campo] ??= new Set()).add(chave);
+    for (const [campo, chave] of chavesDe(item.dados))
+      (chavesPorCampo[campo] ??= new Set()).add(chave);
   }
   const candidatos = await buscarCandidatosEmLote(
     tenantId,
-    Object.fromEntries(Object.entries(chavesPorCampo).map(([campo, chaves]) => [campo, [...chaves]])),
+    Object.fromEntries(
+      Object.entries(chavesPorCampo).map(([campo, chaves]) => [campo, [...chaves]]),
+    ),
   );
 
   const resultado = [];
@@ -155,7 +165,9 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
     const leads = candidatos
       .map((lead) => ({
         lead,
-        campos: chaves.filter(([campo, chave]) => lead[CAMPOS_DUPLICIDADE[campo].coluna] === chave).map(([campo]) => campo),
+        campos: chaves
+          .filter(([campo, chave]) => lead[CAMPOS_DUPLICIDADE[campo].coluna] === chave)
+          .map(([campo]) => campo),
       }))
       .filter(({ campos }) => campos.length > 0)
       .slice(0, LIMITE_CANDIDATOS_DUPLICIDADE)
@@ -169,7 +181,11 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
       }));
     if (leads.length === 0) continue;
     const bloqueia = leads.some((lead) => lead.acao === ACOES_DUPLICIDADE.BLOQUEAR);
-    resultado.push({ linha: item.linha, acao: bloqueia ? ACOES_DUPLICIDADE.BLOQUEAR : ACOES_DUPLICIDADE.AVISAR, leads });
+    resultado.push({
+      linha: item.linha,
+      acao: bloqueia ? ACOES_DUPLICIDADE.BLOQUEAR : ACOES_DUPLICIDADE.AVISAR,
+      leads,
+    });
   }
   return resultado;
 }
@@ -183,7 +199,11 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
  * @param {Record<string, unknown>} dados
  * @param {{ ignorarId?: string | null, ignorarDuplicados?: boolean }} [opcoes]
  */
-export async function garantirSemDuplicados(tenantId, dados, { ignorarId = null, ignorarDuplicados = false } = {}) {
+export async function garantirSemDuplicados(
+  tenantId,
+  dados,
+  { ignorarId = null, ignorarDuplicados = false } = {},
+) {
   const duplicados = await encontrarDuplicados(tenantId, dados, { ignorarId });
   if (duplicados.length === 0) return;
 

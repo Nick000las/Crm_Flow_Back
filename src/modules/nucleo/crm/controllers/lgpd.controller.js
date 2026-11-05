@@ -4,7 +4,11 @@ import { sendSuccess } from '#shared/http/response.js';
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { salvarLgpdBodySchema } from '../schemas/lgpd.schema.js';
 import { leadIdParamSchema } from '../schemas/leads.schema.js';
-import { anonimizarLeadDoTitular, obterConfigLgpd, salvarConfigLgpd } from '../services/lgpd.service.js';
+import {
+  anonimizarLeadDoTitular,
+  obterConfigLgpd,
+  salvarConfigLgpd,
+} from '../services/lgpd.service.js';
 
 /**
  * CONTROLLER: base legal LGPD (M15). HTTP fino. Atrás da flag `crm.lgpd`.

@@ -25,12 +25,19 @@ import { regrasAplicaveis } from './leads.service.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
-import { carregarContextoDistribuicao, distribuir, notificarAtribuicoesDoImport } from './distribuicao.service.js';
+import {
+  carregarContextoDistribuicao,
+  distribuir,
+  notificarAtribuicoesDoImport,
+} from './distribuicao.service.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { garantirScoreNaoEditado } from './score.service.js';
 
 // Flags desligadas por padrão (M14: o Lead score é mapeável); o bloco do M14 liga.
-vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn().mockResolvedValue(false), garantirFeature: vi.fn() }));
+vi.mock('#core/tenant/feature-flags.js', () => ({
+  featureAtiva: vi.fn().mockResolvedValue(false),
+  garantirFeature: vi.fn(),
+}));
 
 // M11b: enriquecimento por CNPJ tem teste próprio; aqui só o gancho do lote.
 // M14: a pontuação tem teste próprio; aqui ela não grava nada.
@@ -64,7 +71,9 @@ vi.mock('./field-schema.service.js', async (importOriginal) => ({
   obterSchemaCampos: vi.fn().mockResolvedValue({ visibilidade: [], definicoes: [], campos: [] }),
 }));
 // A coluna Responsável (M12) é do tipo usuário: a validação lista os usuários ativos pelo nome.
-vi.mock('../adapters/usuarios.repository.js', () => ({ listarUsuariosAtivosDoTenant: vi.fn().mockResolvedValue([]) }));
+vi.mock('../adapters/usuarios.repository.js', () => ({
+  listarUsuariosAtivosDoTenant: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../adapters/funil-estagios.repository.js', () => ({ buscarEstagiosPorTenant: vi.fn() }));
 vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
@@ -91,7 +100,12 @@ vi.mock('./duplicidade.service.js', () => ({
   encontrarDuplicados: vi.fn().mockResolvedValue([]),
 }));
 
-const DUPLICADO_AVISO = { id: 'lead-1', nome: 'Ana', campos: [{ campo: 'email', label: 'E-mail' }], acao: 'warn' };
+const DUPLICADO_AVISO = {
+  id: 'lead-1',
+  nome: 'Ana',
+  campos: [{ campo: 'email', label: 'E-mail' }],
+  acao: 'warn',
+};
 const DUPLICADO_BLOQUEIO = { ...DUPLICADO_AVISO, acao: 'block' };
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
@@ -107,10 +121,36 @@ const LINHA_VAZIA = 4;
 const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1, obrigatorio: true },
   { chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1, obrigatorio: false },
-  { chave: 'telefone', label: 'Telefone', tipo: 'telefone', camada: CAMADA.CAMADA_1, obrigatorio: false },
-  { chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1, obrigatorio: false, opcoes: ['novo', 'ganho'] },
-  { chave: 'ultimaInteracaoEm', label: 'Última interação', tipo: 'data', camada: CAMADA.CAMADA_1, obrigatorio: false },
-  { chave: 'segmento', label: 'Segmento', tipo: 'selecao', camada: CAMADA.CAMADA_3, obrigatorio: true, opcoes: ['Varejo', 'Indústria'] },
+  {
+    chave: 'telefone',
+    label: 'Telefone',
+    tipo: 'telefone',
+    camada: CAMADA.CAMADA_1,
+    obrigatorio: false,
+  },
+  {
+    chave: 'status',
+    label: 'Status',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_1,
+    obrigatorio: false,
+    opcoes: ['novo', 'ganho'],
+  },
+  {
+    chave: 'ultimaInteracaoEm',
+    label: 'Última interação',
+    tipo: 'data',
+    camada: CAMADA.CAMADA_1,
+    obrigatorio: false,
+  },
+  {
+    chave: 'segmento',
+    label: 'Segmento',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_3,
+    obrigatorio: true,
+    opcoes: ['Varejo', 'Indústria'],
+  },
 ];
 
 const MAPEAMENTO = {
@@ -156,17 +196,26 @@ describe('previsualizarImportacao', () => {
   it('campos mapeáveis incluem os personalizados', async () => {
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const { campos } = await previsualizarImportacao(TENANT, buffer);
-    expect(campos).toContainEqual(expect.objectContaining({ chave: 'segmento', camada: CAMADA.CAMADA_3 }));
+    expect(campos).toContainEqual(
+      expect.objectContaining({ chave: 'segmento', camada: CAMADA.CAMADA_3 }),
+    );
   });
 
   // M14: com a pontuação ligada, o Lead score é calculado — some do mapeamento.
   it('Lead score só é mapeável com a pontuação desligada', async () => {
     listarCamposDoTenant.mockResolvedValue([
       ...CAMPOS,
-      { chave: 'leadScore', label: 'Lead score', tipo: 'numero', camada: CAMADA.CAMADA_2, obrigatorio: false },
+      {
+        chave: 'leadScore',
+        label: 'Lead score',
+        tipo: 'numero',
+        camada: CAMADA.CAMADA_2,
+        obrigatorio: false,
+      },
     ]);
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
-    const chaves = async () => (await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave);
+    const chaves = async () =>
+      (await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave);
 
     expect(await chaves()).toContain('leadScore');
     featureAtiva.mockResolvedValue(true);
@@ -177,20 +226,39 @@ describe('previsualizarImportacao', () => {
   it('base legal do lote vale nas linhas sem a sua; sem lote nem coluna, a obrigatória barra o mapeamento', async () => {
     listarCamposDoTenant.mockResolvedValue([
       ...CAMPOS,
-      { chave: 'baseLegal', label: 'Base legal', tipo: 'selecao', camada: CAMADA.CAMADA_2, obrigatorio: true, opcoes: ['consentimento', 'outra'] },
-      { chave: 'origemRegistro', label: 'Origem do registro', tipo: 'selecao', camada: CAMADA.CAMADA_2, obrigatorio: false, somenteLeitura: true },
+      {
+        chave: 'baseLegal',
+        label: 'Base legal',
+        tipo: 'selecao',
+        camada: CAMADA.CAMADA_2,
+        obrigatorio: true,
+        opcoes: ['consentimento', 'outra'],
+      },
+      {
+        chave: 'origemRegistro',
+        label: 'Origem do registro',
+        tipo: 'selecao',
+        camada: CAMADA.CAMADA_2,
+        obrigatorio: false,
+        somenteLeitura: true,
+      },
     ]);
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const opcoes = { mapeamento: MAPEAMENTO, estrategiaDuplicata: 'pular' };
 
     // Carimbado pelo back: fora do mapeamento.
-    expect((await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave)).not.toContain('origemRegistro');
+    expect(
+      (await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave),
+    ).not.toContain('origemRegistro');
 
     await expect(validarImportacao(TENANT, USUARIO, buffer, opcoes)).rejects.toMatchObject({
       fields: { mapeamento: [expect.stringContaining('base legal do lote')] },
     });
 
-    const comLote = await validarImportacao(TENANT, USUARIO, buffer, { ...opcoes, baseLegalLote: 'consentimento' });
+    const comLote = await validarImportacao(TENANT, USUARIO, buffer, {
+      ...opcoes,
+      baseLegalLote: 'consentimento',
+    });
     expect(comLote.erros).toEqual([]);
     expect(criarImportJob.mock.calls.at(-1)[1].payload[0].dados.baseLegal).toBe('consentimento');
   });
@@ -202,7 +270,10 @@ describe('previsualizarImportacao', () => {
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
 
     await expect(
-      validarImportacao(TENANT, USUARIO, buffer, { mapeamento: { ...MAPEAMENTO, Fone: 'leadScore' }, estrategiaDuplicata: 'pular' }),
+      validarImportacao(TENANT, USUARIO, buffer, {
+        mapeamento: { ...MAPEAMENTO, Fone: 'leadScore' },
+        estrategiaDuplicata: 'pular',
+      }),
     ).rejects.toBe(erroDoScore);
     expect(criarImportJob).not.toHaveBeenCalled();
   });
@@ -210,14 +281,22 @@ describe('previsualizarImportacao', () => {
 
 describe('validarImportacao', () => {
   it('converte linhas válidas, casa opção sem diferenciar maiúsculas e grava o job', async () => {
-    const buffer = await planilha([['Ana', 'ANA@X.COM', null, 'GANHO', '25/12/2025', 'varejo', 'proposta']]);
+    const buffer = await planilha([
+      ['Ana', 'ANA@X.COM', null, 'GANHO', '25/12/2025', 'varejo', 'proposta'],
+    ]);
 
     const resultado = await validarImportacao(TENANT, USUARIO, buffer, {
       mapeamento: MAPEAMENTO,
       estrategiaDuplicata: 'pular',
     });
 
-    expect(resultado).toEqual({ jobId: JOB, totalLinhas: 1, linhasValidas: 1, erros: [], duplicados: [] });
+    expect(resultado).toEqual({
+      jobId: JOB,
+      totalLinhas: 1,
+      linhasValidas: 1,
+      erros: [],
+      duplicados: [],
+    });
     const { payload } = criarImportJob.mock.calls[0][1];
     expect(payload[0].dados).toEqual({
       nome: 'Ana',
@@ -242,7 +321,9 @@ describe('validarImportacao', () => {
     });
 
     expect(resultado.linhasValidas).toBe(1);
-    const motivosLinha3 = resultado.erros.filter((erro) => erro.linha === LINHA_BIA).map((erro) => erro.motivo);
+    const motivosLinha3 = resultado.erros
+      .filter((erro) => erro.linha === LINHA_BIA)
+      .map((erro) => erro.motivo);
     expect(motivosLinha3).toEqual(
       expect.arrayContaining([
         'E-mail inválido em "E-mail": "email-ruim"',
@@ -251,9 +332,15 @@ describe('validarImportacao', () => {
         'Estágio "Inexistente" não existe no funil',
       ]),
     );
-    const motivosLinha4 = resultado.erros.filter((erro) => erro.linha === LINHA_VAZIA).map((erro) => erro.motivo);
+    const motivosLinha4 = resultado.erros
+      .filter((erro) => erro.linha === LINHA_VAZIA)
+      .map((erro) => erro.motivo);
     expect(motivosLinha4).toEqual(
-      expect.arrayContaining(['"Nome" é obrigatório', '"Segmento" é obrigatório', 'Informe e-mail ou telefone']),
+      expect.arrayContaining([
+        '"Nome" é obrigatório',
+        '"Segmento" é obrigatório',
+        'Informe e-mail ou telefone',
+      ]),
     );
     expect(criarImportJob.mock.calls[0][1].payload).toHaveLength(1);
   });
@@ -292,7 +379,9 @@ describe('confirmarImportacao', () => {
     transicionarStatus.mockResolvedValue(true);
     buscarImportJob.mockResolvedValue({ id: JOB, status: 'processando' });
 
-    await expect(confirmarImportacao(TENANT, JOB)).resolves.toMatchObject({ status: 'processando' });
+    await expect(confirmarImportacao(TENANT, JOB)).resolves.toMatchObject({
+      status: 'processando',
+    });
     expect(enfileirarImportacao).toHaveBeenCalledWith(TENANT, JOB);
   });
 
@@ -300,7 +389,9 @@ describe('confirmarImportacao', () => {
     transicionarStatus.mockResolvedValue(false);
     buscarImportJob.mockResolvedValue({ id: JOB, status: 'processando' });
 
-    await expect(confirmarImportacao(TENANT, JOB)).rejects.toThrow('Esta importação já foi confirmada');
+    await expect(confirmarImportacao(TENANT, JOB)).rejects.toThrow(
+      'Esta importação já foi confirmada',
+    );
     expect(enfileirarImportacao).not.toHaveBeenCalled();
   });
 
@@ -308,7 +399,9 @@ describe('confirmarImportacao', () => {
     transicionarStatus.mockResolvedValue(true);
     enfileirarImportacao.mockRejectedValueOnce(new Error('REDIS_URL não configurado'));
 
-    await expect(confirmarImportacao(TENANT, JOB)).rejects.toMatchObject({ code: 'QUEUE_UNAVAILABLE' });
+    await expect(confirmarImportacao(TENANT, JOB)).rejects.toMatchObject({
+      code: 'QUEUE_UNAVAILABLE',
+    });
     expect(transicionarStatus).toHaveBeenLastCalledWith(TENANT, JOB, 'processando', 'pendente');
   });
 });
@@ -316,7 +409,12 @@ describe('confirmarImportacao', () => {
 describe('processarImportacao — estratégias de duplicata', () => {
   const LINHA = {
     linha: LINHA_ANA,
-    dados: { nome: 'Ana', email: 'ana@x.com', ultimaInteracaoEm: '2025-12-25T00:00:00.000Z', customFields: {} },
+    dados: {
+      nome: 'Ana',
+      email: 'ana@x.com',
+      ultimaInteracaoEm: '2025-12-25T00:00:00.000Z',
+      customFields: {},
+    },
   };
 
   function jobCom(estrategia) {
@@ -348,7 +446,11 @@ describe('processarImportacao — estratégias de duplicata', () => {
     jobCom('atualizar');
     encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
     // Primeiro nome editado à mão: o nome da planilha não o sobrescreve (M10).
-    buscarLeadPorId.mockResolvedValueOnce({ id: 'lead-1', nome: 'Ana Souza', primeiro_nome: 'Aninha' });
+    buscarLeadPorId.mockResolvedValueOnce({
+      id: 'lead-1',
+      nome: 'Ana Souza',
+      primeiro_nome: 'Aninha',
+    });
 
     await processarImportacao(TENANT, JOB);
 
@@ -357,7 +459,10 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(dados.funilEstagioId).toBeUndefined();
     expect(dados.ultimaInteracaoEm).toBeInstanceOf(Date);
     expect(dados.primeiroNome).toBeUndefined();
-    expect(atualizarLead.mock.calls[0][3]).toMatchObject({ autorId: USUARIO, montarDiff: expect.any(Function) });
+    expect(atualizarLead.mock.calls[0][3]).toMatchObject({
+      autorId: USUARIO,
+      montarDiff: expect.any(Function),
+    });
     expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
 
@@ -383,7 +488,9 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(criarLead).not.toHaveBeenCalled();
     expect(progressoFinal()).toMatchObject({
       linhasIgnoradas: 1,
-      relatorioErro: [{ linha: LINHA_ANA, motivo: expect.stringContaining('não deixa criar outro') }],
+      relatorioErro: [
+        { linha: LINHA_ANA, motivo: expect.stringContaining('não deixa criar outro') },
+      ],
     });
   });
 
@@ -428,8 +535,20 @@ describe('processarImportacao — estratégias de duplicata', () => {
 describe('converterLinha — tipos MVP do M2', () => {
   const CAMPOS_M2 = [
     { chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1, obrigatorio: false },
-    { chave: 'contrato', label: 'Contrato', tipo: 'monetario', camada: CAMADA.CAMADA_3, obrigatorio: false },
-    { chave: 'celular', label: 'Celular', tipo: 'telefone', camada: CAMADA.CAMADA_3, obrigatorio: false },
+    {
+      chave: 'contrato',
+      label: 'Contrato',
+      tipo: 'monetario',
+      camada: CAMADA.CAMADA_3,
+      obrigatorio: false,
+    },
+    {
+      chave: 'celular',
+      label: 'Celular',
+      tipo: 'telefone',
+      camada: CAMADA.CAMADA_3,
+      obrigatorio: false,
+    },
     { chave: 'site', label: 'Site', tipo: 'url', camada: CAMADA.CAMADA_3, obrigatorio: false },
   ];
   const porChave = new Map(CAMPOS_M2.map((campo) => [campo.chave, campo]));
@@ -438,19 +557,34 @@ describe('converterLinha — tipos MVP do M2', () => {
 
   it('converte e normaliza os tipos novos pro customFields', () => {
     const { dados, erros } = converterLinha(
-      { numero: LINHA_ANA, valores: { Email: 'a@x.com', Contrato: 'R$ 1.234,56', Celular: '(11) 99999-0000', Site: 'https://x.com' } },
+      {
+        numero: LINHA_ANA,
+        valores: {
+          Email: 'a@x.com',
+          Contrato: 'R$ 1.234,56',
+          Celular: '(11) 99999-0000',
+          Site: 'https://x.com',
+        },
+      },
       mapa,
       CAMPOS_M2,
       porChave,
       new Map(),
     );
     expect(erros).toEqual([]);
-    expect(dados.customFields).toEqual({ contrato: VALOR_CONTRATO, celular: '11999990000', site: 'https://x.com' });
+    expect(dados.customFields).toEqual({
+      contrato: VALOR_CONTRATO,
+      celular: '11999990000',
+      site: 'https://x.com',
+    });
   });
 
   it('valor inválido vira erro da linha no Revisar', () => {
     const { erros } = converterLinha(
-      { numero: LINHA_BIA, valores: { Email: 'a@x.com', Contrato: 'caro', Celular: '12', Site: 'x' } },
+      {
+        numero: LINHA_BIA,
+        valores: { Email: 'a@x.com', Contrato: 'caro', Celular: '12', Site: 'x' },
+      },
       mapa,
       CAMPOS_M2,
       porChave,
@@ -475,18 +609,23 @@ describe('Revisar: duplicados no validate e ações no confirm (M7)', () => {
   });
 
   it('grava as ações das linhas apontadas e confirma', async () => {
-    await confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' } });
-    expect(definirAcoesDuplicata).toHaveBeenCalledWith(TENANT, JOB, { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' });
+    await confirmarImportacao(TENANT, JOB, {
+      acoes: { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' },
+    });
+    expect(definirAcoesDuplicata).toHaveBeenCalledWith(TENANT, JOB, {
+      [String(LINHA_ANA)]: 'criar',
+      [String(LINHA_BIA)]: 'atualizar',
+    });
     expect(enfileirarImportacao).toHaveBeenCalled();
   });
 
   it('"criar" onde a regra bloqueia, ou linha não apontada → 400, sem confirmar', async () => {
-    await expect(confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_BIA)]: 'criar' } })).rejects.toThrow(
-      'não deixa criar outro',
-    );
-    await expect(confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_VAZIA)]: 'pular' } })).rejects.toThrow(
-      'não foi apontada como duplicada',
-    );
+    await expect(
+      confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_BIA)]: 'criar' } }),
+    ).rejects.toThrow('não deixa criar outro');
+    await expect(
+      confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_VAZIA)]: 'pular' } }),
+    ).rejects.toThrow('não foi apontada como duplicada');
     expect(transicionarStatus).not.toHaveBeenCalled();
   });
 
@@ -504,7 +643,10 @@ describe('regras de obrigatoriedade no import (M8)', () => {
     ativo: true,
     sistema: false,
     alvo: { id: 'f-cargo', chave: 'cargo', label: 'Cargo', tipo: 'texto', camada: CAMADA.CAMADA_2 },
-    condicao: { campo: { id: 'f-nome', chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 }, operador: 'nao_vazio' },
+    condicao: {
+      campo: { id: 'f-nome', chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
+      operador: 'nao_vazio',
+    },
     efeito: { obrigatorio: true, visivel: false },
   };
 
@@ -516,9 +658,14 @@ describe('regras de obrigatoriedade no import (M8)', () => {
     regrasAplicaveis.mockResolvedValueOnce([REGRA]);
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
 
-    const resultado = await validarImportacao(TENANT, USUARIO, buffer, { mapeamento: MAPEAMENTO, estrategiaDuplicata: 'criar' });
+    const resultado = await validarImportacao(TENANT, USUARIO, buffer, {
+      mapeamento: MAPEAMENTO,
+      estrategiaDuplicata: 'criar',
+    });
     expect(resultado.jobId).toBeNull();
-    expect(resultado.erros).toEqual([{ linha: LINHA_ANA, motivo: '"Cargo" é obrigatório por causa do valor de "Nome"' }]);
+    expect(resultado.erros).toEqual([
+      { linha: LINHA_ANA, motivo: '"Cargo" é obrigatório por causa do valor de "Nome"' },
+    ]);
     expect(criarImportJob).not.toHaveBeenCalled();
   });
 
@@ -532,15 +679,24 @@ describe('regras de obrigatoriedade no import (M8)', () => {
       acoes: {},
       payload: [{ linha: LINHA_ANA, dados: { nome: 'Ana' } }],
     });
-    encontrarDuplicados.mockResolvedValue([{ id: 'lead-1', nome: 'Ana', campos: [], acao: 'warn' }]);
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', cargo: null, custom_fields: {} });
+    encontrarDuplicados.mockResolvedValue([
+      { id: 'lead-1', nome: 'Ana', campos: [], acao: 'warn' },
+    ]);
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      cargo: null,
+      custom_fields: {},
+    });
 
     await processarImportacao(TENANT, JOB);
 
     expect(atualizarLead).not.toHaveBeenCalled();
     expect(registrarProgresso.mock.calls.at(-1)[2]).toMatchObject({
       linhasComErro: 1,
-      relatorioErro: [{ linha: LINHA_ANA, motivo: expect.stringContaining('"Cargo" é obrigatório') }],
+      relatorioErro: [
+        { linha: LINHA_ANA, motivo: expect.stringContaining('"Cargo" é obrigatório') },
+      ],
     });
   });
 });
@@ -553,7 +709,10 @@ describe('enriquecimento por CNPJ no fim do lote (M11b)', () => {
       estrategia_duplicata: 'criar',
       usuario_id: USUARIO,
       payload: [
-        { linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', cnpj: '11222333000181', customFields: {} } },
+        {
+          linha: LINHA_ANA,
+          dados: { nome: 'Ana', email: 'ana@x.com', cnpj: '11222333000181', customFields: {} },
+        },
         { linha: LINHA_BIA, dados: { nome: 'Bia', email: 'bia@x.com', customFields: {} } },
       ],
     });
@@ -563,7 +722,9 @@ describe('enriquecimento por CNPJ no fim do lote (M11b)', () => {
     await processarImportacao(TENANT, JOB);
 
     expect(agendarEnriquecimento).toHaveBeenCalledTimes(1);
-    expect(agendarEnriquecimento).toHaveBeenCalledWith(TENANT, [{ leadId: 'lead-ana', cnpj: '11222333000181' }]);
+    expect(agendarEnriquecimento).toHaveBeenCalledWith(TENANT, [
+      { leadId: 'lead-ana', cnpj: '11222333000181' },
+    ]);
   });
 });
 
@@ -571,7 +732,14 @@ describe('distribuição automática no import (M12)', () => {
   const VENDEDORES = ['vendedor-a', 'vendedor-b', 'vendedor-c'];
   const LINHAS_DISTRIBUIDAS = 6;
   const POR_VENDEDOR = LINHAS_DISTRIBUIDAS / VENDEDORES.length;
-  const CONTEXTO = { fallback: 'rodizio_geral', regras: [], campos: [], ativos: new Set(), rodizioGeral: [], membrosPorGrupo: new Map() };
+  const CONTEXTO = {
+    fallback: 'rodizio_geral',
+    regras: [],
+    campos: [],
+    ativos: new Set(),
+    rodizioGeral: [],
+    membrosPorGrupo: new Map(),
+  };
 
   beforeEach(() => {
     carregarContextoDistribuicao.mockResolvedValue(CONTEXTO);
@@ -622,17 +790,32 @@ describe('distribuição automática no import (M12)', () => {
   });
 
   it('linha com a coluna Responsável fica com ele (sem passar pelo rodízio)', async () => {
-    jobComLinhas([{ linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', usuarioResponsavelId: 'gerente', customFields: {} } }]);
+    jobComLinhas([
+      {
+        linha: LINHA_ANA,
+        dados: {
+          nome: 'Ana',
+          email: 'ana@x.com',
+          usuarioResponsavelId: 'gerente',
+          customFields: {},
+        },
+      },
+    ]);
 
     await processarImportacao(TENANT, JOB);
 
     expect(distribuir).not.toHaveBeenCalled();
-    expect(criarLead.mock.calls[0][1]).toMatchObject({ usuarioResponsavelId: 'gerente', atribuidoPorRegraId: null });
+    expect(criarLead.mock.calls[0][1]).toMatchObject({
+      usuarioResponsavelId: 'gerente',
+      atribuidoPorRegraId: null,
+    });
   });
 
   it('desligada: quem importou continua sendo o responsável', async () => {
     carregarContextoDistribuicao.mockResolvedValue(null);
-    jobComLinhas([{ linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', customFields: {} } }]);
+    jobComLinhas([
+      { linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', customFields: {} } },
+    ]);
 
     await processarImportacao(TENANT, JOB);
 

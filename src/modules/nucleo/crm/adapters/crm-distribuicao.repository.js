@@ -27,9 +27,8 @@ const FIRST_RESULT_INDEX = 0;
  * @returns {Promise<ConfigDistribuicaoLinha | undefined>}
  */
 export function buscarConfigDistribuicao(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT ativo, fallback FROM modulo_crm.crm_distribuicao_config
       WHERE tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),

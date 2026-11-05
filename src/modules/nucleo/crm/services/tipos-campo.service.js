@@ -66,7 +66,9 @@ export function valorAusente(valor) {
 
 /** @param {unknown} valor */
 function objetoSimples(valor) {
-  return typeof valor === 'object' && valor !== null && !Array.isArray(valor) && !(valor instanceof Date);
+  return (
+    typeof valor === 'object' && valor !== null && !Array.isArray(valor) && !(valor instanceof Date)
+  );
 }
 
 /** @param {number} numero */
@@ -104,7 +106,9 @@ export function normalizarHora(texto) {
 /** @param {unknown} valor */
 function diaIsoValido(valor) {
   return (
-    typeof valor === 'string' && PADRAO_DIA_ISO.test(valor.slice(0, TAMANHO_DIA_ISO)) && !Number.isNaN(Date.parse(valor))
+    typeof valor === 'string' &&
+    PADRAO_DIA_ISO.test(valor.slice(0, TAMANHO_DIA_ISO)) &&
+    !Number.isNaN(Date.parse(valor))
   );
 }
 
@@ -119,14 +123,16 @@ function intervaloValido(valor) {
 /** @param {unknown} valor */
 function enderecoValido(valor) {
   if (!objetoSimples(valor)) return false;
-  return Object.entries(/** @type {Record<string, unknown>} */ (valor)).every(([parte, conteudo]) => {
-    if (!PARTES_ENDERECO.includes(parte)) return false;
-    if (conteudo === null || conteudo === undefined || conteudo === '') return true;
-    if (typeof conteudo !== 'string') return false;
-    if (parte === 'cep') return normalizarCep(conteudo) !== null;
-    if (parte === 'uf') return PADRAO_UF.test(conteudo.trim().toUpperCase());
-    return true;
-  });
+  return Object.entries(/** @type {Record<string, unknown>} */ (valor)).every(
+    ([parte, conteudo]) => {
+      if (!PARTES_ENDERECO.includes(parte)) return false;
+      if (conteudo === null || conteudo === undefined || conteudo === '') return true;
+      if (typeof conteudo !== 'string') return false;
+      if (parte === 'cep') return normalizarCep(conteudo) !== null;
+      if (parte === 'uf') return PADRAO_UF.test(conteudo.trim().toUpperCase());
+      return true;
+    },
+  );
 }
 
 /** Partes preenchidas, na ordem de `PARTES_ENDERECO`. @param {Record<string, unknown>} endereco */
@@ -173,7 +179,8 @@ export function normalizarTelefone(texto) {
   if (digitos.length > BRAZIL_PHONE.MOBILE_LENGTH && digitos.startsWith(DDI_BRASIL)) {
     digitos = digitos.slice(DDI_BRASIL.length);
   }
-  const valido = digitos.length >= BRAZIL_PHONE.LANDLINE_LENGTH && digitos.length <= BRAZIL_PHONE.MOBILE_LENGTH;
+  const valido =
+    digitos.length >= BRAZIL_PHONE.LANDLINE_LENGTH && digitos.length <= BRAZIL_PHONE.MOBILE_LENGTH;
   return valido ? digitos : null;
 }
 
@@ -204,8 +211,12 @@ export function chaveEmail(valor) {
 export function chaveTelefone(valor) {
   if (typeof valor !== 'string') return null;
   let digitos = somenteDigitos(valor);
-  if (TAMANHOS_COM_DDI.has(digitos.length) && digitos.startsWith(DDI_BRASIL)) digitos = digitos.slice(DDI_BRASIL.length);
-  if (digitos.length === BRAZIL_PHONE.MOBILE_LENGTH && digitos[INDICE_NONO_DIGITO] === NONO_DIGITO) {
+  if (TAMANHOS_COM_DDI.has(digitos.length) && digitos.startsWith(DDI_BRASIL))
+    digitos = digitos.slice(DDI_BRASIL.length);
+  if (
+    digitos.length === BRAZIL_PHONE.MOBILE_LENGTH &&
+    digitos[INDICE_NONO_DIGITO] === NONO_DIGITO
+  ) {
     digitos = digitos.slice(0, INDICE_NONO_DIGITO) + digitos.slice(INDICE_NONO_DIGITO + 1);
   }
   return digitos || null;
@@ -217,7 +228,9 @@ export function chaveTelefone(valor) {
  * @param {unknown} valor
  */
 export function chaveDocumento(valor) {
-  return typeof valor === 'string' ? valor.replace(/[^0-9A-Za-z]/g, '').toUpperCase() || null : null;
+  return typeof valor === 'string'
+    ? valor.replace(/[^0-9A-Za-z]/g, '').toUpperCase() || null
+    : null;
 }
 
 /** @param {string} texto */
@@ -302,7 +315,10 @@ export function normalizarValorDoTipo(tipo, valor) {
     const objeto = /** @type {Record<string, unknown>} */ (valor);
     if (tipo === TIPOS_CAMPO.ENDERECO) return normalizarEndereco(objeto);
     if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
-      return { de: String(objeto.de).slice(0, TAMANHO_DIA_ISO), ate: String(objeto.ate).slice(0, TAMANHO_DIA_ISO) };
+      return {
+        de: String(objeto.de).slice(0, TAMANHO_DIA_ISO),
+        ate: String(objeto.ate).slice(0, TAMANHO_DIA_ISO),
+      };
     }
     return valor;
   }
@@ -347,7 +363,9 @@ export function converterCelula(campo, bruto) {
       return { valor: texto };
     case TIPOS_CAMPO.NUMERO: {
       const numero = typeof bruto === 'number' ? bruto : converterNumero(texto);
-      return Number.isFinite(numero) ? { valor: numero } : { erro: `"${campo.label}" espera um número` };
+      return Number.isFinite(numero)
+        ? { valor: numero }
+        : { erro: `"${campo.label}" espera um número` };
     }
     case TIPOS_CAMPO.DATA: {
       const data = bruto instanceof Date ? bruto : converterData(texto);
@@ -363,10 +381,15 @@ export function converterCelula(campo, bruto) {
     }
     case TIPOS_CAMPO.SELECAO: {
       const opcao = casarOpcao(campo, texto);
-      return opcao !== undefined ? { valor: opcao } : { erro: `"${texto}" não é uma opção de "${campo.label}"` };
+      return opcao !== undefined
+        ? { valor: opcao }
+        : { erro: `"${texto}" não é uma opção de "${campo.label}"` };
     }
     case TIPOS_CAMPO.SELECAO_MULTIPLA: {
-      const itens = texto.split(/[,;]/).map((item) => item.trim()).filter(Boolean);
+      const itens = texto
+        .split(/[,;]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
       const valores = itens.map((item) => casarOpcao(campo, item));
       const invalido = itens.find((_, i) => valores[i] === undefined);
       return invalido === undefined
@@ -378,21 +401,26 @@ export function converterCelula(campo, bruto) {
         ? { valor: texto }
         : { erro: `"${campo.label}" passa de ${LIMITE_TEXTO_LONGO} caracteres` };
     case TIPOS_CAMPO.MONETARIO: {
-      const numero = typeof bruto === 'number' ? bruto : converterNumero(texto.replace(/^R\$\s*/i, ''));
+      const numero =
+        typeof bruto === 'number' ? bruto : converterNumero(texto.replace(/^R\$\s*/i, ''));
       return Number.isFinite(numero)
         ? { valor: Math.round(numero * FATOR_CENTAVOS) / FATOR_CENTAVOS }
         : { erro: `"${campo.label}" espera um valor em reais` };
     }
     case TIPOS_CAMPO.TELEFONE: {
       const telefone = normalizarTelefone(texto);
-      return telefone ? { valor: telefone } : { erro: `Telefone inválido em "${campo.label}": "${texto}"` };
+      return telefone
+        ? { valor: telefone }
+        : { erro: `Telefone inválido em "${campo.label}": "${texto}"` };
     }
     case TIPOS_CAMPO.EMAIL:
       return emailSchema.safeParse(texto).success
         ? { valor: texto.toLowerCase() }
         : { erro: `E-mail inválido em "${campo.label}": "${texto}"` };
     case TIPOS_CAMPO.URL:
-      return urlValida(texto) ? { valor: texto } : { erro: `"${campo.label}" espera um link (http/https)` };
+      return urlValida(texto)
+        ? { valor: texto }
+        : { erro: `"${campo.label}" espera um link (http/https)` };
     // Documento em célula numérica perde o zero da frente (CEP 1310100).
     case TIPOS_CAMPO.CPF: {
       const cpf = normalizarCpf(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CPF_LENGTH));
@@ -412,14 +440,18 @@ export function converterCelula(campo, bruto) {
     }
     case TIPOS_CAMPO.INTERVALO_DATAS: {
       const intervalo = converterIntervalo(bruto, texto);
-      return intervalo ? { valor: intervalo } : { erro: `"${campo.label}" espera um período (dd/mm/aaaa - dd/mm/aaaa)` };
+      return intervalo
+        ? { valor: intervalo }
+        : { erro: `"${campo.label}" espera um período (dd/mm/aaaa - dd/mm/aaaa)` };
     }
     case TIPOS_CAMPO.ENDERECO:
       // Uma célula só não dá pra separar em partes: vai inteira no logradouro.
       return { valor: { logradouro: texto } };
     case TIPOS_CAMPO.USUARIO: {
       const id = campo.usuarios?.get(texto.toLowerCase());
-      return id ? { valor: id } : { erro: `"${texto}" não é um usuário ativo (em "${campo.label}")` };
+      return id
+        ? { valor: id }
+        : { erro: `"${texto}" não é um usuário ativo (em "${campo.label}")` };
     }
     default:
       return { erro: `Tipo de campo "${campo.tipo}" não suportado` };
@@ -439,7 +471,8 @@ function casarOpcao(campo, valor) {
   if (campo.lista === TIPOS_LISTA.TAG) return valor;
   if (campo.opcoesLista) {
     return campo.opcoesLista.find(
-      (opcao) => opcao.ativo && (opcao.key.toLowerCase() === alvo || opcao.label.toLowerCase() === alvo),
+      (opcao) =>
+        opcao.ativo && (opcao.key.toLowerCase() === alvo || opcao.label.toLowerCase() === alvo),
     )?.key;
   }
   if (!campo.opcoes) return valor;
@@ -459,7 +492,9 @@ function converterNumero(texto) {
  * @param {number} tamanho
  */
 function comZerosAEsquerda(bruto, texto, tamanho) {
-  return typeof bruto === 'number' && Number.isInteger(bruto) ? texto.padStart(tamanho, '0') : texto;
+  return typeof bruto === 'number' && Number.isInteger(bruto)
+    ? texto.padStart(tamanho, '0')
+    : texto;
 }
 
 /**
@@ -470,7 +505,8 @@ function comZerosAEsquerda(bruto, texto, tamanho) {
  * @param {string} texto
  */
 function converterHora(bruto, texto) {
-  if (bruto instanceof Date) return `${doisDigitos(bruto.getUTCHours())}:${doisDigitos(bruto.getUTCMinutes())}`;
+  if (bruto instanceof Date)
+    return `${doisDigitos(bruto.getUTCHours())}:${doisDigitos(bruto.getUTCMinutes())}`;
   if (typeof bruto === 'number' && bruto >= 0 && bruto < 1) {
     const minutos = Math.round(bruto * MINUTOS_NO_DIA) % MINUTOS_NO_DIA;
     return `${doisDigitos(Math.floor(minutos / MINUTOS_NA_HORA))}:${doisDigitos(minutos % MINUTOS_NA_HORA)}`;
@@ -487,9 +523,18 @@ function converterHora(bruto, texto) {
  * @returns {{ de: string, ate: string } | null}
  */
 function converterIntervalo(bruto, texto) {
-  const datas = bruto instanceof Date ? [bruto] : texto.split(SEPARADOR_INTERVALO).map((parte) => converterData(parte.trim()));
-  if (datas.length > DATAS_NO_INTERVALO || datas.some((data) => !data || Number.isNaN(data.getTime()))) return null;
-  const [de, ate = de] = /** @type {Date[]} */ (datas).map((data) => data.toISOString().slice(0, TAMANHO_DIA_ISO));
+  const datas =
+    bruto instanceof Date
+      ? [bruto]
+      : texto.split(SEPARADOR_INTERVALO).map((parte) => converterData(parte.trim()));
+  if (
+    datas.length > DATAS_NO_INTERVALO ||
+    datas.some((data) => !data || Number.isNaN(data.getTime()))
+  )
+    return null;
+  const [de, ate = de] = /** @type {Date[]} */ (datas).map((data) =>
+    data.toISOString().slice(0, TAMANHO_DIA_ISO),
+  );
   return de <= ate ? { de, ate } : null;
 }
 

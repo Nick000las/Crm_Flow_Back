@@ -74,13 +74,21 @@ export async function excluirLead(tenantId, leadId, usuarioId) {
  * @param {string} [usuarioId]
  * @param {{ papel?: string, agora?: Date }} [opcoes]
  */
-export async function restaurarLead(tenantId, leadId, usuarioId, { papel, agora = new Date() } = {}) {
+export async function restaurarLead(
+  tenantId,
+  leadId,
+  usuarioId,
+  { papel, agora = new Date() } = {},
+) {
   const historico = { autorId: usuarioId ?? null };
   const restaurado = await restaurarDaLixeira(tenantId, leadId, inicioDaLixeira(agora), historico);
   if (!restaurado) throw leadNaoEncontrado();
   // Descartado numa mesclagem (M7): dados e histórico já estão no outro lead.
   if (restaurado.mescladoEmId) {
-    throw erroDeConflito('id', `Este lead foi mesclado no lead ${restaurado.mescladoEmId} e não pode ser restaurado`);
+    throw erroDeConflito(
+      'id',
+      `Este lead foi mesclado no lead ${restaurado.mescladoEmId} e não pode ser restaurado`,
+    );
   }
   return buscarLeadFormatado(tenantId, leadId, { papel });
 }
@@ -102,7 +110,10 @@ export async function purgarLixeiras(agora = new Date()) {
     try {
       relatorio.apagados += await purgarLixeira(tenantId, limite);
     } catch (erro) {
-      relatorio.falhas.push({ tenantId, erro: erro instanceof Error ? erro.message : String(erro) });
+      relatorio.falhas.push({
+        tenantId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      });
     }
   }
   return relatorio;

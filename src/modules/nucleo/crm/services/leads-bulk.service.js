@@ -88,7 +88,11 @@ export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioI
  * @param {(texto: string) => { key: string } | undefined} encontrarTag
  * @returns {Record<string, unknown>}
  */
-export function alteracoesDoLead(atual, { status, fonteLead, usuarioResponsavelId, tags }, encontrarTag) {
+export function alteracoesDoLead(
+  atual,
+  { status, fonteLead, usuarioResponsavelId, tags },
+  encontrarTag,
+) {
   /** @type {Record<string, unknown>} */
   const input = {};
   if (status !== undefined && status !== atual.status) input.status = status;
@@ -100,7 +104,9 @@ export function alteracoesDoLead(atual, { status, fonteLead, usuarioResponsavelI
   if (tags) {
     const atuais = /** @type {string[]} */ (atual.tags ?? []);
     const removidas = new Set(
-      (tags.remover ?? []).map((texto) => encontrarTag(texto)?.key).filter((key) => key !== undefined),
+      (tags.remover ?? [])
+        .map((texto) => encontrarTag(texto)?.key)
+        .filter((key) => key !== undefined),
     );
     const keys = atuais.filter((key) => !removidas.has(key));
     /** @type {string[]} */
@@ -110,7 +116,10 @@ export function alteracoesDoLead(atual, { status, fonteLead, usuarioResponsavelI
       if (key === undefined) novas.push(texto);
       else if (!keys.includes(key)) keys.push(key);
     }
-    const mudou = novas.length > 0 || keys.length !== atuais.length || keys.some((key) => !atuais.includes(key));
+    const mudou =
+      novas.length > 0 ||
+      keys.length !== atuais.length ||
+      keys.some((key) => !atuais.includes(key));
     if (mudou) input.tags = [...keys, ...novas];
   }
   return input;

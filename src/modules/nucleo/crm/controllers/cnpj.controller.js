@@ -3,7 +3,12 @@ import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { cnpjParamSchema, salvarConfigCnpjBodySchema } from '../schemas/cnpj.schema.js';
-import { consultarParaLupa, encerrarEnriquecimento, listarConfigCnpj, salvarConfigCnpj } from '../services/cnpj.service.js';
+import {
+  consultarParaLupa,
+  encerrarEnriquecimento,
+  listarConfigCnpj,
+  salvarConfigCnpj,
+} from '../services/cnpj.service.js';
 
 /**
  * CONTROLLER: enriquecimento por CNPJ (M11b). HTTP fino. Atrás da flag
@@ -32,9 +37,13 @@ export function registrarRotasCnpj(app) {
     return sendSuccess(reply, await listarConfigCnpj(tenantId));
   });
 
-  app.put('/crm/configuracoes/cnpj', { preHandler: [requireRole(PAPEIS_GESTAO), comFlag] }, async (req, reply) => {
-    const { tenantId } = req.tenantContext;
-    const body = salvarConfigCnpjBodySchema.parse(req.body);
-    return sendSuccess(reply, await salvarConfigCnpj(tenantId, body));
-  });
+  app.put(
+    '/crm/configuracoes/cnpj',
+    { preHandler: [requireRole(PAPEIS_GESTAO), comFlag] },
+    async (req, reply) => {
+      const { tenantId } = req.tenantContext;
+      const body = salvarConfigCnpjBodySchema.parse(req.body);
+      return sendSuccess(reply, await salvarConfigCnpj(tenantId, body));
+    },
+  );
 }

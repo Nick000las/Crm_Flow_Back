@@ -2,7 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { buildApp } from '#api/app.js';
 import { signAccessToken } from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
-import { listarNotificacoes, marcarComoLida, marcarTodasComoLidas } from '#core/notificacoes/notificacoes.js';
+import {
+  listarNotificacoes,
+  marcarComoLida,
+  marcarTodasComoLidas,
+} from '#core/notificacoes/notificacoes.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 
 vi.mock('#core/db/tenantClient.js', () => ({
@@ -52,19 +56,38 @@ describe('/notificacoes', () => {
   });
 
   it('lista as do usuário do token, com a paginação da query', async () => {
-    const resposta = await app.inject({ method: 'GET', url: `/notificacoes?pagina=${PAGINA}&tamanho=${TAMANHO}`, headers: autorizado() });
+    const resposta = await app.inject({
+      method: 'GET',
+      url: `/notificacoes?pagina=${PAGINA}&tamanho=${TAMANHO}`,
+      headers: autorizado(),
+    });
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
-    expect(listarNotificacoes).toHaveBeenCalledWith(TENANT, USUARIO, { pagina: PAGINA, tamanho: TAMANHO });
+    expect(listarNotificacoes).toHaveBeenCalledWith(TENANT, USUARIO, {
+      pagina: PAGINA,
+      tamanho: TAMANHO,
+    });
   });
 
   it('marcar uma (id inválido → 400) e marcar todas', async () => {
-    const invalido = await app.inject({ method: 'POST', url: '/notificacoes/abc/lida', headers: autorizado() });
+    const invalido = await app.inject({
+      method: 'POST',
+      url: '/notificacoes/abc/lida',
+      headers: autorizado(),
+    });
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
 
-    await app.inject({ method: 'POST', url: `/notificacoes/${NOTIFICACAO}/lida`, headers: autorizado() });
+    await app.inject({
+      method: 'POST',
+      url: `/notificacoes/${NOTIFICACAO}/lida`,
+      headers: autorizado(),
+    });
     expect(marcarComoLida).toHaveBeenCalledWith(TENANT, USUARIO, NOTIFICACAO);
 
-    const todas = await app.inject({ method: 'POST', url: '/notificacoes/lidas', headers: autorizado() });
+    const todas = await app.inject({
+      method: 'POST',
+      url: '/notificacoes/lidas',
+      headers: autorizado(),
+    });
     expect(todas.json().data).toEqual({ marcadas: 0 });
     expect(marcarTodasComoLidas).toHaveBeenCalledWith(TENANT, USUARIO);
   });

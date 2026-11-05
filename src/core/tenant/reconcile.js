@@ -23,7 +23,8 @@ export async function reconciliarModulos(tenantId, moduleKeys) {
     const moduleKey = alvos[indice].key;
     if (resultado.status === 'fulfilled') return { moduleKey, ok: true };
 
-    const erro = resultado.reason instanceof Error ? resultado.reason.message : String(resultado.reason);
+    const erro =
+      resultado.reason instanceof Error ? resultado.reason.message : String(resultado.reason);
     console.warn(`[reconcile] ${moduleKey} falhou no tenant ${tenantId}: ${erro}`);
     return { moduleKey, ok: false, erro };
   });

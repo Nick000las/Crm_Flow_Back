@@ -85,7 +85,9 @@ describe('converterCelula (import)', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.TEXTO), 'x')).toEqual({ valor: 'x' });
     expect(converterCelula(campo(TIPOS_CAMPO.NUMERO), '1.234,50')).toEqual({ valor: NUMERO_BR });
     expect(converterCelula(campo(TIPOS_CAMPO.BOOLEANO), 'Sim')).toEqual({ valor: true });
-    expect(converterCelula({ ...campo(TIPOS_CAMPO.SELECAO), opcoes: ['Alta'] }, 'alta')).toEqual({ valor: 'Alta' });
+    expect(converterCelula({ ...campo(TIPOS_CAMPO.SELECAO), opcoes: ['Alta'] }, 'alta')).toEqual({
+      valor: 'Alta',
+    });
     expect(converterCelula(campo(TIPOS_CAMPO.DATA), '31/02/2026')).toHaveProperty('erro');
     expect(converterCelula(campo('tipo_inexistente'), 'x')).toHaveProperty('erro');
   });
@@ -121,7 +123,13 @@ describe('converterCelula — campo de lista (M3)', () => {
   });
 
   it('tag é livre (vira opção ao gravar a linha)', () => {
-    const tags = { tipo: TIPOS_CAMPO.SELECAO_MULTIPLA, label: 'Tags', lista: 'tag', opcoes: null, opcoesLista: [] };
+    const tags = {
+      tipo: TIPOS_CAMPO.SELECAO_MULTIPLA,
+      label: 'Tags',
+      lista: 'tag',
+      opcoes: null,
+      opcoesLista: [],
+    };
     expect(converterCelula(tags, 'Feira; VIP')).toEqual({ valor: ['Feira', 'VIP'] });
   });
 });

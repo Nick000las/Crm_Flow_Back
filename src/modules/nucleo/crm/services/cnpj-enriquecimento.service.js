@@ -56,7 +56,11 @@ export async function processarEnriquecimento({ tenantId, leadId, cnpj }) {
 
   const schema = await obterSchemaCampos(tenantId);
   const sugestao = sugestaoParaLead(consulta.dados, config.mapeamento, schema.campos);
-  const semSobrescrever = filtrarSobrescrita(sugestao, leadParaApi(atual, schema), config.sobrescrever);
+  const semSobrescrever = filtrarSobrescrita(
+    sugestao,
+    leadParaApi(atual, schema),
+    config.sobrescrever,
+  );
   const aplicar = await semDuplicidadeBloqueada(tenantId, leadId, semSobrescrever);
   if (aplicar.length === 0) return { resultado: 'nada_a_preencher' };
 
@@ -98,12 +102,16 @@ export function opcoesDoWorkerCnpj(config) {
 export function filtrarSobrescrita(sugestao, lead, sobrescrever) {
   if (sobrescrever) return sugestao;
   return sugestao.filter((item) =>
-    valorAusente(item.camada === CAMADA.CAMADA_3 ? lead.customFields?.[item.chave] : lead[item.chave]),
+    valorAusente(
+      item.camada === CAMADA.CAMADA_3 ? lead.customFields?.[item.chave] : lead[item.chave],
+    ),
   );
 }
 
 /** Chave da API (`email`, `telefone`…) → campo da regra de duplicidade (M7). */
-const CAMPO_DE_DUPLICIDADE = new Map(Object.entries(CAMPOS_DUPLICIDADE).map(([campo, { chave }]) => [chave, campo]));
+const CAMPO_DE_DUPLICIDADE = new Map(
+  Object.entries(CAMPOS_DUPLICIDADE).map(([campo, { chave }]) => [chave, campo]),
+);
 
 /**
  * Tira os campos nativos que caem num bloqueio de duplicidade (M7) — uma
@@ -115,13 +123,21 @@ const CAMPO_DE_DUPLICIDADE = new Map(Object.entries(CAMPOS_DUPLICIDADE).map(([ca
  * @param {import('./cnpj.service.js').Sugestao[]} itens
  */
 async function semDuplicidadeBloqueada(tenantId, leadId, itens) {
-  const vigiados = itens.filter((item) => item.camada !== CAMADA.CAMADA_3 && CAMPO_DE_DUPLICIDADE.has(item.chave));
-  if (vigiados.length === 0 || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return itens;
+  const vigiados = itens.filter(
+    (item) => item.camada !== CAMADA.CAMADA_3 && CAMPO_DE_DUPLICIDADE.has(item.chave),
+  );
+  if (vigiados.length === 0 || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE)))
+    return itens;
 
   const bloqueados = new Set();
   for (const item of vigiados) {
-    const candidatos = await encontrarDuplicados(tenantId, { [item.chave]: item.valor }, { ignorarId: leadId });
-    if (candidatos.some((candidato) => candidato.acao === ACOES_DUPLICIDADE.BLOQUEAR)) bloqueados.add(item.chave);
+    const candidatos = await encontrarDuplicados(
+      tenantId,
+      { [item.chave]: item.valor },
+      { ignorarId: leadId },
+    );
+    if (candidatos.some((candidato) => candidato.acao === ACOES_DUPLICIDADE.BLOQUEAR))
+      bloqueados.add(item.chave);
   }
   return itens.filter((item) => item.camada === CAMADA.CAMADA_3 || !bloqueados.has(item.chave));
 }
@@ -141,8 +157,11 @@ export function dadosParaGravar(itens, definicoes) {
   const personalizados = {};
   for (const item of itens) {
     if (item.camada === CAMADA.CAMADA_3) personalizados[item.chave] = item.valor;
-    else dados[item.chave] = item.tipo === TIPOS_CAMPO.DATA ? new Date(String(item.valor)) : item.valor;
+    else
+      dados[item.chave] =
+        item.tipo === TIPOS_CAMPO.DATA ? new Date(String(item.valor)) : item.valor;
   }
-  if (Object.keys(personalizados).length > 0) dados.customFields = customFieldsParaArmazenamento(definicoes, personalizados);
+  if (Object.keys(personalizados).length > 0)
+    dados.customFields = customFieldsParaArmazenamento(definicoes, personalizados);
   return dados;
 }

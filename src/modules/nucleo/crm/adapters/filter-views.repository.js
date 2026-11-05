@@ -33,9 +33,8 @@ export function buscarViewsDoUsuario(tenantId, usuarioId) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function buscarViewPorNome(tenantId, usuarioId, nome) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id FROM modulo_crm.crm_filter_views
       WHERE tenant_id = ${tenantId}::uuid AND usuario_id = ${usuarioId}::uuid AND nome = ${nome}
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
@@ -49,9 +48,8 @@ export function buscarViewPorNome(tenantId, usuarioId, nome) {
  * @returns {Promise<FilterView>}
  */
 export function criarView(tenantId, usuarioId, { nome, filtros }) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       INSERT INTO modulo_crm.crm_filter_views (tenant_id, usuario_id, nome, filtros)
       VALUES (${tenantId}::uuid, ${usuarioId}::uuid, ${nome}, ${JSON.stringify(filtros)}::jsonb)
       RETURNING id, nome, filtros, created_at
@@ -66,9 +64,8 @@ export function criarView(tenantId, usuarioId, { nome, filtros }) {
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function removerView(tenantId, usuarioId, viewId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       DELETE FROM modulo_crm.crm_filter_views
       WHERE id = ${viewId}::uuid AND tenant_id = ${tenantId}::uuid AND usuario_id = ${usuarioId}::uuid
       RETURNING id

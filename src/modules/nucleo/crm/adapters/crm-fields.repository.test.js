@@ -78,10 +78,17 @@ describe('campos personalizados', () => {
   });
 
   it('editar e excluir só tocam personalizado ativo; excluir é desativar', async () => {
-    await editarCampoPersonalizado(TENANT, ID, { label: 'Canal', tipo: 'texto', opcoes: null, obrigatorio: true });
+    await editarCampoPersonalizado(TENANT, ID, {
+      label: 'Canal',
+      tipo: 'texto',
+      opcoes: null,
+      obrigatorio: true,
+    });
     await desativarCampoPersonalizado(TENANT, ID);
 
-    expect(sqls()[0]).toContain('WHERE id = ?::uuid AND tenant_id = ?::uuid AND system_key IS NULL AND is_active');
+    expect(sqls()[0]).toContain(
+      'WHERE id = ?::uuid AND tenant_id = ?::uuid AND system_key IS NULL AND is_active',
+    );
     expect(chamadas[0].values).toContain(null); // opções de texto viram SQL NULL
     expect(sqls()[1]).toContain('SET is_active = false');
     expect(sqls().some((sql) => sql.includes('DELETE'))).toBe(false);
@@ -93,19 +100,38 @@ describe('inserirCamposSistema (reconcile)', () => {
     respostasQuery.push([{ id: 'novo' }], []); // 1º criado, 2º já existia (ON CONFLICT DO NOTHING)
 
     const criados = await inserirCamposSistema(TENANT, [
-      { systemKey: 'empresa', label: 'Empresa', tipo: 'texto', position: 0, isRequired: false, visivel: false },
-      { systemKey: 'cargo', label: 'Cargo', tipo: 'texto', position: 0, isRequired: false, visivel: false },
+      {
+        systemKey: 'empresa',
+        label: 'Empresa',
+        tipo: 'texto',
+        position: 0,
+        isRequired: false,
+        visivel: false,
+      },
+      {
+        systemKey: 'cargo',
+        label: 'Cargo',
+        tipo: 'texto',
+        position: 0,
+        isRequired: false,
+        visivel: false,
+      },
     ]);
 
     expect(criados).toBe(1);
     expect(sqls().filter((sql) => sql.includes('crm_field_visibility'))).toHaveLength(1);
-    expect(sqls()[0]).toContain('ON CONFLICT (tenant_id, system_key) WHERE system_key IS NOT NULL DO NOTHING');
+    expect(sqls()[0]).toContain(
+      'ON CONFLICT (tenant_id, system_key) WHERE system_key IS NOT NULL DO NOTHING',
+    );
   });
 });
 
 describe('área Configurações (M2)', () => {
   it('um campo: label/obrigatório + só os contextos enviados, numa transação', async () => {
-    await atualizarCampoConfigurado(TENANT, ID, { label: 'Razão social', visibilidade: { table: false } });
+    await atualizarCampoConfigurado(TENANT, ID, {
+      label: 'Razão social',
+      visibilidade: { table: false },
+    });
 
     expect(getTenantClient).toHaveBeenCalledTimes(1);
     expect(sqls()[0]).toContain('SET label = COALESCE(?, label)');

@@ -46,7 +46,9 @@ const argsSchema = z.object({
     .string({ required_error: 'Informe --role' })
     .trim()
     .transform((role) => role.toUpperCase())
-    .pipe(z.enum(PAPEIS_PERMITIDOS, { message: `--role deve ser ${PAPEIS_PERMITIDOS.join(' ou ')}` })),
+    .pipe(
+      z.enum(PAPEIS_PERMITIDOS, { message: `--role deve ser ${PAPEIS_PERMITIDOS.join(' ou ')}` }),
+    ),
 });
 
 async function main() {
@@ -55,7 +57,11 @@ async function main() {
 
   const tenant = await prisma.tenant.findUnique({
     where: { subdomain },
-    select: { id: true, nome: true, modulosAtivos: { where: { disabledAt: null }, select: { moduleKey: true } } },
+    select: {
+      id: true,
+      nome: true,
+      modulosAtivos: { where: { disabledAt: null }, select: { moduleKey: true } },
+    },
   });
 
   if (!tenant) {
@@ -81,7 +87,13 @@ async function main() {
   const modulos = tenant.modulosAtivos.map((modulo) => modulo.moduleKey);
 
   console.log('Tenant:', tenant.id, `(${tenant.nome} / ${subdomain})`);
-  console.log(`Usuário ${usuario.role} criado:`, usuario.id, '-', usuario.nome, `<${usuario.email}>`);
+  console.log(
+    `Usuário ${usuario.role} criado:`,
+    usuario.id,
+    '-',
+    usuario.nome,
+    `<${usuario.email}>`,
+  );
   console.log('Módulos ativos do tenant:', modulos.length > 0 ? modulos.join(', ') : '(nenhum)');
   console.log(
     '\nSem senha definida. Entre em POST /auth/login com esse e-mail — o fluxo de ' +

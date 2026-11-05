@@ -132,9 +132,8 @@ export async function gravarScoresEmLote(tenantId, expressao, depoisDe, limite) 
  * @returns {Promise<number>}
  */
 export function contarLeadsDoTenant(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT count(*)::int AS total FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX].total),
   );
@@ -145,9 +144,8 @@ export function contarLeadsDoTenant(tenantId) {
  * @returns {Promise<ProgressoLinha | undefined>}
  */
 export function buscarProgressoRecalculo(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT recalculo_total, recalculo_processados, recalculo_iniciado_em, recalculo_concluido_em
       FROM modulo_crm.crm_score_config WHERE tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
@@ -160,7 +158,10 @@ export function buscarProgressoRecalculo(tenantId) {
  * @param {string} tenantId
  * @param {{ total: number, processados: number, inicio?: boolean, concluido?: boolean }} progresso
  */
-export function registrarProgressoRecalculo(tenantId, { total, processados, inicio = false, concluido = false }) {
+export function registrarProgressoRecalculo(
+  tenantId,
+  { total, processados, inicio = false, concluido = false },
+) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { salvarOverride } from '../adapters/crm-layout.repository.js';
-import { CAMADA, CAMPOS_SISTEMA, LIMITES_LAYOUT, NOME_SECAO_OUTROS, NOME_SECAO_UNICA } from '../constants.js';
+import {
+  CAMADA,
+  CAMPOS_SISTEMA,
+  LIMITES_LAYOUT,
+  NOME_SECAO_OUTROS,
+  NOME_SECAO_UNICA,
+} from '../constants.js';
 import { listarConfiguracaoCampos } from './configuracoes-campos.service.js';
 import { emTodosOsContextos, montarCampos } from './field-schema.service.js';
 import {
@@ -60,10 +66,25 @@ function campos({ cnpjNaFicha = true } = {}) {
     { coluna: 'empresa', visivel: true, ordem: ORDEM_EMPRESA, obrigatorio: false },
   ];
   const sobreposicoes = Object.fromEntries(
-    CAMPOS_SISTEMA.map((campo) => [campo.systemKey, { id: ID(campo.systemKey), visibilidade: emTodosOsContextos(true) }]),
+    CAMPOS_SISTEMA.map((campo) => [
+      campo.systemKey,
+      { id: ID(campo.systemKey), visibilidade: emTodosOsContextos(true) },
+    ]),
   );
-  sobreposicoes.cnpj.visibilidade = { ...emTodosOsContextos(true), table: false, detail: cnpjNaFicha };
-  const segmento = { id: ID_SEGMENTO, chave: 'segmento', label: 'Segmento', tipo: 'texto', opcoes: null, obrigatorio: false, ordem: ORDEM_SEGMENTO };
+  sobreposicoes.cnpj.visibilidade = {
+    ...emTodosOsContextos(true),
+    table: false,
+    detail: cnpjNaFicha,
+  };
+  const segmento = {
+    id: ID_SEGMENTO,
+    chave: 'segmento',
+    label: 'Segmento',
+    tipo: 'texto',
+    opcoes: null,
+    obrigatorio: false,
+    ordem: ORDEM_SEGMENTO,
+  };
   return montarCampos(visibilidade, [segmento], sobreposicoes);
 }
 
@@ -97,7 +118,10 @@ describe('mesclarLayout (padrão + override)', () => {
   });
 
   it('override parcial: o que não veio segue o padrão', () => {
-    const mesclado = mesclarLayout(padrao, { layout: { identificador: ID('cnpj') }, padraoVisto: {} });
+    const mesclado = mesclarLayout(padrao, {
+      layout: { identificador: ID('cnpj') },
+      padraoVisto: {},
+    });
     expect(mesclado.identificador).toBe(ID('cnpj'));
     expect(mesclado.colunas).toEqual(padrao.colunas);
   });
@@ -137,7 +161,11 @@ describe('resolverLayout', () => {
     expect(efetivo.identificador).toMatchObject({ ref: ID('cnpj'), chave: 'cnpj', coluna: 'cnpj' });
     // Cidade (Camada 2 desligada) não está no schema → sai do subtítulo.
     expect(refs(efetivo.subtitulo)).toEqual([ID('empresa')]);
-    expect(efetivo.destaques[0]).toMatchObject({ ref: 'lead.valor', chave: 'valor', label: 'Valor' });
+    expect(efetivo.destaques[0]).toMatchObject({
+      ref: 'lead.valor',
+      chave: 'valor',
+      label: 'Valor',
+    });
     // CNPJ é identificador (1ª coluna fixa) e está fora da tabela: não repete.
     expect(refs(efetivo.colunas)).toEqual([ID('telefone'), 'lead.responsavel']);
   });
@@ -181,15 +209,27 @@ describe('validarLayout', () => {
     ['personalizado numérico', ID_NOTA],
     ['referência fixa', 'lead.valor'],
   ])('identificador %s → 400', (_nome, identificador) => {
-    expect(() => validarLayout({ ...valido, identificador }, REFS)).toThrow(/O identificador precisa ser/);
+    expect(() => validarLayout({ ...valido, identificador }, REFS)).toThrow(
+      /O identificador precisa ser/,
+    );
   });
 
   it('referência desconhecida, repetida ou campo em duas seções → 400', () => {
-    expect(() => validarLayout({ ...valido, colunas: ['nao-existe'] }, REFS)).toThrow(/não é um campo ativo/);
-    expect(() => validarLayout({ ...valido, destaques: ['lead.valor', 'lead.valor'] }, REFS)).toThrow(/uma vez/);
+    expect(() => validarLayout({ ...valido, colunas: ['nao-existe'] }, REFS)).toThrow(
+      /não é um campo ativo/,
+    );
+    expect(() =>
+      validarLayout({ ...valido, destaques: ['lead.valor', 'lead.valor'] }, REFS),
+    ).toThrow(/uma vez/);
     expect(() =>
       validarLayout(
-        { ...valido, secoes: [{ nome: 'A', campos: [ID('nome')] }, { nome: 'B', campos: [ID('nome')] }] },
+        {
+          ...valido,
+          secoes: [
+            { nome: 'A', campos: [ID('nome')] },
+            { nome: 'B', campos: [ID('nome')] },
+          ],
+        },
         REFS,
       ),
     ).toThrow(/uma vez/);
@@ -197,13 +237,18 @@ describe('validarLayout', () => {
 
   it('padrão exige tudo; override aceita parcial', () => {
     expect(() => validarLayout({ colunas: [ID('telefone')] }, REFS)).toThrow(/completo/);
-    expect(() => validarLayout({ colunas: [ID('telefone')] }, REFS, { parcial: true })).not.toThrow();
+    expect(() =>
+      validarLayout({ colunas: [ID('telefone')] }, REFS, { parcial: true }),
+    ).not.toThrow();
   });
 });
 
 describe('salvarMeu', () => {
   it('guarda as listas do padrão de agora como "vistas", só das partes sobrescritas', async () => {
-    await salvarMeu('tenant-1', 'usuario-1', { colunas: [ID('status')], identificador: ID('empresa') });
+    await salvarMeu('tenant-1', 'usuario-1', {
+      colunas: [ID('status')],
+      identificador: ID('empresa'),
+    });
     const [, , layout, padraoVisto] = salvarOverride.mock.calls[0];
     expect(layout).toEqual({ colunas: [ID('status')], identificador: ID('empresa') });
     expect(Object.keys(padraoVisto)).toEqual(['colunas']);

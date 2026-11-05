@@ -30,7 +30,9 @@ describeWithDatabase('Cobertura de FK de tenant', () => {
 
     if (semFk.length > 0) {
       const lista = semFk.map((t) => `  - ${t.schema}.${t.tabela}`).join('\n');
-      throw new Error(`Tabelas com tenant_id SEM FK para tenants:\n${lista}\n\nVer migration 0015.`);
+      throw new Error(
+        `Tabelas com tenant_id SEM FK para tenants:\n${lista}\n\nVer migration 0015.`,
+      );
     }
     expect(semFk).toHaveLength(0);
   });

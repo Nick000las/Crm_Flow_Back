@@ -38,7 +38,9 @@ export const OPCOES_CATEGORIA_EVENTO = Object.freeze([
   Object.freeze({ key: CATEGORIAS_EVENTO.CICLO, label: 'Ciclo de vida' }),
 ]);
 
-export const LISTA_CATEGORIAS_EVENTO = Object.freeze(OPCOES_CATEGORIA_EVENTO.map((opcao) => opcao.key));
+export const LISTA_CATEGORIAS_EVENTO = Object.freeze(
+  OPCOES_CATEGORIA_EVENTO.map((opcao) => opcao.key),
+);
 
 /** Tipos da categoria "Ciclo de vida". */
 export const TIPOS_CICLO_DE_VIDA = Object.freeze([
@@ -54,7 +56,10 @@ export const TIPOS_CICLO_DE_VIDA = Object.freeze([
  * Eventos cujo conteúdo é só o diff: sem nenhuma entrada visível pro papel
  * de quem lê, somem do histórico (M16).
  */
-export const TIPOS_SO_DIFF = Object.freeze([TIPOS_EVENTO_LEAD.ATUALIZADO, TIPOS_EVENTO_LEAD.ENRIQUECIDO]);
+export const TIPOS_SO_DIFF = Object.freeze([
+  TIPOS_EVENTO_LEAD.ATUALIZADO,
+  TIPOS_EVENTO_LEAD.ENRIQUECIDO,
+]);
 
 /** Chave do diff (e de `PROPRIEDADES_NO_HISTORICO`) que é a atribuição do lead. */
 export const CAMPO_RESPONSAVEL_NO_DIFF = 'usuarioResponsavelId';
@@ -66,7 +71,12 @@ export const CAMPO_RESPONSAVEL_NO_DIFF = 'usuarioResponsavelId';
  */
 export const PROPRIEDADES_NO_HISTORICO = Object.freeze([
   { campo: 'valor', coluna: 'valor', ref: 'lead.valor' },
-  { campo: 'funilEstagioId', coluna: 'funil_estagio_id', ref: 'lead.estagio', colunaNome: 'estagio_nome' },
+  {
+    campo: 'funilEstagioId',
+    coluna: 'funil_estagio_id',
+    ref: 'lead.estagio',
+    colunaNome: 'estagio_nome',
+  },
   { campo: 'usuarioResponsavelId', coluna: 'usuario_responsavel_id', ref: 'lead.responsavel' },
 ]);
 

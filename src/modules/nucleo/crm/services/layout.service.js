@@ -55,7 +55,10 @@ import { obterSchemaDoPapel } from './permissoes.service.js';
 const TTL_CACHE_SEGUNDOS = 60;
 const CONTEXTO_FICHA = CONTEXTOS_VISIBILIDADE.FICHA;
 const CONTEXTO_TABELA = CONTEXTOS_VISIBILIDADE.TABELA;
-const LIMITE_DA_LISTA = Object.freeze({ subtitulo: LIMITES_LAYOUT.SUBTITULO, destaques: LIMITES_LAYOUT.DESTAQUES });
+const LIMITE_DA_LISTA = Object.freeze({
+  subtitulo: LIMITES_LAYOUT.SUBTITULO,
+  destaques: LIMITES_LAYOUT.DESTAQUES,
+});
 
 /** @param {string} tenantId */
 const chaveCache = (tenantId) => `crm:layout:${tenantId}`;
@@ -118,10 +121,9 @@ export async function salvarMeu(tenantId, usuarioId, parcial, acesso = {}) {
 
   const padrao = (await buscarLayoutPadrao(tenantId)) ?? layoutInicial(camposConfig);
   const padraoVisto = Object.fromEntries(
-    LISTAS_MESCLADAS.filter((propriedade) => parcial[propriedade] !== undefined).map((propriedade) => [
-      propriedade,
-      padrao[propriedade],
-    ]),
+    LISTAS_MESCLADAS.filter((propriedade) => parcial[propriedade] !== undefined).map(
+      (propriedade) => [propriedade, padrao[propriedade]],
+    ),
   );
   await salvarOverride(tenantId, usuarioId, parcial, padraoVisto);
   return obterLayout(tenantId, usuarioId, acesso);
@@ -157,7 +159,13 @@ export async function identificadorDaBusca(tenantId) {
   const { campos } = await obterSchemaCampos(tenantId);
   const campo = campos.find((item) => item.id === ref);
   if (!campo || campo.chave === 'nome' || campo.chave === 'email') return null;
-  return { chave: campo.chave, tipo: campo.tipo, camada: campo.camada, coluna: campo.coluna, id: campo.id };
+  return {
+    chave: campo.chave,
+    tipo: campo.tipo,
+    camada: campo.camada,
+    coluna: campo.coluna,
+    id: campo.id,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +229,12 @@ export function mesclarLayout(padrao, override) {
  * @returns {LayoutResolvido}
  */
 export function resolverLayout(layout, campos) {
-  const naFicha = new Map(camposDoContexto(campos, CONTEXTO_FICHA).map((campo) => [campo.id, campo]));
-  const naTabela = new Map(camposDoContexto(campos, CONTEXTO_TABELA).map((campo) => [campo.id, campo]));
+  const naFicha = new Map(
+    camposDoContexto(campos, CONTEXTO_FICHA).map((campo) => [campo.id, campo]),
+  );
+  const naTabela = new Map(
+    camposDoContexto(campos, CONTEXTO_TABELA).map((campo) => [campo.id, campo]),
+  );
 
   /**
    * @param {Map<string | null, any>} visiveis
@@ -247,7 +259,9 @@ export function resolverLayout(layout, campos) {
 
   // Identificador oculto na ficha (ou inválido) cai pro Nome, que nunca é ocultado.
   const nome = campos.find((campo) => campo.chave === 'nome');
-  const identificador = /** @type {ItemLayout} */ (item(naFicha, layout.identificador) ?? item(naFicha, nome?.id));
+  const identificador = /** @type {ItemLayout} */ (
+    item(naFicha, layout.identificador) ?? item(naFicha, nome?.id)
+  );
 
   const secoes = layout.secoes
     .map((secao) => ({ nome: secao.nome, automatica: false, campos: itens(naFicha, secao.campos) }))
@@ -292,7 +306,10 @@ async function catalogo(tenantId) {
  */
 function catalogoDe(camposConfig) {
   return new Map([
-    ...camposConfig.map((campo) => [campo.id, { systemKey: campo.systemKey, tipo: campo.tipo, camada: campo.camada }]),
+    ...camposConfig.map((campo) => [
+      campo.id,
+      { systemKey: campo.systemKey, tipo: campo.tipo, camada: campo.camada },
+    ]),
     ...Object.keys(REFERENCIAS_FIXAS).map((ref) => [ref, null]),
   ]);
 }
@@ -309,7 +326,8 @@ export function validarLayout(layout, refs, { parcial = false } = {}) {
   };
   /** @param {string} campo @param {string[]} lista */
   const semRepetir = (campo, lista) => {
-    if (new Set(lista).size !== lista.length) throw erroDeValidacao(campo, 'Cada campo só pode aparecer uma vez');
+    if (new Set(lista).size !== lista.length)
+      throw erroDeValidacao(campo, 'Cada campo só pode aparecer uma vez');
   };
 
   if (layout.identificador !== undefined) {
@@ -339,16 +357,16 @@ export function validarLayout(layout, refs, { parcial = false } = {}) {
 
   if (layout.secoes !== undefined) {
     const nomes = layout.secoes.map((secao) => secao.nome.trim().toLowerCase());
-    if (new Set(nomes).size !== nomes.length) throw erroDeValidacao('secoes', 'Duas seções com o mesmo nome');
+    if (new Set(nomes).size !== nomes.length)
+      throw erroDeValidacao('secoes', 'Duas seções com o mesmo nome');
     const todos = layout.secoes.flatMap((secao) => secao.campos);
     todos.forEach((ref) => exigirRef('secoes', ref));
     semRepetir('secoes', todos);
   }
 
   if (!parcial) {
-    const faltando = PROPRIEDADES_LAYOUT.filter(
-      (propriedade) => layout[propriedade] === undefined,
-    );
-    if (faltando.length > 0) throw erroDeValidacao(faltando[0], 'O padrão precisa do layout completo');
+    const faltando = PROPRIEDADES_LAYOUT.filter((propriedade) => layout[propriedade] === undefined);
+    if (faltando.length > 0)
+      throw erroDeValidacao(faltando[0], 'O padrão precisa do layout completo');
   }
 }

@@ -10,7 +10,12 @@ import {
   CAPACIDADES_PERSONALIZADO,
   CONTEXTOS_VISIBILIDADE,
 } from '../constants.js';
-import { garantirCamposSistema, invalidarSchemaCampos, obterSchemaCampos, visibilidadeDaLinha } from './field-schema.service.js';
+import {
+  garantirCamposSistema,
+  invalidarSchemaCampos,
+  obterSchemaCampos,
+  visibilidadeDaLinha,
+} from './field-schema.service.js';
 
 /**
  * SERVICE: área Configurações → Campos (docs/crm/plano-configuracoes.md,
@@ -40,7 +45,10 @@ export async function listarConfiguracaoCampos(tenantId) {
   const linhas = await garantirCamposSistema(tenantId);
   const { listas } = await obterSchemaCampos(tenantId);
   return linhas
-    .filter((linha) => linha.is_active && (linha.system_key === null || CONTRATO_POR_CHAVE.has(linha.system_key)))
+    .filter(
+      (linha) =>
+        linha.is_active && (linha.system_key === null || CONTRATO_POR_CHAVE.has(linha.system_key)),
+    )
     .map((linha) => paraCampoConfigurado(linha, listas));
 }
 
@@ -52,7 +60,11 @@ export async function listarConfiguracaoCampos(tenantId) {
 function paraCampoConfigurado(linha, listas) {
   const contrato = linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
   const capacidades = contrato
-    ? { canHide: contrato.canHide, canMakeOptional: contrato.canMakeOptional, canRename: contrato.canRename }
+    ? {
+        canHide: contrato.canHide,
+        canMakeOptional: contrato.canMakeOptional,
+        canRename: contrato.canRename,
+      }
     : { ...CAPACIDADES_PERSONALIZADO };
 
   return {
@@ -65,9 +77,14 @@ function paraCampoConfigurado(linha, listas) {
     tipo: contrato ? contrato.tipo : linha.type,
     // Campo de lista (M3): as keys ativas; a gestão fica em Configurações → Listas.
     // Opções fixas do sistema (M15, base legal): as do contrato.
-    opcoes: contrato?.lista ? opcoesAtivas(listas, contrato.lista) : (contrato ? (contrato.opcoes ?? null) : linha.options),
+    opcoes: contrato?.lista
+      ? opcoesAtivas(listas, contrato.lista)
+      : contrato
+        ? (contrato.opcoes ?? null)
+        : linha.options,
     lista: contrato?.lista ?? null,
-    obrigatorio: contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
+    obrigatorio:
+      contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
     ordem: linha.position,
     visibilidade: visibilidadeDaLinha(linha),
     capacidades,
@@ -190,10 +207,7 @@ export async function reordenarCampos(tenantId, ids) {
   const desconhecido = ids.find((id) => !esperados.has(id));
   const faltando = campos.find((campo) => !recebidos.has(campo.id));
   if (desconhecido || faltando || recebidos.size !== ids.length) {
-    throw erroDeValidacao(
-      'ids',
-      'Envie todos os campos, cada um uma única vez, na ordem desejada',
-    );
+    throw erroDeValidacao('ids', 'Envie todos os campos, cada um uma única vez, na ordem desejada');
   }
 
   await reordenarCamposRepository(tenantId, ids);
@@ -213,10 +227,18 @@ export async function restaurarOrdemPadrao(tenantId) {
   const linhas = (await buscarCamposDoTenant(tenantId)).filter((linha) => linha.is_active);
   const sistema = linhas
     .filter((linha) => linha.system_key !== null && CONTRATO_POR_CHAVE.has(linha.system_key))
-    .sort((a, b) => CONTRATO_POR_CHAVE.get(a.system_key).ordemPadrao - CONTRATO_POR_CHAVE.get(b.system_key).ordemPadrao);
+    .sort(
+      (a, b) =>
+        CONTRATO_POR_CHAVE.get(a.system_key).ordemPadrao -
+        CONTRATO_POR_CHAVE.get(b.system_key).ordemPadrao,
+    );
   const personalizados = linhas
     .filter((linha) => linha.system_key === null)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || a.id.localeCompare(b.id));
+    .sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
+        a.id.localeCompare(b.id),
+    );
 
   await reordenarCamposRepository(
     tenantId,

@@ -3,13 +3,21 @@ import { TEXT_LIMITS } from '#shared/constants/index.js';
 import { LISTA_ACOES_DUPLICIDADE, LISTA_CAMPOS_DUPLICIDADE } from '../constants.js';
 
 const enumDe = (valores, mensagem) =>
-  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), { errorMap: () => ({ message: mensagem }) });
+  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), {
+    errorMap: () => ({ message: mensagem }),
+  });
 
 const regra = z
   .object({
-    campo: enumDe(LISTA_CAMPOS_DUPLICIDADE, `Campo deve ser um de: ${LISTA_CAMPOS_DUPLICIDADE.join(', ')}`),
+    campo: enumDe(
+      LISTA_CAMPOS_DUPLICIDADE,
+      `Campo deve ser um de: ${LISTA_CAMPOS_DUPLICIDADE.join(', ')}`,
+    ),
     acao: enumDe(LISTA_ACOES_DUPLICIDADE, 'Ação deve ser "warn" (avisar) ou "block" (bloquear)'),
-    ativo: z.boolean({ required_error: 'Informe se a regra está ativa', invalid_type_error: 'Informe se a regra está ativa' }),
+    ativo: z.boolean({
+      required_error: 'Informe se a regra está ativa',
+      invalid_type_error: 'Informe se a regra está ativa',
+    }),
   })
   .strict();
 

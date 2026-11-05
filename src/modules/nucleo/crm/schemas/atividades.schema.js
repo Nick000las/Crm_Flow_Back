@@ -7,16 +7,24 @@ import { LIMITES_ATIVIDADE, LISTA_CATEGORIAS_EVENTO, PAGINACAO_EVENTOS } from '.
 
 export const atividadeParamSchema = z.object({
   id: z.string({ required_error: 'Informe o id do lead' }).uuid('Id de lead inválido'),
-  atividadeId: z.string({ required_error: 'Informe o id da atividade' }).uuid('Id de atividade inválido'),
+  atividadeId: z
+    .string({ required_error: 'Informe o id da atividade' })
+    .uuid('Id de atividade inválido'),
 });
 
 const tipo = z
-  .string({ required_error: 'Informe o tipo da atividade', invalid_type_error: 'Informe o tipo da atividade' })
+  .string({
+    required_error: 'Informe o tipo da atividade',
+    invalid_type_error: 'Informe o tipo da atividade',
+  })
   .trim()
   .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o tipo da atividade');
 
 const titulo = z
-  .string({ required_error: 'Informe o título da atividade', invalid_type_error: 'Informe o título da atividade' })
+  .string({
+    required_error: 'Informe o título da atividade',
+    invalid_type_error: 'Informe o título da atividade',
+  })
   .trim()
   .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o título da atividade')
   .max(LIMITES_ATIVIDADE.TITULO, `O título vai até ${LIMITES_ATIVIDADE.TITULO} caracteres`);
@@ -34,7 +42,13 @@ const concluida = z.boolean({ invalid_type_error: 'Informe se a atividade está 
 // POST /crm/leads/:id/atividades — `concluida: true` registra algo que já
 // aconteceu (ligação feita); sem ele, a atividade nasce em aberto.
 export const criarAtividadeBodySchema = z
-  .object({ tipo, titulo, notas: notas.optional(), agendadaPara: agendadaPara.optional(), concluida: concluida.optional() })
+  .object({
+    tipo,
+    titulo,
+    notas: notas.optional(),
+    agendadaPara: agendadaPara.optional(),
+    concluida: concluida.optional(),
+  })
   .strict();
 
 // PUT /crm/leads/:id/atividades/:atividadeId — parcial; `concluida` conclui ou reabre.
@@ -57,11 +71,20 @@ export const historicoQuerySchema = z.object({
   categorias: z
     .string()
     .optional()
-    .transform((texto) => [...new Set((texto ?? '').split(',').map((parte) => parte.trim()).filter(Boolean))])
+    .transform((texto) => [
+      ...new Set(
+        (texto ?? '')
+          .split(',')
+          .map((parte) => parte.trim())
+          .filter(Boolean),
+      ),
+    ])
     .pipe(
       z.array(
         z.enum(/** @type {[string, ...string[]]} */ ([...LISTA_CATEGORIAS_EVENTO]), {
-          errorMap: () => ({ message: `Categoria deve ser uma de: ${LISTA_CATEGORIAS_EVENTO.join(', ')}` }),
+          errorMap: () => ({
+            message: `Categoria deve ser uma de: ${LISTA_CATEGORIAS_EVENTO.join(', ')}`,
+          }),
         }),
       ),
     ),

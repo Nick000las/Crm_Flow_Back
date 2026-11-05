@@ -7,7 +7,10 @@ import { BUSCA_LEADS, FILTRO_OPERADORES, LISTA_SITUACOES_LEAD } from '../constan
 // operador são validados em `lead-filter.service.js`.
 const filtroCampoSchema = z.object({
   chave: z
-    .string({ required_error: 'Informe o campo do filtro', invalid_type_error: 'Campo de filtro inválido' })
+    .string({
+      required_error: 'Informe o campo do filtro',
+      invalid_type_error: 'Campo de filtro inválido',
+    })
     .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o campo do filtro'),
   operador: z.enum(FILTRO_OPERADORES, {
     required_error: 'Informe o operador do filtro',
@@ -21,12 +24,18 @@ const filtroCampoSchema = z.object({
  * `crm_filter_views.filtros` e aceito por POST /crm/export.
  */
 export const filtroLeadsSchema = z.object({
-  busca: z.string({ invalid_type_error: 'Informe um texto de busca válido' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
+  busca: z
+    .string({ invalid_type_error: 'Informe um texto de busca válido' })
+    .trim()
+    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH)
+    .optional(),
   funilEstagioId: z.string().uuid('Informe um estágio de funil válido').optional(),
   usuarioResponsavelId: z.string().uuid('Informe um responsável válido').optional(),
   // Sem responsável, ou com o responsável desativado — o mesmo critério do
   // resumo `crm.esfriando_sem_responsavel`. Não combina com `usuarioResponsavelId`.
-  semResponsavel: z.boolean({ invalid_type_error: 'Sem responsável deve ser verdadeiro ou falso' }).optional(),
+  semResponsavel: z
+    .boolean({ invalid_type_error: 'Sem responsável deve ser verdadeiro ou falso' })
+    .optional(),
   valorMin: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
   valorMax: z.number({ invalid_type_error: 'Informe um valor válido' }).optional(),
   criadoDe: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
@@ -40,7 +49,11 @@ export const filtroLeadsSchema = z.object({
   // M9: só os leads esfriando agora. Exige `crm.inatividade`.
   esfriando: z.boolean({ invalid_type_error: 'Esfriando deve ser verdadeiro ou falso' }).optional(),
   // M14: a chave da faixa de score (`frio`, `morno`, `quente`…). Exige `crm.score`.
-  faixaScore: z.string({ invalid_type_error: 'Faixa de score inválida' }).trim().min(1, 'Faixa de score inválida').optional(),
+  faixaScore: z
+    .string({ invalid_type_error: 'Faixa de score inválida' })
+    .trim()
+    .min(1, 'Faixa de score inválida')
+    .optional(),
   filtros: z
     .array(filtroCampoSchema)
     .max(BUSCA_LEADS.MAX_FILTROS, `Use no máximo ${BUSCA_LEADS.MAX_FILTROS} filtros`)

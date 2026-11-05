@@ -10,7 +10,12 @@ import {
 } from '../adapters/crm-inatividade.repository.js';
 import { agendarNotificacaoEsfriando } from '../adapters/manutencao-queue.repository.js';
 import { listarDonosAtivosDoTenant } from '../adapters/usuarios.repository.js';
-import { CATEGORIAS_STATUS, CRM_FEATURES, MODULO_CRM, NOTIFICACAO_ESFRIANDO } from '../constants.js';
+import {
+  CATEGORIAS_STATUS,
+  CRM_FEATURES,
+  MODULO_CRM,
+  NOTIFICACAO_ESFRIANDO,
+} from '../constants.js';
 
 /**
  * SERVICE: lead esfriando (M9) — a configuração dos dias por status e o
@@ -85,7 +90,9 @@ export function dataEHoraLocal(agora, fuso) {
   } catch {
     formato = formatoNo(FUSO_HORARIO_PADRAO);
   }
-  const partes = Object.fromEntries(formato.formatToParts(agora).map((parte) => [parte.type, parte.value]));
+  const partes = Object.fromEntries(
+    formato.formatToParts(agora).map((parte) => [parte.type, parte.value]),
+  );
   return { data: `${partes.year}-${partes.month}-${partes.day}`, hora: Number(partes.hour) };
 }
 
@@ -130,7 +137,11 @@ export function montarNotificacoesDoDia(contagens, donos, data) {
         tipo: TIPO_SEM_RESPONSAVEL,
         titulo: `${leadsNoPlural(semResponsavel)} sem responsável esfriando`,
         corpo: 'Defina um responsável para que alguém acompanhe esses leads.',
-        dados: { rota: ROTA, filtro: { esfriando: true, semResponsavel: true }, total: semResponsavel },
+        dados: {
+          rota: ROTA,
+          filtro: { esfriando: true, semResponsavel: true },
+          total: semResponsavel,
+        },
         chaveDedup: `${TIPO_SEM_RESPONSAVEL}:${data}`,
       });
     }
@@ -155,7 +166,10 @@ export async function notificarLeadsEsfriando(agora = new Date()) {
     try {
       relatorio.notificacoes += await notificarEsfriandoNoTenant(tenant, agora);
     } catch (erro) {
-      relatorio.falhas.push({ tenantId: tenant.tenantId, erro: erro instanceof Error ? erro.message : String(erro) });
+      relatorio.falhas.push({
+        tenantId: tenant.tenantId,
+        erro: erro instanceof Error ? erro.message : String(erro),
+      });
     }
   }
   return relatorio;
@@ -176,7 +190,9 @@ export async function notificarEsfriandoNoTenant({ tenantId, fusoHorario }, agor
 
   const contagens = await contarEsfriandoPorResponsavel(tenantId, agora);
   if (contagens.length === 0) return 0;
-  const donos = contagens.some((contagem) => !contagem.usuario_id) ? await listarDonosAtivosDoTenant(tenantId) : [];
+  const donos = contagens.some((contagem) => !contagem.usuario_id)
+    ? await listarDonosAtivosDoTenant(tenantId)
+    : [];
 
   return criarNotificacoes(tenantId, montarNotificacoesDoDia(contagens, donos, data));
 }
