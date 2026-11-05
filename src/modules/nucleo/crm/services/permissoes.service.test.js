@@ -14,8 +14,13 @@ import {
 } from './permissoes.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
-vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ substituirPermissoesDoPapel: vi.fn() }));
-vi.mock('./field-schema.service.js', () => ({ obterSchemaCampos: vi.fn(), invalidarSchemaCampos: vi.fn() }));
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
+  substituirPermissoesDoPapel: vi.fn(),
+}));
+vi.mock('./field-schema.service.js', () => ({
+  obterSchemaCampos: vi.fn(),
+  invalidarSchemaCampos: vi.fn(),
+}));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const ID = {
@@ -31,14 +36,22 @@ const ID = {
 const CAMPOS = [
   { id: ID.nome, chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
   { id: ID.email, chave: 'email', label: 'E-mail', tipo: 'email', camada: CAMADA.CAMADA_1 },
-  { id: ID.telefone, chave: 'telefone', label: 'Telefone', tipo: 'telefone', camada: CAMADA.CAMADA_1 },
+  {
+    id: ID.telefone,
+    chave: 'telefone',
+    label: 'Telefone',
+    tipo: 'telefone',
+    camada: CAMADA.CAMADA_1,
+  },
   { id: ID.status, chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1 },
   { id: ID.cnpj, chave: 'cnpj', label: 'CNPJ', tipo: 'cnpj', camada: CAMADA.CAMADA_2 },
   { id: ID.salario, chave: 'salario', label: 'Salário', tipo: 'numero', camada: CAMADA.CAMADA_3 },
   { id: ID.motivo, chave: 'motivo', label: 'Motivo', tipo: 'texto', camada: CAMADA.CAMADA_3 },
 ];
 const resumo = (chave) => {
-  const { id, label, tipo, camada } = /** @type {any} */ (CAMPOS.find((campo) => campo.chave === chave));
+  const { id, label, tipo, camada } = /** @type {any} */ (
+    CAMPOS.find((campo) => campo.chave === chave)
+  );
   return { id, chave, label, tipo, camada };
 };
 
@@ -51,8 +64,22 @@ const SCHEMA = {
     { id: ID.motivo, chave: 'motivo', label: 'Motivo', tipo: 'texto' },
   ],
   regras: [
-    { id: 'r-motivo', kind: 'required_from_status', ativo: true, alvo: resumo('motivo'), condicao: { status: ['perdido'] }, efeito: { obrigatorio: true } },
-    { id: 'r-cnpj', kind: 'conditional', ativo: true, alvo: resumo('status'), condicao: { campo: resumo('cnpj'), operador: 'vazio' }, efeito: { obrigatorio: true } },
+    {
+      id: 'r-motivo',
+      kind: 'required_from_status',
+      ativo: true,
+      alvo: resumo('motivo'),
+      condicao: { status: ['perdido'] },
+      efeito: { obrigatorio: true },
+    },
+    {
+      id: 'r-cnpj',
+      kind: 'conditional',
+      ativo: true,
+      alvo: resumo('status'),
+      condicao: { campo: resumo('cnpj'), operador: 'vazio' },
+      efeito: { obrigatorio: true },
+    },
   ],
   permissoes: [
     { field_id: ID.email, role: ROLES.OPERADOR, access: 'hidden' },
@@ -111,7 +138,13 @@ describe('garantirEscritaPermitida', () => {
   const doOperador = schemaDoPapel(/** @type {any} */ (SCHEMA), ROLES.OPERADOR);
 
   it('"só ver" ou oculto no payload (inclusive null) → 403 com os campos', () => {
-    expect(() => garantirEscritaPermitida(doOperador, { nome: 'Ana', email: null, customFields: { motivo: 'x' } })).toThrow(
+    expect(() =>
+      garantirEscritaPermitida(doOperador, {
+        nome: 'Ana',
+        email: null,
+        customFields: { motivo: 'x' },
+      }),
+    ).toThrow(
       expect.objectContaining({
         statusCode: HTTP_STATUS.FORBIDDEN,
         fields: { email: [expect.any(String)], motivo: [expect.any(String)] },
@@ -120,29 +153,47 @@ describe('garantirEscritaPermitida', () => {
   });
 
   it('chave omitida passa; o que ele edita passa', () => {
-    expect(() => garantirEscritaPermitida(doOperador, { nome: 'Ana', telefone: '11999999999', email: undefined })).not.toThrow();
+    expect(() =>
+      garantirEscritaPermitida(doOperador, {
+        nome: 'Ana',
+        telefone: '11999999999',
+        email: undefined,
+      }),
+    ).not.toThrow();
   });
 
   it('sem restrição (DONO): nada é conferido', () => {
-    expect(() => garantirEscritaPermitida(/** @type {any} */ (SCHEMA), { email: 'a@x.com' })).not.toThrow();
+    expect(() =>
+      garantirEscritaPermitida(/** @type {any} */ (SCHEMA), { email: 'a@x.com' }),
+    ).not.toThrow();
   });
 });
 
 describe('salvarPermissoes', () => {
   it('grava só as restrições e devolve a matriz', async () => {
-    const resposta = await salvarPermissoes(TENANT, { OPERADOR: { [ID.cnpj]: 'hidden', [ID.status]: 'edit', [ID.motivo]: 'view' } });
+    const resposta = await salvarPermissoes(TENANT, {
+      OPERADOR: { [ID.cnpj]: 'hidden', [ID.status]: 'edit', [ID.motivo]: 'view' },
+    });
     expect(substituirPermissoesDoPapel).toHaveBeenCalledWith(TENANT, 'OPERADOR', [
       { campoId: ID.cnpj, acesso: 'hidden' },
       { campoId: ID.motivo, acesso: 'view' },
     ]);
-    expect(resposta.campos.find((campo) => campo.chave === 'nome')).toMatchObject({ podeRestringir: false });
+    expect(resposta.campos.find((campo) => campo.chave === 'nome')).toMatchObject({
+      podeRestringir: false,
+    });
   });
 
   it('400: Nome restringido, campo inexistente, e-mail e telefone travados juntos', async () => {
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
-    await expect(salvarPermissoes(TENANT, { OPERADOR: { [ID.nome]: 'view' } })).rejects.toMatchObject(invalido);
-    await expect(salvarPermissoes(TENANT, { OPERADOR: { [TENANT]: 'view' } })).rejects.toMatchObject(invalido);
-    await expect(salvarPermissoes(TENANT, { OPERADOR: { [ID.email]: 'hidden', [ID.telefone]: 'view' } })).rejects.toMatchObject(invalido);
+    await expect(
+      salvarPermissoes(TENANT, { OPERADOR: { [ID.nome]: 'view' } }),
+    ).rejects.toMatchObject(invalido);
+    await expect(
+      salvarPermissoes(TENANT, { OPERADOR: { [TENANT]: 'view' } }),
+    ).rejects.toMatchObject(invalido);
+    await expect(
+      salvarPermissoes(TENANT, { OPERADOR: { [ID.email]: 'hidden', [ID.telefone]: 'view' } }),
+    ).rejects.toMatchObject(invalido);
     expect(substituirPermissoesDoPapel).not.toHaveBeenCalled();
   });
 });

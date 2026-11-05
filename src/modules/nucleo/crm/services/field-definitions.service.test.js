@@ -19,12 +19,18 @@ import { CAMPOS_SISTEMA } from '../constants.js';
 // O resolver (field-schema.service.js) roda de verdade sobre o adapter
 // mockado; cache zerado a cada teste.
 // Listas (M3): tenant já semeado com as keys antigas.
-vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
+vi.mock('../adapters/crm-options.repository.js', async () =>
+  (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes(),
+);
 // Regras (M8): tenant sem regra (a do sistema já semeada).
 // M13: sem permissão configurada (o schema real lê a tabela).
-vi.mock('../adapters/crm-field-permissions.repository.js', () => ({ listarPermissoes: vi.fn().mockResolvedValue([]) }));
+vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
+  listarPermissoes: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
-  buscarRegrasDoTenant: vi.fn().mockResolvedValue([{ id: 'r', system_key: 'motivo_perda_em_perdido' }]),
+  buscarRegrasDoTenant: vi
+    .fn()
+    .mockResolvedValue([{ id: 'r', system_key: 'motivo_perda_em_perdido' }]),
   semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
 }));
 vi.mock('../adapters/crm-fields.repository.js', () => ({
@@ -61,7 +67,13 @@ beforeEach(async () => {
 });
 
 const PRIMEIRA_ORDEM = 1;
-const INPUT_VALIDO = { label: 'Origem', tipo: 'texto', opcoes: null, obrigatorio: false, ordem: PRIMEIRA_ORDEM };
+const INPUT_VALIDO = {
+  label: 'Origem',
+  tipo: 'texto',
+  opcoes: null,
+  obrigatorio: false,
+  ordem: PRIMEIRA_ORDEM,
+};
 
 describe('listarDefinicoesPorTenant', () => {
   it('devolve só os personalizados ativos, no formato da API', async () => {
@@ -81,16 +93,22 @@ describe('listarDefinicoesPorTenant', () => {
       { ...personalizado, id: 'def-velha', chave: 'velha', is_active: false },
     ]);
     await expect(listarDefinicoesPorTenant('tenant-1')).resolves.toEqual([
-      expect.objectContaining({ id: 'def-1', chave: 'origem', tipo: 'texto', obrigatorio: false, ordem: PRIMEIRA_ORDEM }),
+      expect.objectContaining({
+        id: 'def-1',
+        chave: 'origem',
+        tipo: 'texto',
+        obrigatorio: false,
+        ordem: PRIMEIRA_ORDEM,
+      }),
     ]);
   });
 });
 
 describe('criarNovaDefinicao', () => {
   it('rejeita label vazio antes de chamar o adapter', async () => {
-    await expect(
-      criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: '   ' }),
-    ).rejects.toThrow('Informe o nome do campo');
+    await expect(criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: '   ' })).rejects.toThrow(
+      'Informe o nome do campo',
+    );
     expect(criarDefinicao).not.toHaveBeenCalled();
   });
 
@@ -115,9 +133,9 @@ describe('criarNovaDefinicao', () => {
   });
 
   it('rejeita label cuja chave é a de um campo do sistema (ex: Empresa)', async () => {
-    await expect(criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: 'Empresa' })).rejects.toThrow(
-      'Já existe um campo com esse nome',
-    );
+    await expect(
+      criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: 'Empresa' }),
+    ).rejects.toThrow('Já existe um campo com esse nome');
     expect(criarDefinicao).not.toHaveBeenCalled();
   });
 
@@ -127,16 +145,20 @@ describe('criarNovaDefinicao', () => {
     await listarDefinicoesPorTenant('tenant-1');
     // a checagem de nome lê a configuração direto (sem cache), e a leitura
     // depois de criar não vem do cache
-    expect(buscarCamposDoTenant).toHaveBeenCalledTimes(['antes', 'checagem de nome', 'depois de criar'].length);
+    expect(buscarCamposDoTenant).toHaveBeenCalledTimes(
+      ['antes', 'checagem de nome', 'depois de criar'].length,
+    );
   });
 
   it('rejeita nome igual ao de um campo do sistema renomeado', async () => {
     buscarCamposDoTenant.mockResolvedValue(
-      LINHAS_SISTEMA.map((linha) => (linha.system_key === 'empresa' ? { ...linha, label: 'Razão social' } : linha)),
+      LINHAS_SISTEMA.map((linha) =>
+        linha.system_key === 'empresa' ? { ...linha, label: 'Razão social' } : linha,
+      ),
     );
-    await expect(criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: 'razão social' })).rejects.toThrow(
-      'Já existe um campo com esse nome',
-    );
+    await expect(
+      criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, label: 'razão social' }),
+    ).rejects.toThrow('Já existe um campo com esse nome');
     expect(criarDefinicao).not.toHaveBeenCalled();
   });
 
@@ -150,7 +172,10 @@ describe('criarNovaDefinicao', () => {
 
   it('nunca guarda opcoes pra tipo que não usa seleção', async () => {
     await criarNovaDefinicao('tenant-1', { ...INPUT_VALIDO, tipo: 'texto', opcoes: ['lixo'] });
-    expect(criarDefinicao).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ opcoes: null }));
+    expect(criarDefinicao).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ opcoes: null }),
+    );
   });
 });
 
@@ -171,7 +196,9 @@ describe('editarDefinicao', () => {
   });
 
   it('lança 404 quando o campo não é um personalizado ativo do tenant', async () => {
-    await expect(editarDefinicao('tenant-1', 'def-x', EDICAO)).rejects.toThrow('Definição de campo não encontrada');
+    await expect(editarDefinicao('tenant-1', 'def-x', EDICAO)).rejects.toThrow(
+      'Definição de campo não encontrada',
+    );
     await expect(editarDefinicao('tenant-1', 'id-empresa', EDICAO)).rejects.toThrow(
       'Definição de campo não encontrada',
     );
@@ -180,15 +207,20 @@ describe('editarDefinicao', () => {
 
   it('retorna a definição atualizada quando encontra', async () => {
     atualizarDefinicao.mockResolvedValueOnce({ id: 'def-1', label: 'Novo' });
-    await expect(editarDefinicao('tenant-1', 'def-1', EDICAO)).resolves.toEqual({ id: 'def-1', label: 'Novo' });
+    await expect(editarDefinicao('tenant-1', 'def-1', EDICAO)).resolves.toEqual({
+      id: 'def-1',
+      label: 'Novo',
+    });
   });
 
   it('rejeita nome de outro campo (409), mas aceita manter o próprio', async () => {
-    await expect(editarDefinicao('tenant-1', 'def-1', { ...EDICAO, label: 'E-mail' })).rejects.toThrow(
-      'Já existe um campo com esse nome',
-    );
+    await expect(
+      editarDefinicao('tenant-1', 'def-1', { ...EDICAO, label: 'E-mail' }),
+    ).rejects.toThrow('Já existe um campo com esse nome');
     atualizarDefinicao.mockResolvedValueOnce({ id: 'def-1', label: 'Origem' });
-    await expect(editarDefinicao('tenant-1', 'def-1', { ...EDICAO, label: 'origem' })).resolves.toBeTruthy();
+    await expect(
+      editarDefinicao('tenant-1', 'def-1', { ...EDICAO, label: 'origem' }),
+    ).resolves.toBeTruthy();
   });
 
   it('obrigatório exige o campo no formulário de criação', async () => {
@@ -196,28 +228,32 @@ describe('editarDefinicao', () => {
       ...LINHAS_SISTEMA,
       { ...PERSONALIZADO, visibilidade: { create_form: false } },
     ]);
-    await expect(editarDefinicao('tenant-1', 'def-1', { ...EDICAO, obrigatorio: true })).rejects.toThrow(
-      /formulário de criação/,
-    );
+    await expect(
+      editarDefinicao('tenant-1', 'def-1', { ...EDICAO, obrigatorio: true }),
+    ).rejects.toThrow(/formulário de criação/);
     expect(atualizarDefinicao).not.toHaveBeenCalled();
   });
 
   it('tipo não muda quando já há leads com valor; sem valor, muda', async () => {
     existeValorDoCampo.mockResolvedValueOnce(true);
-    await expect(editarDefinicao('tenant-1', 'def-1', { ...EDICAO, tipo: 'numero' })).rejects.toThrow(
-      /o tipo não pode mudar/,
-    );
+    await expect(
+      editarDefinicao('tenant-1', 'def-1', { ...EDICAO, tipo: 'numero' }),
+    ).rejects.toThrow(/o tipo não pode mudar/);
     expect(existeValorDoCampo).toHaveBeenCalledWith('tenant-1', 'def-1');
 
     atualizarDefinicao.mockResolvedValueOnce({ id: 'def-1', tipo: 'numero' });
-    await expect(editarDefinicao('tenant-1', 'def-1', { ...EDICAO, tipo: 'numero' })).resolves.toBeTruthy();
+    await expect(
+      editarDefinicao('tenant-1', 'def-1', { ...EDICAO, tipo: 'numero' }),
+    ).resolves.toBeTruthy();
   });
 });
 
 describe('removerDefinicao', () => {
   it('lança 404 quando o DELETE não encontra a linha', async () => {
     removerDefinicaoRepository.mockResolvedValueOnce(undefined);
-    await expect(removerDefinicao('tenant-1', 'def-x')).rejects.toThrow('Definição de campo não encontrada');
+    await expect(removerDefinicao('tenant-1', 'def-x')).rejects.toThrow(
+      'Definição de campo não encontrada',
+    );
   });
 
   it('confirma remoção com o aviso de dado órfão', async () => {

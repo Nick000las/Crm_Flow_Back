@@ -62,10 +62,7 @@ export function getAdminClient() {
 
 /** Encerra os pools durante o shutdown gracioso e ao finalizar testes. */
 export async function disconnectDatabase() {
-  await Promise.all([
-    adminPrisma.$disconnect(),
-    tenantPrisma?.$disconnect() ?? Promise.resolve(),
-  ]);
+  await Promise.all([adminPrisma.$disconnect(), tenantPrisma?.$disconnect() ?? Promise.resolve()]);
 }
 
 /**

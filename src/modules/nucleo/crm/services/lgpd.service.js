@@ -14,7 +14,10 @@ import {
   OPCOES_BASE_LEGAL,
   OPCOES_ORIGEM_REGISTRO,
 } from '../constants.js';
-import { atualizarConfiguracaoCampo, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
+import {
+  atualizarConfiguracaoCampo,
+  listarConfiguracaoCampos,
+} from './configuracoes-campos.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { recalcularScoreDosLeads } from './score.service.js';
 
@@ -32,7 +35,11 @@ import { recalcularScoreDosLeads } from './score.service.js';
  */
 
 /** Onde os campos LGPD aparecem ao salvar a configuração. */
-const CONTEXTOS_DE_LEITURA = [CONTEXTOS_VISIBILIDADE.FICHA, CONTEXTOS_VISIBILIDADE.TABELA, CONTEXTOS_VISIBILIDADE.FILTRO];
+const CONTEXTOS_DE_LEITURA = [
+  CONTEXTOS_VISIBILIDADE.FICHA,
+  CONTEXTOS_VISIBILIDADE.TABELA,
+  CONTEXTOS_VISIBILIDADE.FILTRO,
+];
 
 /**
  * Lead novo (formulário/API ou import): base padrão (só no cadastro manual,
@@ -43,7 +50,11 @@ const CONTEXTOS_DE_LEITURA = [CONTEXTOS_VISIBILIDADE.FICHA, CONTEXTOS_VISIBILIDA
  * @param {string} origem  `ORIGENS_REGISTRO`
  * @param {{ basePadrao?: string | null, agora?: Date }} [opcoes]  `basePadrao` já resolvida (import: a do lote)
  */
-export function comDadosLgpdNaCriacao(input, origem, { basePadrao = null, agora = new Date() } = {}) {
+export function comDadosLgpdNaCriacao(
+  input,
+  origem,
+  { basePadrao = null, agora = new Date() } = {},
+) {
   const { [CAMPOS_LGPD.OPT_OUT]: optOut, ...resto } = input;
   const baseLegal = resto[CAMPOS_LGPD.BASE_LEGAL] ?? basePadrao ?? undefined;
   return {
@@ -82,7 +93,10 @@ export async function garantirBaseDoLote(tenantId, baseLote) {
  * @param {string} tenantId
  */
 export async function obterConfigLgpd(tenantId) {
-  const [config, campos] = await Promise.all([buscarConfigLgpd(tenantId), listarConfiguracaoCampos(tenantId)]);
+  const [config, campos] = await Promise.all([
+    buscarConfigLgpd(tenantId),
+    listarConfiguracaoCampos(tenantId),
+  ]);
   const baseLegal = campos.find((campo) => campo.chave === CAMPOS_LGPD.BASE_LEGAL);
   return {
     basePadrao: config?.base_legal_padrao ?? null,
@@ -105,15 +119,24 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
   await salvarConfigLgpdRepository(tenantId, { basePadrao });
 
   const campos = await listarConfiguracaoCampos(tenantId);
-  const chavesLgpd = [CAMPOS_LGPD.BASE_LEGAL, CAMPOS_LGPD.BASE_LEGAL_EM, CAMPOS_LGPD.ORIGEM_REGISTRO, CAMPOS_LGPD.OPT_OUT_EM];
+  const chavesLgpd = [
+    CAMPOS_LGPD.BASE_LEGAL,
+    CAMPOS_LGPD.BASE_LEGAL_EM,
+    CAMPOS_LGPD.ORIGEM_REGISTRO,
+    CAMPOS_LGPD.OPT_OUT_EM,
+  ];
   for (const campo of campos.filter((item) => chavesLgpd.includes(item.chave))) {
     const ehBaseLegal = campo.chave === CAMPOS_LGPD.BASE_LEGAL;
-    const contextos = ehBaseLegal ? [...CONTEXTOS_DE_LEITURA, CONTEXTOS_VISIBILIDADE.CRIACAO] : CONTEXTOS_DE_LEITURA;
+    const contextos = ehBaseLegal
+      ? [...CONTEXTOS_DE_LEITURA, CONTEXTOS_VISIBILIDADE.CRIACAO]
+      : CONTEXTOS_DE_LEITURA;
     const faltando = contextos.filter((contexto) => !campo.visibilidade[contexto]);
     const mudaObrigatorio = ehBaseLegal && campo.obrigatorio !== obrigatoria;
     if (faltando.length === 0 && !mudaObrigatorio) continue;
     await atualizarConfiguracaoCampo(tenantId, campo.id, {
-      ...(faltando.length > 0 ? { visibilidade: Object.fromEntries(faltando.map((contexto) => [contexto, true])) } : {}),
+      ...(faltando.length > 0
+        ? { visibilidade: Object.fromEntries(faltando.map((contexto) => [contexto, true])) }
+        : {}),
       ...(mudaObrigatorio ? { obrigatorio: obrigatoria } : {}),
     });
   }
@@ -150,7 +173,10 @@ export async function anonimizarLeadDoTitular(tenantId, leadId, usuarioId) {
   if (situacao.anonimizado) throw jaAnonimizado();
 
   const { definicoes } = await obterSchemaCampos(tenantId);
-  const resumo = await anonimizarLead(tenantId, leadId, { autorId: usuarioId, mantidos: personalizadosMantidos(definicoes) });
+  const resumo = await anonimizarLead(tenantId, leadId, {
+    autorId: usuarioId,
+    mantidos: personalizadosMantidos(definicoes),
+  });
   // Outra requisição anonimizou entre a checagem e a transação.
   if (!resumo) throw jaAnonimizado();
   // O score pode depender de um campo apagado.
@@ -172,7 +198,10 @@ export async function erroDoLeadNaoEditado(tenantId, leadId, naoEncontrado) {
 }
 
 export function leadAnonimizadoNaoEditavel() {
-  return erroDeConflito('lead', 'Este lead foi anonimizado (pedido do titular) e não pode mais ser alterado');
+  return erroDeConflito(
+    'lead',
+    'Este lead foi anonimizado (pedido do titular) e não pode mais ser alterado',
+  );
 }
 
 function jaAnonimizado() {

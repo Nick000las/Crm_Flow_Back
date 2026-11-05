@@ -35,7 +35,15 @@ export const TIPOS_CAMPO = Object.freeze({
  * Partes do tipo `endereco` (M11), nesta ordem — a ordem fixa das chaves
  * evita diff falso no histórico (que compara por JSON).
  */
-export const PARTES_ENDERECO = Object.freeze(['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf']);
+export const PARTES_ENDERECO = Object.freeze([
+  'cep',
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
+  'cidade',
+  'uf',
+]);
 
 /** Tamanho da UF no endereço. */
 export const TAMANHO_UF = 2;
@@ -109,7 +117,13 @@ export const CAMADA_2_COLUNA_PARA_CAMPO = Object.freeze(
 function opcoesFixas(opcoes) {
   return {
     opcoes: opcoes.map((opcao) => opcao.key),
-    opcoesLista: opcoes.map(({ key, label }) => ({ key, label, color: null, category: null, ativo: true })),
+    opcoesLista: opcoes.map(({ key, label }) => ({
+      key,
+      label,
+      color: null,
+      category: null,
+      ativo: true,
+    })),
   };
 }
 
@@ -141,7 +155,12 @@ export const CAMADA_2_METADADOS = Object.freeze({
   // = o back grava, o payload não muda (o front trava no formulário).
   legal_basis: { label: 'Base legal', tipo: 'selecao', ...opcoesFixas(OPCOES_BASE_LEGAL) },
   legal_basis_at: { label: 'Data da base legal', tipo: 'data', somenteLeitura: true },
-  origem_registro: { label: 'Origem do registro', tipo: 'selecao', ...opcoesFixas(OPCOES_ORIGEM_REGISTRO), somenteLeitura: true },
+  origem_registro: {
+    label: 'Origem do registro',
+    tipo: 'selecao',
+    ...opcoesFixas(OPCOES_ORIGEM_REGISTRO),
+    somenteLeitura: true,
+  },
   marketing_opt_out_at: { label: 'Opt-out de marketing', tipo: 'data', somenteLeitura: true },
 });
 
@@ -159,12 +178,45 @@ export const CAMPOS_CAMADA_1 = Object.freeze([
   // Tipos `email`/`telefone` (os mesmos do personalizado): gravados na
   // forma canônica e comparados nela no filtro (tipos-campo.service.js).
   { chave: 'email', label: 'E-mail', tipo: TIPOS_CAMPO.EMAIL, obrigatorio: false, ordem: 1 },
-  { chave: 'telefone', label: 'Telefone', tipo: TIPOS_CAMPO.TELEFONE, obrigatorio: false, ordem: 2 },
+  {
+    chave: 'telefone',
+    label: 'Telefone',
+    tipo: TIPOS_CAMPO.TELEFONE,
+    obrigatorio: false,
+    ordem: 2,
+  },
   // Opções vêm da lista configurável (M3, `crm_option`), não do código.
-  { chave: 'fonteLead', label: 'Origem do lead', tipo: 'selecao', obrigatorio: false, ordem: 3, lista: TIPOS_LISTA.FONTE_LEAD },
-  { chave: 'status', label: 'Status', tipo: 'selecao', obrigatorio: false, ordem: 4, lista: TIPOS_LISTA.STATUS },
-  { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', obrigatorio: false, ordem: 5, lista: TIPOS_LISTA.TAG },
-  { chave: 'ultimaInteracaoEm', label: 'Última interação', tipo: 'data', obrigatorio: false, ordem: 6 },
+  {
+    chave: 'fonteLead',
+    label: 'Origem do lead',
+    tipo: 'selecao',
+    obrigatorio: false,
+    ordem: 3,
+    lista: TIPOS_LISTA.FONTE_LEAD,
+  },
+  {
+    chave: 'status',
+    label: 'Status',
+    tipo: 'selecao',
+    obrigatorio: false,
+    ordem: 4,
+    lista: TIPOS_LISTA.STATUS,
+  },
+  {
+    chave: 'tags',
+    label: 'Tags',
+    tipo: 'selecao_multipla',
+    obrigatorio: false,
+    ordem: 5,
+    lista: TIPOS_LISTA.TAG,
+  },
+  {
+    chave: 'ultimaInteracaoEm',
+    label: 'Última interação',
+    tipo: 'data',
+    obrigatorio: false,
+    ordem: 6,
+  },
   // M10: derivado do Nome (primeira palavra) e editável — personaliza
   // mensagens. No fim da lista pra não mexer na ordem padrão dos outros.
   { chave: 'primeiroNome', label: 'Primeiro nome', tipo: 'texto', obrigatorio: false, ordem: 7 },
@@ -207,9 +259,17 @@ const CAPACIDADES_CAMADA_1 = Object.freeze({
 });
 
 /** Personalizado: o tenant criou, o tenant decide tudo. */
-export const CAPACIDADES_PERSONALIZADO = Object.freeze({ canHide: true, canMakeOptional: true, canRename: true });
+export const CAPACIDADES_PERSONALIZADO = Object.freeze({
+  canHide: true,
+  canMakeOptional: true,
+  canRename: true,
+});
 
-const CAPACIDADES_CAMADA_2 = Object.freeze({ canHide: true, canMakeOptional: true, canRename: true });
+const CAPACIDADES_CAMADA_2 = Object.freeze({
+  canHide: true,
+  canMakeOptional: true,
+  canRename: true,
+});
 
 /**
  * Contrato dos campos do sistema (Camadas 1 e 2): a constante continua
@@ -275,7 +335,14 @@ export const CONTEXTOS_VISIBILIDADE = Object.freeze({
 export const LISTA_CONTEXTOS_VISIBILIDADE = Object.freeze(Object.values(CONTEXTOS_VISIBILIDADE));
 
 /** Operadores aceitos em `filtros[].operador` de POST /crm/leads/search. */
-export const FILTRO_OPERADORES = Object.freeze(['igual', 'contem', 'entre', 'e_um_dos', 'vazio', 'nao_vazio']);
+export const FILTRO_OPERADORES = Object.freeze([
+  'igual',
+  'contem',
+  'entre',
+  'e_um_dos',
+  'vazio',
+  'nao_vazio',
+]);
 
 /** Quais operadores fazem sentido pra cada tipo de campo. */
 export const OPERADORES_POR_TIPO = Object.freeze({

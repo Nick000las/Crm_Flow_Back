@@ -17,7 +17,9 @@ const TENANT = 'tenant-1';
 
 /** keys inseridas por lista */
 function inseridas() {
-  return Object.fromEntries(inserirOpcoes.mock.calls.map(([, kind, opcoes]) => [kind, opcoes.map((o) => o.key)]));
+  return Object.fromEntries(
+    inserirOpcoes.mock.calls.map(([, kind, opcoes]) => [kind, opcoes.map((o) => o.key)]),
+  );
 }
 
 beforeEach(() => {
@@ -32,10 +34,14 @@ describe('reconciliarListas', () => {
     await reconciliarListas(TENANT);
 
     const porLista = inseridas();
-    expect(porLista[TIPOS_LISTA.STATUS]).toEqual(OPCOES_LEGADAS[TIPOS_LISTA.STATUS].map((o) => o.key));
+    expect(porLista[TIPOS_LISTA.STATUS]).toEqual(
+      OPCOES_LEGADAS[TIPOS_LISTA.STATUS].map((o) => o.key),
+    );
     expect(porLista[TIPOS_LISTA.STATUS]).toContain('negociacao');
     // Tipo de atividade não existia antes: entra o padrão da spec.
-    expect(porLista[TIPOS_LISTA.TIPO_ATIVIDADE]).toEqual(OPCOES_SUGERIDAS[TIPOS_LISTA.TIPO_ATIVIDADE].map((o) => o.key));
+    expect(porLista[TIPOS_LISTA.TIPO_ATIVIDADE]).toEqual(
+      OPCOES_SUGERIDAS[TIPOS_LISTA.TIPO_ATIVIDADE].map((o) => o.key),
+    );
   });
 
   it('tenant sem lead: os padrões sugeridos pela spec', async () => {

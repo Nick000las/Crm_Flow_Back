@@ -25,7 +25,8 @@ const CHAVES_AUTOMATICAS = new Set(['tags', 'ultimaInteracaoEm']);
 
 /** NUMERIC vem como Decimal do driver; o UPDATE recebe número. */
 function paraEscrita(valor) {
-  if (valor && typeof valor === 'object' && typeof valor.toNumber === 'function') return valor.toNumber();
+  if (valor && typeof valor === 'object' && typeof valor.toNumber === 'function')
+    return valor.toNumber();
   return valor ?? null;
 }
 
@@ -63,16 +64,21 @@ export function montarMesclagem(principal, secundario, escolhas = {}) {
   }
 
   dados.tags = [...new Set([...(principal.tags ?? []), ...(secundario.tags ?? [])])];
-  const interacoes = [principal.ultima_interacao_em, secundario.ultima_interacao_em].filter(Boolean);
-  dados.ultimaInteracaoEm = interacoes.length > 0 ? new Date(Math.max(...interacoes.map(Number))) : null;
+  const interacoes = [principal.ultima_interacao_em, secundario.ultima_interacao_em].filter(
+    Boolean,
+  );
+  dados.ultimaInteracaoEm =
+    interacoes.length > 0 ? new Date(Math.max(...interacoes.map(Number))) : null;
 
   const customPrincipal = principal.custom_fields ?? {};
   const customSecundario = secundario.custom_fields ?? {};
   dados.customFields = Object.fromEntries(
-    [...new Set([...Object.keys(customPrincipal), ...Object.keys(customSecundario)])].map((campoId) => [
-      campoId,
-      escolher(customPrincipal[campoId], customSecundario[campoId], escolhas[campoId]) ?? null,
-    ]),
+    [...new Set([...Object.keys(customPrincipal), ...Object.keys(customSecundario)])].map(
+      (campoId) => [
+        campoId,
+        escolher(customPrincipal[campoId], customSecundario[campoId], escolhas[campoId]) ?? null,
+      ],
+    ),
   );
   return dados;
 }
@@ -85,7 +91,11 @@ export function montarMesclagem(principal, secundario, escolhas = {}) {
  * @param {{ principalId: string, secundarioId: string, escolhas?: Record<string, Lado> }} input
  * @param {string} [usuarioId]
  */
-export async function mesclarLeads(tenantId, { principalId, secundarioId, escolhas = {} }, usuarioId) {
+export async function mesclarLeads(
+  tenantId,
+  { principalId, secundarioId, escolhas = {} },
+  usuarioId,
+) {
   if (principalId === secundarioId) {
     throw erroDeValidacao('secundarioId', 'Escolha dois leads diferentes para mesclar');
   }
@@ -103,7 +113,8 @@ export async function mesclarLeads(tenantId, { principalId, secundarioId, escolh
       autorId: usuarioId ?? null,
       montar: (principal, secundario) => {
         // M15: lead anonimizado não recebe nem doa dados (a transação desfaz).
-        if (principal.anonimizado_em || secundario.anonimizado_em) throw leadAnonimizadoNaoEditavel();
+        if (principal.anonimizado_em || secundario.anonimizado_em)
+          throw leadAnonimizadoNaoEditavel();
         return montarMesclagem(principal, secundario, escolhasArmazenadas);
       },
       montarDiff: (antes, depois) => diffDoLead(antes, depois),

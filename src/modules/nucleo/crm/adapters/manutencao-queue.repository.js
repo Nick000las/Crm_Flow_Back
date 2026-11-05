@@ -17,7 +17,9 @@ import { MANUTENCAO_FILA, NOTIFICACAO_ESFRIANDO, PURGA_LIXEIRA } from '../consta
  * @param {string} nomeDoJob
  */
 async function agendar(redisUrl, agendamentoId, repeticao, nomeDoJob) {
-  const fila = new Queue(MANUTENCAO_FILA, { connection: criarConexaoRedis({ paraWorker: true, redisUrl }) });
+  const fila = new Queue(MANUTENCAO_FILA, {
+    connection: criarConexaoRedis({ paraWorker: true, redisUrl }),
+  });
   try {
     await fila.upsertJobScheduler(agendamentoId, repeticao, {
       name: nomeDoJob,

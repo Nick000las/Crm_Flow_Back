@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
-import { buscarCandidatos, buscarCandidatosEmLote, buscarRegras } from '../adapters/crm-duplicates.repository.js';
+import {
+  buscarCandidatos,
+  buscarCandidatosEmLote,
+  buscarRegras,
+} from '../adapters/crm-duplicates.repository.js';
 import {
   camposDeDuplicidadeAlterados,
   duplicadosDasLinhas,
@@ -74,7 +78,11 @@ describe('regras', () => {
   it('gravadas vencem o padrão; import sem a flag usa o padrão', async () => {
     buscarRegras.mockResolvedValue([{ campo: 'cnpj', acao: 'block', ativo: true }]);
     const { regras, configurado } = await obterRegras(TENANT);
-    expect(regras.find((regra) => regra.campo === 'cnpj')).toEqual({ campo: 'cnpj', acao: 'block', ativo: true });
+    expect(regras.find((regra) => regra.campo === 'cnpj')).toEqual({
+      campo: 'cnpj',
+      acao: 'block',
+      ativo: true,
+    });
     expect(configurado).toBe(true);
 
     featureAtiva.mockResolvedValueOnce(false);
@@ -87,8 +95,16 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
     await expect(encontrarDuplicados(TENANT, { cnpj: '12.345' })).resolves.toEqual([]); // CNPJ desligado
     expect(buscarCandidatos).not.toHaveBeenCalled();
 
-    await encontrarDuplicados(TENANT, { email: ' ANA@x.com', telefone: '(11) 98765-4321' }, { ignorarId: 'eu' });
-    expect(buscarCandidatos).toHaveBeenCalledWith(TENANT, { email: 'ana@x.com', telefone: '1187654321' }, 'eu');
+    await encontrarDuplicados(
+      TENANT,
+      { email: ' ANA@x.com', telefone: '(11) 98765-4321' },
+      { ignorarId: 'eu' },
+    );
+    expect(buscarCandidatos).toHaveBeenCalledWith(
+      TENANT,
+      { email: 'ana@x.com', telefone: '1187654321' },
+      'eu',
+    );
   });
 
   it('warn → 409 DUPLICATE_WARNING, a menos que confirme; block → 409 DUPLICATE_BLOCKED sempre', async () => {
@@ -96,9 +112,20 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
     await expect(garantirSemDuplicados(TENANT, { email: 'ana@x.com' })).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
       code: 'DUPLICATE_WARNING',
-      details: { duplicados: [{ id: 'lead-ana', nome: 'Ana', campos: [{ campo: 'email', label: 'E-mail' }], acao: 'warn' }] },
+      details: {
+        duplicados: [
+          {
+            id: 'lead-ana',
+            nome: 'Ana',
+            campos: [{ campo: 'email', label: 'E-mail' }],
+            acao: 'warn',
+          },
+        ],
+      },
     });
-    await expect(garantirSemDuplicados(TENANT, { email: 'ana@x.com' }, { ignorarDuplicados: true })).resolves.toBeUndefined();
+    await expect(
+      garantirSemDuplicados(TENANT, { email: 'ana@x.com' }, { ignorarDuplicados: true }),
+    ).resolves.toBeUndefined();
 
     buscarRegras.mockResolvedValue([{ campo: 'email', acao: 'block', ativo: true }]);
     await expect(
@@ -108,15 +135,29 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
 
   it('na edição, só o que mudou de verdade (pela chave normalizada)', () => {
     const atual = { email: 'ana@x.com', telefone: '11987654321', cnpj: null, cpf: null };
-    expect(camposDeDuplicidadeAlterados({ email: 'ANA@x.com', telefone: '(11) 8765-4321', nome: 'x' }, atual)).toEqual({});
-    expect(camposDeDuplicidadeAlterados({ email: 'bia@x.com', cnpj: null }, atual)).toEqual({ email: 'bia@x.com' });
+    expect(
+      camposDeDuplicidadeAlterados(
+        { email: 'ANA@x.com', telefone: '(11) 8765-4321', nome: 'x' },
+        atual,
+      ),
+    ).toEqual({});
+    expect(camposDeDuplicidadeAlterados({ email: 'bia@x.com', cnpj: null }, atual)).toEqual({
+      email: 'bia@x.com',
+    });
   });
 });
 
 describe('duplicadosDasLinhas (Revisar do import)', () => {
   it('uma consulta pra planilha toda; cada linha com os seus candidatos', async () => {
     buscarCandidatosEmLote.mockResolvedValue([
-      { id: 'lead-ana', nome: 'Ana', dedup_email: 'ana@x.com', dedup_telefone: null, dedup_cnpj: null, dedup_cpf: null },
+      {
+        id: 'lead-ana',
+        nome: 'Ana',
+        dedup_email: 'ana@x.com',
+        dedup_telefone: null,
+        dedup_cnpj: null,
+        dedup_cpf: null,
+      },
     ]);
     const regras = [
       { campo: 'email', acao: 'block', ativo: true },
@@ -140,7 +181,14 @@ describe('duplicadosDasLinhas (Revisar do import)', () => {
       {
         linha: LINHA_ANA,
         acao: 'block',
-        leads: [{ id: 'lead-ana', nome: 'Ana', campos: [{ campo: 'email', label: 'E-mail' }], acao: 'block' }],
+        leads: [
+          {
+            id: 'lead-ana',
+            nome: 'Ana',
+            campos: [{ campo: 'email', label: 'E-mail' }],
+            acao: 'block',
+          },
+        ],
       },
     ]);
   });

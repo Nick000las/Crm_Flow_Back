@@ -34,10 +34,14 @@ export async function lerPlanilha(buffer) {
 
   const aba = workbook.worksheets[0];
   if (!aba || aba.actualRowCount <= LINHA_CABECALHO) {
-    throw erroDePlanilha('A planilha está vazia — a primeira linha deve ter os nomes das colunas e as seguintes, os dados');
+    throw erroDePlanilha(
+      'A planilha está vazia — a primeira linha deve ter os nomes das colunas e as seguintes, os dados',
+    );
   }
   if (aba.actualRowCount - LINHA_CABECALHO > IMPORTACAO.MAX_LINHAS) {
-    throw erroDePlanilha(`A planilha tem mais de ${IMPORTACAO.MAX_LINHAS} linhas — divida em arquivos menores`);
+    throw erroDePlanilha(
+      `A planilha tem mais de ${IMPORTACAO.MAX_LINHAS} linhas — divida em arquivos menores`,
+    );
   }
 
   /** @type {{ indice: number, nome: string }[]} */
@@ -118,7 +122,9 @@ function celulaCsv(valor) {
   let texto;
   if (valor instanceof Date) {
     // UTC, como o .xlsx grava a data.
-    texto = Number.isNaN(valor.getTime()) ? '' : valor.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+    texto = Number.isNaN(valor.getTime())
+      ? ''
+      : valor.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   } else if (typeof valor === 'number') {
     texto = String(valor).replace('.', ',');
   } else {
@@ -145,7 +151,8 @@ export function valorDaCelula(valor) {
   if (typeof valor === 'number' || typeof valor === 'boolean') return valor;
 
   if (typeof valor === 'object') {
-    if ('richText' in valor) return valorDaCelula(valor.richText.map((parte) => parte.text).join(''));
+    if ('richText' in valor)
+      return valorDaCelula(valor.richText.map((parte) => parte.text).join(''));
     if ('formula' in valor || 'sharedFormula' in valor) return valorDaCelula(valor.result ?? null);
     if ('text' in valor) return valorDaCelula(valor.text);
   }

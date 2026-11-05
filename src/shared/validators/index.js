@@ -21,7 +21,8 @@ function todosIguais(texto) {
  * @param {string} cpf
  */
 export function cpfValido(cpf) {
-  if (!new RegExp(`^\\d{${BRAZIL_DOCUMENTS.CPF_LENGTH}}$`).test(cpf) || todosIguais(cpf)) return false;
+  if (!new RegExp(`^\\d{${BRAZIL_DOCUMENTS.CPF_LENGTH}}$`).test(cpf) || todosIguais(cpf))
+    return false;
   const digitos = [...cpf].map(Number);
   const base = BRAZIL_DOCUMENTS.CPF_LENGTH - CHECK_DIGITS;
   for (let posicao = base; posicao < BRAZIL_DOCUMENTS.CPF_LENGTH; posicao += 1) {
@@ -34,7 +35,10 @@ export function cpfValido(cpf) {
 /** Pesos do CNPJ: da direita pra esquerda 2..9, repetindo. @param {number} tamanho */
 function pesosCnpj(tamanho) {
   const ciclo = BRAZIL_DOCUMENTS.CNPJ_MAX_WEIGHT - BRAZIL_DOCUMENTS.CNPJ_MIN_WEIGHT + 1;
-  return Array.from({ length: tamanho }, (_, i) => BRAZIL_DOCUMENTS.CNPJ_MIN_WEIGHT + ((tamanho - 1 - i) % ciclo));
+  return Array.from(
+    { length: tamanho },
+    (_, i) => BRAZIL_DOCUMENTS.CNPJ_MIN_WEIGHT + ((tamanho - 1 - i) % ciclo),
+  );
 }
 
 /**
@@ -46,10 +50,12 @@ function pesosCnpj(tamanho) {
  */
 export function cnpjValido(cnpj) {
   const base = BRAZIL_DOCUMENTS.CNPJ_LENGTH - CHECK_DIGITS;
-  if (!new RegExp(`^[0-9A-Z]{${base}}\\d{${CHECK_DIGITS}}$`).test(cnpj) || todosIguais(cnpj)) return false;
+  if (!new RegExp(`^[0-9A-Z]{${base}}\\d{${CHECK_DIGITS}}$`).test(cnpj) || todosIguais(cnpj))
+    return false;
   const valores = [...cnpj].map((caractere) => caractere.charCodeAt(0) - CHAR_OFFSET);
   for (let posicao = base; posicao < BRAZIL_DOCUMENTS.CNPJ_LENGTH; posicao += 1) {
-    if (digitoVerificador(valores.slice(0, posicao), pesosCnpj(posicao)) !== valores[posicao]) return false;
+    if (digitoVerificador(valores.slice(0, posicao), pesosCnpj(posicao)) !== valores[posicao])
+      return false;
   }
   return true;
 }

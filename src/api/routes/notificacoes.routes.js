@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { authenticateHook } from '#core/auth/rbac.js';
-import { listarNotificacoes, marcarComoLida, marcarTodasComoLidas } from '#core/notificacoes/notificacoes.js';
+import {
+  listarNotificacoes,
+  marcarComoLida,
+  marcarTodasComoLidas,
+} from '#core/notificacoes/notificacoes.js';
 import { PAGINATION } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
 

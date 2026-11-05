@@ -12,7 +12,10 @@ import {
   registrarProgresso,
   marcarFalha,
 } from '../adapters/import-jobs.repository.js';
-import { enfileirarImportacao, encerrarFilaImportacao } from '../adapters/import-queue.repository.js';
+import {
+  enfileirarImportacao,
+  encerrarFilaImportacao,
+} from '../adapters/import-queue.repository.js';
 import { buscarLeadPorId, criarLead, atualizarLead } from '../adapters/leads.repository.js';
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
@@ -32,9 +35,19 @@ import {
   TIPOS_CAMPO,
 } from '../constants.js';
 import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
-import { customFieldsParaArmazenamento, exigidoNaCriacao, obterSchemaCampos } from './field-schema.service.js';
+import {
+  customFieldsParaArmazenamento,
+  exigidoNaCriacao,
+  obterSchemaCampos,
+} from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
-import { aplicarEdicao, errosDasRegras, leadParaApi, listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
+import {
+  aplicarEdicao,
+  errosDasRegras,
+  leadParaApi,
+  listarCamposDoTenant,
+  regrasAplicaveis,
+} from './leads.service.js';
 import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
 import { garantirScoreNaoEditado, recalcularScoreDosLeads } from './score.service.js';
@@ -46,7 +59,11 @@ import {
   notificarAtribuicoesDoImport,
 } from './distribuicao.service.js';
 import { lerPlanilha } from './planilha.service.js';
-import { comPrimeiroNomeNaCriacao, comPrimeiroNomeNaEdicao, precisaDoLeadAtual } from './primeiro-nome.service.js';
+import {
+  comPrimeiroNomeNaCriacao,
+  comPrimeiroNomeNaEdicao,
+  precisaDoLeadAtual,
+} from './primeiro-nome.service.js';
 import { converterCelula, valorAusente } from './tipos-campo.service.js';
 
 /**
@@ -109,7 +126,12 @@ export async function previsualizarImportacao(tenantId, buffer) {
  *
  * @returns {Promise<{ jobId: string | null, totalLinhas: number, linhasValidas: number, erros: ErroDeLinha[], duplicados: object[] }>}
  */
-export async function validarImportacao(tenantId, usuarioId, buffer, { mapeamento, estrategiaDuplicata, baseLegalLote }) {
+export async function validarImportacao(
+  tenantId,
+  usuarioId,
+  buffer,
+  { mapeamento, estrategiaDuplicata, baseLegalLote },
+) {
   await garantirBaseDoLote(tenantId, baseLegalLote);
   const [{ colunas, linhas }, camposDaPlanilha, estagios] = await Promise.all([
     lerPlanilha(buffer),
@@ -128,7 +150,9 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
   const cobertos = baseLegalLote ? [CAMPOS_LGPD.BASE_LEGAL] : [];
   validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos);
 
-  const estagioPorNome = new Map(estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]));
+  const estagioPorNome = new Map(
+    estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]),
+  );
   // Regras do M8: a linha é avaliada como lead novo (o Revisar mostra a violação).
   const schema = await obterSchemaCampos(tenantId);
   const regrasCampos = await regrasAplicaveis(tenantId, schema);
@@ -140,11 +164,14 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
     const resultado = converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome, {
       baseLegal: baseLegalLote,
     });
-    const violacoes = resultado.erros.length > 0 ? [] : errosDasRegras(schema, regrasCampos, resultado.dados);
+    const violacoes =
+      resultado.erros.length > 0 ? [] : errosDasRegras(schema, regrasCampos, resultado.dados);
     if (resultado.erros.length > 0) {
       erros.push(...resultado.erros);
     } else if (violacoes.length > 0) {
-      erros.push(...violacoes.map((violacao) => ({ linha: linha.numero, motivo: violacao.mensagem })));
+      erros.push(
+        ...violacoes.map((violacao) => ({ linha: linha.numero, motivo: violacao.mensagem })),
+      );
     } else {
       payload.push({ linha: linha.numero, dados: resultado.dados });
     }
@@ -161,7 +188,11 @@ export async function validarImportacao(tenantId, usuarioId, buffer, { mapeament
     acaoPorLinha.has(item.linha) ? { ...item, duplicata: acaoPorLinha.get(item.linha) } : item,
   );
 
-  const { id: jobId } = await criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, payload: payloadMarcado });
+  const { id: jobId } = await criarImportJob(tenantId, {
+    usuarioId,
+    estrategiaDuplicata,
+    payload: payloadMarcado,
+  });
   return { jobId, totalLinhas: linhas.length, linhasValidas: payload.length, erros, duplicados };
 }
 
@@ -197,11 +228,17 @@ export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
     await enfileirarImportacao(tenantId, jobId);
   } catch (erro) {
     // Volta pra `pendente` pra o usuário poder confirmar de novo depois.
-    await transicionarStatus(tenantId, jobId, IMPORT_JOB_STATUS.PROCESSANDO, IMPORT_JOB_STATUS.PENDENTE);
+    await transicionarStatus(
+      tenantId,
+      jobId,
+      IMPORT_JOB_STATUS.PROCESSANDO,
+      IMPORT_JOB_STATUS.PENDENTE,
+    );
     throw new AppError({
       statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
       code: ERROR_CODES.QUEUE_UNAVAILABLE,
-      message: 'A fila de importação está indisponível no momento. Tente confirmar novamente em instantes.',
+      message:
+        'A fila de importação está indisponível no momento. Tente confirmar novamente em instantes.',
       cause: erro,
     });
   }
@@ -218,7 +255,9 @@ async function gravarAcoes(tenantId, jobId, acoes) {
   const job = await buscarImportJobComPayload(tenantId, jobId);
   if (!job) await obterStatusImportacao(tenantId, jobId); // 404
   const duplicataPorLinha = new Map(
-    job.payload.filter((item) => item.duplicata).map((item) => [String(item.linha), item.duplicata]),
+    job.payload
+      .filter((item) => item.duplicata)
+      .map((item) => [String(item.linha), item.duplicata]),
   );
 
   for (const [linha, acao] of Object.entries(acoes)) {
@@ -227,7 +266,10 @@ async function gravarAcoes(tenantId, jobId, acoes) {
       throw erroDeValidacao('acoes', `A linha ${linha} não foi apontada como duplicada`);
     }
     if (acao === ACOES_IMPORT_DUPLICATA.CRIAR && duplicata === ACOES_DUPLICIDADE.BLOQUEAR) {
-      throw erroDeValidacao('acoes', `A linha ${linha} repete um lead existente e a regra não deixa criar outro`);
+      throw erroDeValidacao(
+        'acoes',
+        `A linha ${linha} repete um lead existente e a regra não deixa criar outro`,
+      );
     }
   }
   // Só grava com o job pendente; já confirmado cai no 409 da transição logo depois.
@@ -299,24 +341,34 @@ export async function processarImportacao(tenantId, jobId) {
         if (dados.customFields !== undefined) {
           dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
         }
-        const { resultado, motivo, leadId, atribuidoA } = await importarLinha(tenantId, dados, acoes[String(item.linha)] ?? job.estrategia_duplicata, {
-          estagioPadraoId: estagioPadrao?.id ?? null,
-          responsavelPadraoId: job.usuario_id,
-          regras,
-          // Lead novo sem responsável na linha (M12): avaliado no formato da API (custom field pela chave).
-          distribuirLinha: distribuicao
-            ? (tagsResolvidas) => distribuir(tenantId, distribuicao, { ...dadosApi, tags: tagsResolvidas })
-            : null,
-          // Atualizar um existente: regras do M8 contra o lead resultante.
-          validarAtualizacao: async (leadId) => {
-            if (regrasCampos.length === 0) return null;
-            const atual = await buscarLeadPorId(tenantId, leadId);
-            const [violacao] = atual
-              ? errosDasRegras(schema, regrasCampos, aplicarEdicao(leadParaApi(atual, schema), dadosApi))
-              : [];
-            return violacao?.mensagem ?? null;
+        const { resultado, motivo, leadId, atribuidoA } = await importarLinha(
+          tenantId,
+          dados,
+          acoes[String(item.linha)] ?? job.estrategia_duplicata,
+          {
+            estagioPadraoId: estagioPadrao?.id ?? null,
+            responsavelPadraoId: job.usuario_id,
+            regras,
+            // Lead novo sem responsável na linha (M12): avaliado no formato da API (custom field pela chave).
+            distribuirLinha: distribuicao
+              ? (tagsResolvidas) =>
+                  distribuir(tenantId, distribuicao, { ...dadosApi, tags: tagsResolvidas })
+              : null,
+            // Atualizar um existente: regras do M8 contra o lead resultante.
+            validarAtualizacao: async (leadId) => {
+              if (regrasCampos.length === 0) return null;
+              const atual = await buscarLeadPorId(tenantId, leadId);
+              const [violacao] = atual
+                ? errosDasRegras(
+                    schema,
+                    regrasCampos,
+                    aplicarEdicao(leadParaApi(atual, schema), dadosApi),
+                  )
+                : [];
+              return violacao?.mensagem ?? null;
+            },
           },
-        });
+        );
         progresso[resultado] += 1;
         if (leadId) gravados.push(leadId);
         if (leadId && dados.cnpj) comCnpj.push({ leadId, cnpj: dados.cnpj });
@@ -333,11 +385,18 @@ export async function processarImportacao(tenantId, jobId) {
       }
     }
 
-    await registrarProgresso(tenantId, jobId, { ...progresso, statusFinal: IMPORT_JOB_STATUS.CONCLUIDO });
+    await registrarProgresso(tenantId, jobId, {
+      ...progresso,
+      statusFinal: IMPORT_JOB_STATUS.CONCLUIDO,
+    });
     // M11b: uma leva só no fim (o worker do CNPJ respeita o rate limit do provedor).
     await agendarEnriquecimento(tenantId, comCnpj);
     await recalcularScoreDosLeads(tenantId, gravados);
-    await notificarAtribuicoesDoImport(tenantId, { importJobId: jobId, totais: distribuidos, importadorId: job.usuario_id });
+    await notificarAtribuicoesDoImport(tenantId, {
+      importJobId: jobId,
+      totais: distribuidos,
+      importadorId: job.usuario_id,
+    });
   } catch (erro) {
     await marcarFalha(tenantId, jobId);
     throw erro;
@@ -379,7 +438,13 @@ async function importarLinha(
   tenantId,
   dadosDaPlanilha,
   acao,
-  { estagioPadraoId, responsavelPadraoId, regras, validarAtualizacao = async () => null, distribuirLinha = null },
+  {
+    estagioPadraoId,
+    responsavelPadraoId,
+    regras,
+    validarAtualizacao = async () => null,
+    distribuirLinha = null,
+  },
 ) {
   const dados = await comTagsResolvidas(tenantId, dadosDaPlanilha);
   const historico = { autorId: responsavelPadraoId };
@@ -411,19 +476,28 @@ async function importarLinha(
     }
   }
 
-  const atribuicao = dados.usuarioResponsavelId === undefined && distribuirLinha ? await distribuirLinha(dados.tags) : null;
+  const atribuicao =
+    dados.usuarioResponsavelId === undefined && distribuirLinha
+      ? await distribuirLinha(dados.tags)
+      : null;
   const criado = await criarLead(
     tenantId,
     {
       // M15: origem "importação" e a data da base legal (a do lote já veio na linha).
       ...comDadosLgpdNaCriacao(comPrimeiroNomeNaCriacao(dados), ORIGENS_REGISTRO.IMPORTACAO),
       funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
-      usuarioResponsavelId: atribuicao ? atribuicao.usuarioId : (dados.usuarioResponsavelId ?? responsavelPadraoId),
+      usuarioResponsavelId: atribuicao
+        ? atribuicao.usuarioId
+        : (dados.usuarioResponsavelId ?? responsavelPadraoId),
       atribuidoPorRegraId: atribuicao?.regraId ?? null,
     },
     atribuicao ? { ...historico, detalhes: detalhesDaAtribuicao(atribuicao) } : historico,
   );
-  return { resultado: 'linhasCriadas', leadId: criado?.id, atribuidoA: atribuicao?.usuarioId ?? null };
+  return {
+    resultado: 'linhasCriadas',
+    leadId: criado?.id,
+    atribuidoA: atribuicao?.usuarioId ?? null,
+  };
 }
 
 /**
@@ -473,9 +547,14 @@ async function listarCamposDaPlanilha(tenantId) {
 async function comUsuariosDoTenant(tenantId, campos) {
   if (!campos.some((campo) => campo.tipo === TIPOS_CAMPO.USUARIO)) return campos;
   const usuarios = new Map(
-    (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [usuario.nome.trim().toLowerCase(), usuario.id]),
+    (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [
+      usuario.nome.trim().toLowerCase(),
+      usuario.id,
+    ]),
   );
-  return campos.map((campo) => (campo.tipo === TIPOS_CAMPO.USUARIO ? { ...campo, usuarios } : campo));
+  return campos.map((campo) =>
+    campo.tipo === TIPOS_CAMPO.USUARIO ? { ...campo, usuarios } : campo,
+  );
 }
 
 /**
@@ -494,10 +573,18 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos 
   }
 
   const repetida = chavesMapeadas.find((chave, i) => chavesMapeadas.indexOf(chave) !== i);
-  if (repetida) problemas.push(`O campo "${campoPorChave.get(repetida)?.label ?? repetida}" foi mapeado mais de uma vez`);
+  if (repetida)
+    problemas.push(
+      `O campo "${campoPorChave.get(repetida)?.label ?? repetida}" foi mapeado mais de uma vez`,
+    );
 
   for (const campo of campos) {
-    if (!exigidoNaCriacao(campo) || chavesMapeadas.includes(campo.chave) || cobertos.includes(campo.chave)) continue;
+    if (
+      !exigidoNaCriacao(campo) ||
+      chavesMapeadas.includes(campo.chave) ||
+      cobertos.includes(campo.chave)
+    )
+      continue;
     problemas.push(
       campo.chave === CAMPOS_LGPD.BASE_LEGAL
         ? `O campo obrigatório "${campo.label}" não foi mapeado — mapeie a coluna ou escolha a base legal do lote`
@@ -530,7 +617,14 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos 
  * @param {Map<string, string>} estagioPorNome
  * @param {{ baseLegal?: string }} [padroes]  M15: base legal do lote (linha sem a sua)
  */
-export function converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome, padroes = {}) {
+export function converterLinha(
+  linha,
+  mapeamento,
+  campos,
+  campoPorChave,
+  estagioPorNome,
+  padroes = {},
+) {
   /** @type {Record<string, unknown> & { customFields: Record<string, unknown> }} */
   const dados = { customFields: {} };
   /** @type {ErroDeLinha[]} */
@@ -545,7 +639,11 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
       if (estagioId) {
         dados.funilEstagioId = estagioId;
       } else {
-        erros.push({ linha: linha.numero, coluna, motivo: `Estágio "${bruto}" não existe no funil` });
+        erros.push({
+          linha: linha.numero,
+          coluna,
+          motivo: `Estágio "${bruto}" não existe no funil`,
+        });
       }
       continue;
     }
@@ -562,11 +660,13 @@ export function converterLinha(linha, mapeamento, campos, campoPorChave, estagio
   }
 
   // M15: base legal do lote nas linhas sem a sua — antes da obrigatoriedade.
-  if (padroes.baseLegal && valorAusente(dados[CAMPOS_LGPD.BASE_LEGAL])) dados[CAMPOS_LGPD.BASE_LEGAL] = padroes.baseLegal;
+  if (padroes.baseLegal && valorAusente(dados[CAMPOS_LGPD.BASE_LEGAL]))
+    dados[CAMPOS_LGPD.BASE_LEGAL] = padroes.baseLegal;
 
   for (const campo of campos) {
     if (!exigidoNaCriacao(campo)) continue;
-    const valor = campo.camada === CAMADA.CAMADA_3 ? dados.customFields[campo.chave] : dados[campo.chave];
+    const valor =
+      campo.camada === CAMADA.CAMADA_3 ? dados.customFields[campo.chave] : dados[campo.chave];
     if (valorAusente(valor)) {
       erros.push({ linha: linha.numero, motivo: `"${campo.label}" é obrigatório` });
     }

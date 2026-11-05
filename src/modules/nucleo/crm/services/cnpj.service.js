@@ -4,7 +4,12 @@ import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { provedorBrasilApi } from '../adapters/cnpj-brasilapi.provider.js';
 import { encerrarFilaCnpj, enfileirarEnriquecimentos } from '../adapters/cnpj-queue.repository.js';
-import { buscarCacheCnpj, buscarConfigCnpj, gravarCacheCnpj, salvarConfigCnpj as gravarConfig } from '../adapters/crm-cnpj.repository.js';
+import {
+  buscarCacheCnpj,
+  buscarConfigCnpj,
+  gravarCacheCnpj,
+  salvarConfigCnpj as gravarConfig,
+} from '../adapters/crm-cnpj.repository.js';
 import {
   ACESSOS_CAMPO,
   CAMADA,
@@ -19,7 +24,13 @@ import {
 } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { obterSchemaDoPapel } from './permissoes.service.js';
-import { normalizarCep, normalizarCnpj, normalizarTelefone, normalizarValorDoTipo, valorValidoParaTipo } from './tipos-campo.service.js';
+import {
+  normalizarCep,
+  normalizarCnpj,
+  normalizarTelefone,
+  normalizarValorDoTipo,
+  valorValidoParaTipo,
+} from './tipos-campo.service.js';
 
 /**
  * SERVICE: enriquecimento por CNPJ (M11b, docs/crm/plano-configuracoes.md).
@@ -47,12 +58,19 @@ const provedor = provedorBrasilApi;
  */
 export async function consultarCnpj(tenantId, entrada, agora = new Date()) {
   const cnpj = normalizarCnpj(entrada);
-  if (!cnpj) throw erroDeValidacao('cnpj', 'CNPJ inválido', 'Confira o CNPJ (dígitos verificadores)');
+  if (!cnpj)
+    throw erroDeValidacao('cnpj', 'CNPJ inválido', 'Confira o CNPJ (dígitos verificadores)');
 
   const validoDesde = new Date(agora.getTime() - ENRIQUECIMENTO_CNPJ.TTL_CACHE_DIAS * MS_POR_DIA);
   const cache = await buscarCacheCnpj(tenantId, cnpj, validoDesde);
   if (cache) {
-    return { cnpj, status: cache.status, dados: /** @type {DadosReceita} */ (cache.dados), provedor: cache.provedor, emCache: true };
+    return {
+      cnpj,
+      status: cache.status,
+      dados: /** @type {DadosReceita} */ (cache.dados),
+      provedor: cache.provedor,
+      emCache: true,
+    };
   }
 
   const { status, dados } = await provedor.consultar(cnpj);
@@ -95,8 +113,13 @@ export async function consultarParaLupa(tenantId, entrada, { papel } = {}) {
   }
   const { campos } = await obterSchemaDoPapel(tenantId, papel);
   // "Só ver" fica de fora (o 403 viria ao salvar); o oculto nem está no schema do papel.
-  const editaveis = campos.filter((campo) => campo.acesso === undefined || campo.acesso === ACESSOS_CAMPO.EDITAR);
-  const sugestao = resultado.status === STATUS_CNPJ.OK ? sugestaoParaLead(resultado.dados, config.mapeamento, editaveis) : [];
+  const editaveis = campos.filter(
+    (campo) => campo.acesso === undefined || campo.acesso === ACESSOS_CAMPO.EDITAR,
+  );
+  const sugestao =
+    resultado.status === STATUS_CNPJ.OK
+      ? sugestaoParaLead(resultado.dados, config.mapeamento, editaveis)
+      : [];
   return { cnpj: resultado.cnpj, status: resultado.status, dados: resultado.dados, sugestao };
 }
 
@@ -112,11 +135,18 @@ export async function consultarParaLupa(tenantId, entrada, { papel } = {}) {
  * @returns {Promise<ConfigCnpj & { configurado: boolean }>}
  */
 export async function obterConfigCnpj(tenantId) {
-  const [gravada, { campos }] = await Promise.all([buscarConfigCnpj(tenantId), obterSchemaCampos(tenantId)]);
+  const [gravada, { campos }] = await Promise.all([
+    buscarConfigCnpj(tenantId),
+    obterSchemaCampos(tenantId),
+  ]);
   const idsAtivos = new Set(campos.map((campo) => campo.id).filter(Boolean));
 
   if (!gravada) {
-    const idPorChave = new Map(campos.filter((campo) => campo.camada !== CAMADA.CAMADA_3).map((campo) => [campo.chave, campo.id]));
+    const idPorChave = new Map(
+      campos
+        .filter((campo) => campo.camada !== CAMADA.CAMADA_3)
+        .map((campo) => [campo.chave, campo.id]),
+    );
     const mapeamento = Object.fromEntries(
       Object.entries(CONFIG_CNPJ_PADRAO.mapeamentoPorSistema)
         .map(([campoReceita, systemKey]) => [campoReceita, idPorChave.get(systemKey)])
@@ -127,9 +157,17 @@ export async function obterConfigCnpj(tenantId) {
   }
 
   const mapeamento = Object.fromEntries(
-    Object.entries(gravada.mapeamento ?? {}).filter(([campoReceita, id]) => CAMPOS_RECEITA[campoReceita] && idsAtivos.has(id)),
+    Object.entries(gravada.mapeamento ?? {}).filter(
+      ([campoReceita, id]) => CAMPOS_RECEITA[campoReceita] && idsAtivos.has(id),
+    ),
   );
-  return { ativo: gravada.ativo, modo: gravada.modo, sobrescrever: gravada.sobrescrever, mapeamento, configurado: true };
+  return {
+    ativo: gravada.ativo,
+    modo: gravada.modo,
+    sobrescrever: gravada.sobrescrever,
+    mapeamento,
+    configurado: true,
+  };
 }
 
 /**
@@ -140,7 +178,11 @@ export async function obterConfigCnpj(tenantId) {
 export async function listarConfigCnpj(tenantId) {
   return {
     ...(await obterConfigCnpj(tenantId)),
-    camposReceita: CHAVES_RECEITA.map((chave) => ({ chave, label: CAMPOS_RECEITA[chave].label, tipos: CAMPOS_RECEITA[chave].tipos })),
+    camposReceita: CHAVES_RECEITA.map((chave) => ({
+      chave,
+      label: CAMPOS_RECEITA[chave].label,
+      tipos: CAMPOS_RECEITA[chave].tipos,
+    })),
   };
 }
 
@@ -161,9 +203,13 @@ export async function salvarConfigCnpj(tenantId, config) {
     const caminho = `mapeamento.${campoReceita}`;
     if (!campo) throw erroDeValidacao(caminho, 'O destino precisa ser um campo ativo');
     if (!CAMPOS_RECEITA[campoReceita].tipos.includes(campo.tipo)) {
-      throw erroDeValidacao(caminho, `"${CAMPOS_RECEITA[campoReceita].label}" não cabe no campo "${campo.label}" (${campo.tipo})`);
+      throw erroDeValidacao(
+        caminho,
+        `"${CAMPOS_RECEITA[campoReceita].label}" não cabe no campo "${campo.label}" (${campo.tipo})`,
+      );
     }
-    if (usados.has(id)) throw erroDeValidacao(caminho, `"${campo.label}" já recebe outro dado da Receita`);
+    if (usados.has(id))
+      throw erroDeValidacao(caminho, `"${campo.label}" já recebe outro dado da Receita`);
     usados.add(id);
   }
 
@@ -228,7 +274,10 @@ function valorDaReceita(dados, campoReceita, tipo) {
       return Object.keys(partes).length > 0 ? partes : null;
     }
     const rua = [dados.logradouro, dados.numero, dados.complemento].filter(Boolean).join(', ');
-    const linha = [[rua, dados.bairro].filter(Boolean).join(' - '), [dados.municipio, dados.uf].filter(Boolean).join('/')]
+    const linha = [
+      [rua, dados.bairro].filter(Boolean).join(' - '),
+      [dados.municipio, dados.uf].filter(Boolean).join('/'),
+    ]
       .filter(Boolean)
       .join(', ');
     return linha || null;
@@ -236,7 +285,8 @@ function valorDaReceita(dados, campoReceita, tipo) {
 
   const valor = /** @type {Record<string, string | undefined>} */ (dados)[campoReceita];
   if (!valor) return null;
-  if (campoReceita === 'telefone' && tipo === TIPOS_CAMPO.TELEFONE) return normalizarTelefone(valor);
+  if (campoReceita === 'telefone' && tipo === TIPOS_CAMPO.TELEFONE)
+    return normalizarTelefone(valor);
   if (campoReceita === 'cep' && tipo === TIPOS_CAMPO.CEP) return normalizarCep(valor);
   return valor;
 }
@@ -257,12 +307,18 @@ function valorDaReceita(dados, campoReceita, tipo) {
 export async function agendarEnriquecimento(tenantId, leads) {
   try {
     const itens = leads
-      .map(({ leadId, cnpj }) => ({ tenantId, leadId, cnpj: typeof cnpj === 'string' ? normalizarCnpj(cnpj) : null }))
+      .map(({ leadId, cnpj }) => ({
+        tenantId,
+        leadId,
+        cnpj: typeof cnpj === 'string' ? normalizarCnpj(cnpj) : null,
+      }))
       .filter((item) => item.cnpj);
     if (itens.length === 0 || !(await featureAtiva(tenantId, CRM_FEATURES.CNPJ))) return 0;
     const config = await obterConfigCnpj(tenantId);
     if (!config.ativo || config.modo !== MODOS_CNPJ.AUTOMATICO) return 0;
-    await enfileirarEnriquecimentos(/** @type {{ tenantId: string, leadId: string, cnpj: string }[]} */ (itens));
+    await enfileirarEnriquecimentos(
+      /** @type {{ tenantId: string, leadId: string, cnpj: string }[]} */ (itens),
+    );
     return itens.length;
   } catch {
     return 0;

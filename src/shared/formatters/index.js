@@ -16,7 +16,11 @@ function mascarar(texto, padrao, montar) {
 
 /** `12345678909` → `123.456.789-09`. @param {string} cpf */
 export function formatarCpf(cpf) {
-  return mascarar(cpf.replace(/\D/g, ''), BRAZIL_DOCUMENTS.CPF_MASK, (a, b, c, d) => `${a}.${b}.${c}-${d}`);
+  return mascarar(
+    cpf.replace(/\D/g, ''),
+    BRAZIL_DOCUMENTS.CPF_MASK,
+    (a, b, c, d) => `${a}.${b}.${c}-${d}`,
+  );
 }
 
 /** `12ABC34501DE35` → `12.ABC.345/01DE-35` (numérico ou alfanumérico). @param {string} cnpj */

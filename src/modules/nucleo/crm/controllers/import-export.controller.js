@@ -69,7 +69,10 @@ export async function registrarRotasImportExport(app) {
     const csv = body.formato === FORMATOS_EXPORTACAO.CSV;
     return reply
       .header('Content-Type', csv ? EXPORTACAO.CONTENT_TYPE_CSV : EXPORTACAO.CONTENT_TYPE)
-      .header('Content-Disposition', `attachment; filename="${csv ? EXPORTACAO.NOME_ARQUIVO_CSV : EXPORTACAO.NOME_ARQUIVO}"`)
+      .header(
+        'Content-Disposition',
+        `attachment; filename="${csv ? EXPORTACAO.NOME_ARQUIVO_CSV : EXPORTACAO.NOME_ARQUIVO}"`,
+      )
       .send(arquivo);
   });
 }

@@ -28,7 +28,11 @@ import { editarAtividade, listarAtividades, registrarAtividade } from './ativida
 import { salvarRegras } from './duplicidade.service.js';
 import { criarRegra, editarRegra, listarRegras, removerRegra } from './regras.service.js';
 import { listarHistorico } from './historico.service.js';
-import { listarInatividade, notificarEsfriandoNoTenant, salvarInatividade } from './inatividade.service.js';
+import {
+  listarInatividade,
+  notificarEsfriandoNoTenant,
+  salvarInatividade,
+} from './inatividade.service.js';
 import { processarImportacao, validarImportacao } from './import.service.js';
 import { mesclarLeads, montarMesclagem } from './mesclagem.service.js';
 import { gerarPlanilha } from './planilha.service.js';
@@ -64,7 +68,8 @@ import { reconciliarTenant } from './reconcile.service.js';
  * Exige as migrations até a 0023 aplicadas.
  */
 
-const rodar = process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
+const rodar =
+  process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
 
 const TAMANHO_PAGINA = 50;
 const TAMANHO_SUFIXO_SUBDOMINIO = 8;
@@ -91,10 +96,21 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
 
   beforeAll(async () => {
     await prisma.tenant.create({
-      data: { id: tenantId, nome: 'SMOKE campos', subdomain: `smoke-campos-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}` },
+      data: {
+        id: tenantId,
+        nome: 'SMOKE campos',
+        subdomain: `smoke-campos-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
+      },
     });
     await prisma.usuario.create({
-      data: { id: usuarioId, tenantId, nome: 'Smoke', email: `smoke-${tenantId}@smoke.test`, role: 'DONO', ativo: true },
+      data: {
+        id: usuarioId,
+        tenantId,
+        nome: 'Smoke',
+        email: `smoke-${tenantId}@smoke.test`,
+        role: 'DONO',
+        ativo: true,
+      },
     });
   });
 
@@ -111,7 +127,10 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     const depois = await contar();
     const segunda = await reconciliarTenant(tenantId);
 
-    const opcoesSugeridas = LISTAS_SEMEADAS.reduce((total, kind) => total + OPCOES_SUGERIDAS[kind].length, 0);
+    const opcoesSugeridas = LISTAS_SEMEADAS.reduce(
+      (total, kind) => total + OPCOES_SUGERIDAS[kind].length,
+      0,
+    );
     expect(primeira).toEqual([
       { passo: 'campos-sistema', resultado: { criados: CAMPOS_SISTEMA.length } },
       { passo: 'listas-padrao', resultado: { criadas: opcoesSugeridas } }, // tenant sem lead: padrão da spec
@@ -144,7 +163,9 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
       SELECT custom_fields FROM modulo_crm.leads WHERE id = ${leadId}::uuid
     `;
     expect(gravado.custom_fields).toEqual({ [campo.id]: 'varejo' });
-    expect((await buscarLeadFormatado(tenantId, leadId)).custom_fields).toEqual({ segmento_smoke: 'varejo' });
+    expect((await buscarLeadFormatado(tenantId, leadId)).custom_fields).toEqual({
+      segmento_smoke: 'varejo',
+    });
 
     const busca = await pesquisarLeads(tenantId, {
       filtros: [{ chave: 'segmento_smoke', operador: 'igual', valor: 'varejo' }],
@@ -161,7 +182,9 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
   });
 
   it('Configurações (M2): ocultar só na tabela, renomear e voltar ao padrão', async () => {
-    const empresa = (await listarConfiguracaoCampos(tenantId)).find((campo) => campo.chave === 'empresa');
+    const empresa = (await listarConfiguracaoCampos(tenantId)).find(
+      (campo) => campo.chave === 'empresa',
+    );
 
     await atualizarConfiguracaoCampo(tenantId, empresa.id, {
       label: 'Razão social',
@@ -169,9 +192,9 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     });
     const { campos } = await obterSchemaCampos(tenantId);
     expect(camposDoContexto(campos, 'table').map((campo) => campo.chave)).not.toContain('empresa');
-    expect(camposDoContexto(campos, 'detail').find((campo) => campo.chave === 'empresa').label).toBe(
-      'Razão social',
-    );
+    expect(
+      camposDoContexto(campos, 'detail').find((campo) => campo.chave === 'empresa').label,
+    ).toBe('Razão social');
 
     const ordenados = await restaurarOrdemPadrao(tenantId);
     expect(ordenados.map((campo) => campo.ordem)).toEqual(ordenados.map((_, indice) => indice));
@@ -179,7 +202,11 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
 
   it('Listas (M3): só opção da lista entra, tag nova vira opção, opção em uso não é excluída', async () => {
     await expect(
-      registrarNovoLead(tenantId, { nome: 'Lead B', email: 'b@smoke.test', status: 'negociacao' }, usuarioId),
+      registrarNovoLead(
+        tenantId,
+        { nome: 'Lead B', email: 'b@smoke.test', status: 'negociacao' },
+        usuarioId,
+      ),
     ).rejects.toThrow(/não é uma opção de Status/); // tenant novo: padrão da spec, sem "negociacao"
 
     const { id: leadId } = await registrarNovoLead(
@@ -187,14 +214,19 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
       { nome: 'Lead C', email: 'c@smoke.test', status: 'proposta', tags: ['Feira 2026'] },
       usuarioId,
     );
-    const [gravado] = await prisma.$queryRaw`SELECT status, tags FROM modulo_crm.leads WHERE id = ${leadId}::uuid`;
+    const [gravado] =
+      await prisma.$queryRaw`SELECT status, tags FROM modulo_crm.leads WHERE id = ${leadId}::uuid`;
     expect(gravado).toEqual({ status: 'proposta', tags: ['feira_2026'] });
 
     const listas = await listarListas(tenantId);
-    expect(listas.tag).toEqual([expect.objectContaining({ key: 'feira_2026', label: 'Feira 2026', usos: 1 })]);
+    expect(listas.tag).toEqual([
+      expect.objectContaining({ key: 'feira_2026', label: 'Feira 2026', usos: 1 }),
+    ]);
     const proposta = listas.status.find((opcao) => opcao.key === 'proposta');
     expect(proposta.usos).toBe(1);
-    await expect(excluirOpcao(tenantId, 'status', proposta.id)).rejects.toThrow(/desative em vez de excluir/);
+    await expect(excluirOpcao(tenantId, 'status', proposta.id)).rejects.toThrow(
+      /desative em vez de excluir/,
+    );
   });
 
   it('Layout (M4): CNPJ como identificador, Empresa · Cidade no subtítulo, busca com e sem pontuação', async () => {
@@ -215,13 +247,25 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     await salvarPadrao(tenantId, usuarioId, padrao);
     const { id: leadId } = await registrarNovoLead(
       tenantId,
-      { nome: 'Acme', email: 'acme@smoke.test', cnpj: '11.222.333/0001-81', empresa: 'Acme SA', cidade: 'Joinville' },
+      {
+        nome: 'Acme',
+        email: 'acme@smoke.test',
+        cnpj: '11.222.333/0001-81',
+        empresa: 'Acme SA',
+        cidade: 'Joinville',
+      },
       usuarioId,
     );
 
     for (const busca of ['11.222.333/0001-81', '11222333000181', '11.222']) {
-      const resultado = await pesquisarLeads(tenantId, { busca, paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA } });
-      expect(resultado.itens.map((lead) => lead.id), busca).toEqual([leadId]);
+      const resultado = await pesquisarLeads(tenantId, {
+        busca,
+        paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
+      });
+      expect(
+        resultado.itens.map((lead) => lead.id),
+        busca,
+      ).toEqual([leadId]);
     }
 
     const { efetivo } = await obterLayout(tenantId, usuarioId);
@@ -230,7 +274,10 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
 
     // Override do usuário; depois o DONO acrescenta uma coluna → entra no fim da lista dele.
     await salvarMeu(tenantId, usuarioId, { colunas: [id('telefone')] });
-    await salvarPadrao(tenantId, usuarioId, { ...padrao, colunas: [...padrao.colunas, id('cidade')] });
+    await salvarPadrao(tenantId, usuarioId, {
+      ...padrao,
+      colunas: [...padrao.colunas, id('cidade')],
+    });
     const depois = await obterLayout(tenantId, usuarioId);
     expect(depois.efetivo.colunas.map((item) => item.chave)).toEqual(['telefone', 'cidade']);
   });
@@ -242,7 +289,8 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     });
     await invalidarFeatures(tenantId);
 
-    const criar = async (nome, email) => (await registrarNovoLead(tenantId, { nome, email }, usuarioId)).id;
+    const criar = async (nome, email) =>
+      (await registrarNovoLead(tenantId, { nome, email }, usuarioId)).id;
     const arquivado = await criar('M5 arquivado', 'm5-arq@smoke.test');
     const excluido = await criar('M5 excluido', 'm5-exc@smoke.test');
     const vencido = await criar('M5 vencido', 'm5-venc@smoke.test');
@@ -255,7 +303,11 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     `;
 
     const buscar = (situacao) =>
-      pesquisarLeads(tenantId, { busca: 'm5', situacao, paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA } });
+      pesquisarLeads(tenantId, {
+        busca: 'm5',
+        situacao,
+        paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
+      });
     const ids = async (situacao) => (await buscar(situacao)).itens.map((lead) => lead.id);
 
     // Busca e contagem.
@@ -268,10 +320,16 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
 
     // Detalhe e edição: 404. Arquivado continua legível.
     await expect(buscarLeadFormatado(tenantId, excluido)).rejects.toThrow('Lead não encontrado');
-    await expect(atualizarLeadExistente(tenantId, excluido, { nome: 'Outro' })).rejects.toThrow('Lead não encontrado');
-    await expect(buscarLeadFormatado(tenantId, arquivado)).resolves.toMatchObject({ id: arquivado });
+    await expect(atualizarLeadExistente(tenantId, excluido, { nome: 'Outro' })).rejects.toThrow(
+      'Lead não encontrado',
+    );
+    await expect(buscarLeadFormatado(tenantId, arquivado)).resolves.toMatchObject({
+      id: arquivado,
+    });
     // Edição (de arquivado inclusive) devolve as colunas da leitura, `estagio_nome` incluso.
-    const editado = await atualizarLeadExistente(tenantId, arquivado, { nome: 'M5 arquivado editado' });
+    const editado = await atualizarLeadExistente(tenantId, arquivado, {
+      nome: 'M5 arquivado editado',
+    });
     expect(editado).toHaveProperty('estagio_nome');
     expect(editado.archived_at).toBeInstanceOf(Date);
 
@@ -282,9 +340,9 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     ]);
 
     // Export: a lixeira não sai.
-    await expect(exportarLeads(tenantId, { colunas: ['nome'], filtro: { situacao: 'lixeira' } })).rejects.toThrow(
-      'A lixeira não pode ser exportada',
-    );
+    await expect(
+      exportarLeads(tenantId, { colunas: ['nome'], filtro: { situacao: 'lixeira' } }),
+    ).rejects.toThrow('A lixeira não pode ser exportada');
 
     // Restaurar: dentro do prazo volta; fora dele, 404.
     await expect(restaurarLead(tenantId, vencido)).rejects.toThrow('Lead não encontrado');
@@ -302,11 +360,22 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
   it('Atividades e histórico (M6): interação, diff só do que mudou, append-only', async () => {
     const autorId = randomUUID();
     await prisma.usuario.create({
-      data: { id: autorId, tenantId, nome: 'Smoke operador', email: `smoke-op-${autorId}@smoke.test`, role: 'OPERADOR', ativo: true },
+      data: {
+        id: autorId,
+        tenantId,
+        nome: 'Smoke operador',
+        email: `smoke-op-${autorId}@smoke.test`,
+        role: 'OPERADOR',
+        ativo: true,
+      },
     });
     const { listas } = await obterSchemaCampos(tenantId);
     const [statusA, statusB] = listas.status.map((opcao) => opcao.key);
-    const { id: leadId } = await registrarNovoLead(tenantId, { nome: 'M6 lead', email: 'm6@smoke.test', status: statusA }, autorId);
+    const { id: leadId } = await registrarNovoLead(
+      tenantId,
+      { nome: 'M6 lead', email: 'm6@smoke.test', status: statusA },
+      autorId,
+    );
 
     const interacao = async () => {
       const [{ ultima_interacao_em: valor }] = await prisma.$queryRaw`
@@ -330,7 +399,12 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     expect(await interacao()).toEqual(ANTIGA);
 
     // Concluir atividade (na criação ou depois) atualiza a interação.
-    await registrarAtividade(tenantId, leadId, { tipo: 'ligacao', titulo: 'Liguei', concluida: true }, autorId);
+    await registrarAtividade(
+      tenantId,
+      leadId,
+      { tipo: 'ligacao', titulo: 'Liguei', concluida: true },
+      autorId,
+    );
     expect((await interacao()) > ANTIGA).toBe(true);
     await voltarInteracao();
     const reuniao = await registrarAtividade(
@@ -343,14 +417,25 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     await editarAtividade(tenantId, leadId, reuniao.id, { concluida: true });
     expect((await interacao()) > ANTIGA).toBe(true);
     const atividades = await listarAtividades(tenantId, leadId);
-    expect(atividades.map((atividade) => atividade.titulo).sort()).toEqual(['Apresentação', 'Liguei']);
+    expect(atividades.map((atividade) => atividade.titulo).sort()).toEqual([
+      'Apresentação',
+      'Liguei',
+    ]);
     expect(atividades[0].autor).toEqual({ id: autorId, nome: 'Smoke operador' });
 
     // Histórico: mais novo primeiro, só os campos alterados, autor do token.
-    const { itens } = await listarHistorico(tenantId, leadId, { pagina: 1, tamanho: TAMANHO_PAGINA });
+    const { itens } = await listarHistorico(tenantId, leadId, {
+      pagina: 1,
+      tamanho: TAMANHO_PAGINA,
+    });
     expect(itens.map((evento) => evento.tipo)).toEqual(['atualizado', 'atualizado', 'criado']);
     expect(itens[0].diff).toEqual([
-      expect.objectContaining({ campo: 'status', chave: 'status', antes: statusA, depois: statusB }),
+      expect.objectContaining({
+        campo: 'status',
+        chave: 'status',
+        antes: statusA,
+        depois: statusB,
+      }),
     ]);
     expect(itens[1].diff).toEqual([
       expect.objectContaining({ campo: 'nome', antes: 'M6 lead', depois: 'M6 lead editado' }),
@@ -367,258 +452,374 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     expect(depois.itens.every((evento) => evento.autor === null)).toBe(true);
   });
 
-  it('Duplicidade e mesclagem (M7): avisar, bloquear, 9º dígito, import igual ao form, mesclagem atômica', async () => {
-    await prisma.tenantModuleFeature.create({
-      data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.DUPLICIDADE },
-    });
-    await invalidarFeatures(tenantId);
+  it(
+    'Duplicidade e mesclagem (M7): avisar, bloquear, 9º dígito, import igual ao form, mesclagem atômica',
+    async () => {
+      await prisma.tenantModuleFeature.create({
+        data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.DUPLICIDADE },
+      });
+      await invalidarFeatures(tenantId);
 
-    const { id: ana } = await registrarNovoLead(
-      tenantId,
-      { nome: 'M7 Ana', email: 'm7-ana@smoke.test', telefone: '(47) 98888-7777' },
-      usuarioId,
-    );
-
-    // Avisar (padrão do telefone): mesmo celular sem o 9 → 409; confirmando, salva.
-    const semNove = { nome: 'M7 Ana de novo', telefone: '47 8888-7777' };
-    await expect(registrarNovoLead(tenantId, semNove, usuarioId)).rejects.toMatchObject({
-      code: 'DUPLICATE_WARNING',
-      details: { duplicados: [expect.objectContaining({ id: ana, acao: 'warn' })] },
-    });
-    const { id: anaDeNovo } = await registrarNovoLead(tenantId, { ...semNove, ignorarDuplicados: true }, usuarioId);
-
-    // Bloquear no e-mail: nem confirmando.
-    await salvarRegras(tenantId, [{ campo: 'email', acao: 'block', ativo: true }]);
-    await expect(
-      registrarNovoLead(tenantId, { nome: 'Outra', email: ' M7-ANA@smoke.test', ignorarDuplicados: true }, usuarioId),
-    ).rejects.toMatchObject({ code: 'DUPLICATE_BLOCKED' });
-
-    // Import aplica as mesmas regras: linha 2 repete a Ana (bloqueia); a 4 repete a 3 (dentro da planilha).
-    const planilha = await gerarPlanilha(
-      ['Nome', 'E-mail'],
-      [
-        ['M7 Planilha', 'm7-ana@smoke.test'],
-        ['M7 Nova', 'm7-nova@smoke.test'],
-        ['M7 Nova repetida', 'M7-NOVA@smoke.test'],
-      ],
-    );
-    const validado = await validarImportacao(tenantId, usuarioId, planilha, {
-      mapeamento: { Nome: 'nome', 'E-mail': 'email' },
-      estrategiaDuplicata: 'criar',
-    });
-    expect(validado.duplicados).toEqual([expect.objectContaining({ linha: LINHA_PLANILHA_ANA, acao: 'block' })]);
-    await transicionarStatus(tenantId, validado.jobId, 'pendente', 'processando');
-    await processarImportacao(tenantId, validado.jobId);
-    const job = await buscarImportJob(tenantId, validado.jobId);
-    // Ignoradas: a linha 2 (repete a Ana) e a 4 (repete a 3, criada logo antes).
-    expect(job).toMatchObject({ linhas_criadas: 1, linhas_ignoradas: ['linha 2', 'linha 4'].length });
-
-    // Mesclagem atômica: falha depois de mover as atividades (responsável que não existe) → nada muda.
-    await registrarAtividade(tenantId, anaDeNovo, { tipo: 'ligacao', titulo: 'M7 ligação' }, usuarioId);
-    await expect(
-      mesclarLeadsRepository(
+      const { id: ana } = await registrarNovoLead(
         tenantId,
-        { principalId: ana, secundarioId: anaDeNovo },
-        {
-          autorId: usuarioId,
-          montar: (principal, secundario) => ({
-            ...montarMesclagem(principal, secundario),
-            usuarioResponsavelId: randomUUID(),
-          }),
-          montarDiff: () => [],
-        },
-      ),
-    ).rejects.toThrow();
-    expect((await listarAtividades(tenantId, anaDeNovo)).map((atividade) => atividade.titulo)).toEqual(['M7 ligação']);
-    await expect(buscarLeadFormatado(tenantId, anaDeNovo)).resolves.toMatchObject({ id: anaDeNovo });
+        { nome: 'M7 Ana', email: 'm7-ana@smoke.test', telefone: '(47) 98888-7777' },
+        usuarioId,
+      );
 
-    // Mesclagem de verdade: nome do secundário, atividade e histórico vêm junto, o descartado não volta.
-    const mesclado = await mesclarLeads(
-      tenantId,
-      { principalId: ana, secundarioId: anaDeNovo, escolhas: { nome: 'secundario' } },
-      usuarioId,
-    );
-    expect(mesclado).toMatchObject({ id: ana, nome: 'M7 Ana de novo', email: 'm7-ana@smoke.test' });
-    expect((await listarAtividades(tenantId, ana)).map((atividade) => atividade.titulo)).toEqual(['M7 ligação']);
-    await expect(buscarLeadFormatado(tenantId, anaDeNovo)).rejects.toThrow('Lead não encontrado');
-    await expect(restaurarLead(tenantId, anaDeNovo, usuarioId)).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
-    // Na lixeira, o descartado mostra em quem foi mesclado (pedido do front).
-    const lixeira = await pesquisarLeads(tenantId, {
-      busca: 'M7 Ana',
-      situacao: 'lixeira',
-      paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
-    });
-    expect(lixeira.itens).toEqual([
-      expect.objectContaining({ id: anaDeNovo, mesclado_em_id: ana, mesclado_em_nome: 'M7 Ana de novo' }),
-    ]);
-    // Apagar o principal de vez leva o descartado junto (FK CASCADE, migration 0021):
-    // nunca sobra um lead mesclado sem a marca. Numa transação desfeita, pra o resto do teste seguir.
-    const sobra = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`DELETE FROM modulo_crm.leads WHERE id = ${ana}::uuid`;
-      const [linha] = await tx.$queryRaw`
+      // Avisar (padrão do telefone): mesmo celular sem o 9 → 409; confirmando, salva.
+      const semNove = { nome: 'M7 Ana de novo', telefone: '47 8888-7777' };
+      await expect(registrarNovoLead(tenantId, semNove, usuarioId)).rejects.toMatchObject({
+        code: 'DUPLICATE_WARNING',
+        details: { duplicados: [expect.objectContaining({ id: ana, acao: 'warn' })] },
+      });
+      const { id: anaDeNovo } = await registrarNovoLead(
+        tenantId,
+        { ...semNove, ignorarDuplicados: true },
+        usuarioId,
+      );
+
+      // Bloquear no e-mail: nem confirmando.
+      await salvarRegras(tenantId, [{ campo: 'email', acao: 'block', ativo: true }]);
+      await expect(
+        registrarNovoLead(
+          tenantId,
+          { nome: 'Outra', email: ' M7-ANA@smoke.test', ignorarDuplicados: true },
+          usuarioId,
+        ),
+      ).rejects.toMatchObject({ code: 'DUPLICATE_BLOCKED' });
+
+      // Import aplica as mesmas regras: linha 2 repete a Ana (bloqueia); a 4 repete a 3 (dentro da planilha).
+      const planilha = await gerarPlanilha(
+        ['Nome', 'E-mail'],
+        [
+          ['M7 Planilha', 'm7-ana@smoke.test'],
+          ['M7 Nova', 'm7-nova@smoke.test'],
+          ['M7 Nova repetida', 'M7-NOVA@smoke.test'],
+        ],
+      );
+      const validado = await validarImportacao(tenantId, usuarioId, planilha, {
+        mapeamento: { Nome: 'nome', 'E-mail': 'email' },
+        estrategiaDuplicata: 'criar',
+      });
+      expect(validado.duplicados).toEqual([
+        expect.objectContaining({ linha: LINHA_PLANILHA_ANA, acao: 'block' }),
+      ]);
+      await transicionarStatus(tenantId, validado.jobId, 'pendente', 'processando');
+      await processarImportacao(tenantId, validado.jobId);
+      const job = await buscarImportJob(tenantId, validado.jobId);
+      // Ignoradas: a linha 2 (repete a Ana) e a 4 (repete a 3, criada logo antes).
+      expect(job).toMatchObject({
+        linhas_criadas: 1,
+        linhas_ignoradas: ['linha 2', 'linha 4'].length,
+      });
+
+      // Mesclagem atômica: falha depois de mover as atividades (responsável que não existe) → nada muda.
+      await registrarAtividade(
+        tenantId,
+        anaDeNovo,
+        { tipo: 'ligacao', titulo: 'M7 ligação' },
+        usuarioId,
+      );
+      await expect(
+        mesclarLeadsRepository(
+          tenantId,
+          { principalId: ana, secundarioId: anaDeNovo },
+          {
+            autorId: usuarioId,
+            montar: (principal, secundario) => ({
+              ...montarMesclagem(principal, secundario),
+              usuarioResponsavelId: randomUUID(),
+            }),
+            montarDiff: () => [],
+          },
+        ),
+      ).rejects.toThrow();
+      expect(
+        (await listarAtividades(tenantId, anaDeNovo)).map((atividade) => atividade.titulo),
+      ).toEqual(['M7 ligação']);
+      await expect(buscarLeadFormatado(tenantId, anaDeNovo)).resolves.toMatchObject({
+        id: anaDeNovo,
+      });
+
+      // Mesclagem de verdade: nome do secundário, atividade e histórico vêm junto, o descartado não volta.
+      const mesclado = await mesclarLeads(
+        tenantId,
+        { principalId: ana, secundarioId: anaDeNovo, escolhas: { nome: 'secundario' } },
+        usuarioId,
+      );
+      expect(mesclado).toMatchObject({
+        id: ana,
+        nome: 'M7 Ana de novo',
+        email: 'm7-ana@smoke.test',
+      });
+      expect((await listarAtividades(tenantId, ana)).map((atividade) => atividade.titulo)).toEqual([
+        'M7 ligação',
+      ]);
+      await expect(buscarLeadFormatado(tenantId, anaDeNovo)).rejects.toThrow('Lead não encontrado');
+      await expect(restaurarLead(tenantId, anaDeNovo, usuarioId)).rejects.toMatchObject({
+        statusCode: HTTP_STATUS.CONFLICT,
+      });
+      // Na lixeira, o descartado mostra em quem foi mesclado (pedido do front).
+      const lixeira = await pesquisarLeads(tenantId, {
+        busca: 'M7 Ana',
+        situacao: 'lixeira',
+        paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
+      });
+      expect(lixeira.itens).toEqual([
+        expect.objectContaining({
+          id: anaDeNovo,
+          mesclado_em_id: ana,
+          mesclado_em_nome: 'M7 Ana de novo',
+        }),
+      ]);
+      // Apagar o principal de vez leva o descartado junto (FK CASCADE, migration 0021):
+      // nunca sobra um lead mesclado sem a marca. Numa transação desfeita, pra o resto do teste seguir.
+      const sobra = await prisma
+        .$transaction(async (tx) => {
+          await tx.$executeRaw`DELETE FROM modulo_crm.leads WHERE id = ${ana}::uuid`;
+          const [linha] = await tx.$queryRaw`
         SELECT EXISTS (SELECT 1 FROM modulo_crm.leads WHERE id = ${anaDeNovo}::uuid) AS existe
       `;
-      throw Object.assign(new Error('rollback'), { existe: linha.existe });
-    }).catch((erro) => erro.existe);
-    expect(sobra).toBe(false);
+          throw Object.assign(new Error('rollback'), { existe: linha.existe });
+        })
+        .catch((erro) => erro.existe);
+      expect(sobra).toBe(false);
 
-    const { itens } = await listarHistorico(tenantId, ana, { pagina: 1, tamanho: TAMANHO_PAGINA });
-    expect(itens[0]).toMatchObject({
-      tipo: 'mesclado',
-      detalhes: { leadDescartadoId: anaDeNovo, nomeDescartado: 'M7 Ana de novo' },
-    });
-    expect(itens[0].diff).toEqual(expect.arrayContaining([expect.objectContaining({ campo: 'nome', depois: 'M7 Ana de novo' })]));
-    // O "criado" do secundário veio junto pro principal.
-    expect(itens.filter((evento) => evento.tipo === 'criado')).toHaveLength([ana, anaDeNovo].length);
-  }, TIMEOUT_TESTE_LONGO_MS);
-
-  it('Regras (M8): Perdido exige Motivo na edição parcial, condicional, desligar a do sistema', async () => {
-    await prisma.tenantModuleFeature.create({ data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.REGRAS } });
-    await invalidarFeatures(tenantId);
-
-    const configurados = await listarConfiguracaoCampos(tenantId);
-    const id = (chave) => configurados.find((campo) => campo.chave === chave).id;
-    const todosOsContextos = { create_form: true, detail: true, table: true, filter: true };
-    await atualizarConfiguracaoCampo(tenantId, id('motivoPerda'), { visibilidade: todosOsContextos });
-
-    const { listas } = await obterSchemaCampos(tenantId);
-    const statusDe = (categoria) => listas.status.find((opcao) => opcao.category === categoria && opcao.ativo).key;
-    const perdido = statusDe('perdido');
-    const [motivo] = listas.motivo_perda.map((opcao) => opcao.key);
-    const [fonte] = listas.fonte_lead.map((opcao) => opcao.key);
-
-    // A regra semeada aparece resolvida, apontando pro Motivo da perda.
-    const doSistema = (await listarRegras(tenantId)).find((regra) => regra.sistema);
-    expect(doSistema).toMatchObject({ kind: 'required_from_status', alvo: { chave: 'motivoPerda' }, ativo: true });
-
-    // Edição parcial que muda SÓ o status pra perdido, sem motivo → 400.
-    const { id: leadId } = await registrarNovoLead(
-      tenantId,
-      { nome: 'M8 lead', email: 'm8@smoke.test', status: statusDe('aberto') },
-      usuarioId,
-    );
-    await expect(atualizarLeadExistente(tenantId, leadId, { status: perdido }, usuarioId)).rejects.toMatchObject({
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      fields: { motivoPerda: [expect.stringContaining('"Motivo da perda" é obrigatório')] },
-    });
-    await expect(
-      atualizarLeadExistente(tenantId, leadId, { status: perdido, motivoPerda: motivo }, usuarioId),
-    ).resolves.toMatchObject({ status: perdido, motivo_perda: motivo });
-
-    // Condicional: Origem = <fonte> exige Empresa.
-    await criarRegra(tenantId, {
-      kind: 'conditional',
-      campoId: id('empresa'),
-      condicao: { campoId: id('fonteLead'), operador: 'igual', valor: fonte },
-      efeito: { obrigatorio: true },
-    });
-    await expect(
-      registrarNovoLead(tenantId, { nome: 'M8 sem empresa', email: 'm8-b@smoke.test', fonteLead: fonte }, usuarioId),
-    ).rejects.toThrow(/é obrigatório por causa do valor de/); // Empresa (renomeada no teste do M2)
-    await expect(
-      registrarNovoLead(tenantId, { nome: 'M8 com empresa', email: 'm8-c@smoke.test', fonteLead: fonte, empresa: 'Acme' }, usuarioId),
-    ).resolves.toHaveProperty('id');
-
-    // A do sistema desliga, mas não sai.
-    await editarRegra(tenantId, doSistema.id, { ativo: false });
-    await expect(
-      registrarNovoLead(tenantId, { nome: 'M8 perdido', email: 'm8-d@smoke.test', status: perdido }, usuarioId),
-    ).resolves.toHaveProperty('id');
-    await expect(removerRegra(tenantId, doSistema.id)).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
-  }, TIMEOUT_TESTE_LONGO_MS);
-
-  it('Lead esfriando (M9): limite, pausa por atividade agendada, reset, filtro e resumo diário', async () => {
-    await prisma.tenantModuleFeature.createMany({
-      data: [{ tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.INATIVIDADE }],
-      skipDuplicates: true,
-    });
-    await invalidarFeatures(tenantId);
-    const HORA_MS = 3_600_000;
-    const HORAS_POR_DIA = 24;
-    const DIA_MS = HORAS_POR_DIA * HORA_MS;
-    const EM_CONTATO = SUGESTAO_DIAS_ESFRIAR.em_contato;
-    const QUALIFICADO = SUGESTAO_DIAS_ESFRIAR.qualificado;
-    const DIAS_ATE_A_AGENDADA = 10;
-    const DIAS_ATE_O_RESUMO = 30;
-    const MEIO_DIA_EM_SAO_PAULO_UTC = 15;
-    const depoisDe = (inicio, ms) => new Date(inicio.getTime() + ms);
-    const dias = (quantos) => quantos * DIA_MS;
-
-    // Status semeados com as sugestões; ganho/perdido desligados.
-    const configurados = Object.fromEntries((await listarInatividade(tenantId)).map((opcao) => [opcao.key, opcao.dias]));
-    const { novo, em_contato: emContato, qualificado, proposta } = SUGESTAO_DIAS_ESFRIAR;
-    // Tenant sem lead nasce com os status sugeridos (sem "negociacao").
-    expect(configurados).toEqual({ novo, em_contato: emContato, qualificado, proposta, ganho: null, perdido: null });
-    await expect(salvarInatividade(tenantId, { status: { ganho: EM_CONTATO } })).rejects.toThrow('não esfria');
-
-    const { id: leadId } = await registrarNovoLead(
-      tenantId,
-      { nome: 'M9 esfriando', email: 'm9@smoke.test', status: 'em_contato' },
-      usuarioId,
-    );
-    const interacao = new Date('2026-01-10T12:00:00Z');
-    await prisma.$executeRaw`UPDATE modulo_crm.leads SET ultima_interacao_em = ${interacao} WHERE id = ${leadId}::uuid`;
-    const esfriandoDesde = async (agora) =>
-      (await buscarLeadPorId(tenantId, leadId, { inatividade: agora }))?.esfriando_desde ?? null;
-    const limite = depoisDe(interacao, dias(EM_CONTATO));
-
-    // Limite: 1h antes ainda não; no limite, sim (desde a data-limite).
-    expect(await esfriandoDesde(depoisDe(limite, -HORA_MS))).toBeNull();
-    expect(await esfriandoDesde(limite)).toEqual(limite);
-
-    // O filtro bate com o indicador, no mesmo relógio.
-    const noFiltro = async (agora) =>
-      (await buscarLeadsComFiltro(tenantId, [condicaoEsfriando(agora)], { limite: TAMANHO_PAGINA, offset: 0 })).itens.some(
-        (lead) => lead.id === leadId,
+      const { itens } = await listarHistorico(tenantId, ana, {
+        pagina: 1,
+        tamanho: TAMANHO_PAGINA,
+      });
+      expect(itens[0]).toMatchObject({
+        tipo: 'mesclado',
+        detalhes: { leadDescartadoId: anaDeNovo, nomeDescartado: 'M7 Ana de novo' },
+      });
+      expect(itens[0].diff).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ campo: 'nome', depois: 'M7 Ana de novo' }),
+        ]),
       );
-    expect(await noFiltro(depoisDe(limite, -HORA_MS))).toBe(false);
-    expect(await noFiltro(limite)).toBe(true);
+      // O "criado" do secundário veio junto pro principal.
+      expect(itens.filter((evento) => evento.tipo === 'criado')).toHaveLength(
+        [ana, anaDeNovo].length,
+      );
+    },
+    TIMEOUT_TESTE_LONGO_MS,
+  );
 
-    // Pausa: atividade agendada empurra a contagem até a data dela; depois, volta.
-    const agendada = depoisDe(interacao, dias(DIAS_ATE_A_AGENDADA));
-    await prisma.$executeRaw`
+  it(
+    'Regras (M8): Perdido exige Motivo na edição parcial, condicional, desligar a do sistema',
+    async () => {
+      await prisma.tenantModuleFeature.create({
+        data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.REGRAS },
+      });
+      await invalidarFeatures(tenantId);
+
+      const configurados = await listarConfiguracaoCampos(tenantId);
+      const id = (chave) => configurados.find((campo) => campo.chave === chave).id;
+      const todosOsContextos = { create_form: true, detail: true, table: true, filter: true };
+      await atualizarConfiguracaoCampo(tenantId, id('motivoPerda'), {
+        visibilidade: todosOsContextos,
+      });
+
+      const { listas } = await obterSchemaCampos(tenantId);
+      const statusDe = (categoria) =>
+        listas.status.find((opcao) => opcao.category === categoria && opcao.ativo).key;
+      const perdido = statusDe('perdido');
+      const [motivo] = listas.motivo_perda.map((opcao) => opcao.key);
+      const [fonte] = listas.fonte_lead.map((opcao) => opcao.key);
+
+      // A regra semeada aparece resolvida, apontando pro Motivo da perda.
+      const doSistema = (await listarRegras(tenantId)).find((regra) => regra.sistema);
+      expect(doSistema).toMatchObject({
+        kind: 'required_from_status',
+        alvo: { chave: 'motivoPerda' },
+        ativo: true,
+      });
+
+      // Edição parcial que muda SÓ o status pra perdido, sem motivo → 400.
+      const { id: leadId } = await registrarNovoLead(
+        tenantId,
+        { nome: 'M8 lead', email: 'm8@smoke.test', status: statusDe('aberto') },
+        usuarioId,
+      );
+      await expect(
+        atualizarLeadExistente(tenantId, leadId, { status: perdido }, usuarioId),
+      ).rejects.toMatchObject({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        fields: { motivoPerda: [expect.stringContaining('"Motivo da perda" é obrigatório')] },
+      });
+      await expect(
+        atualizarLeadExistente(
+          tenantId,
+          leadId,
+          { status: perdido, motivoPerda: motivo },
+          usuarioId,
+        ),
+      ).resolves.toMatchObject({ status: perdido, motivo_perda: motivo });
+
+      // Condicional: Origem = <fonte> exige Empresa.
+      await criarRegra(tenantId, {
+        kind: 'conditional',
+        campoId: id('empresa'),
+        condicao: { campoId: id('fonteLead'), operador: 'igual', valor: fonte },
+        efeito: { obrigatorio: true },
+      });
+      await expect(
+        registrarNovoLead(
+          tenantId,
+          { nome: 'M8 sem empresa', email: 'm8-b@smoke.test', fonteLead: fonte },
+          usuarioId,
+        ),
+      ).rejects.toThrow(/é obrigatório por causa do valor de/); // Empresa (renomeada no teste do M2)
+      await expect(
+        registrarNovoLead(
+          tenantId,
+          { nome: 'M8 com empresa', email: 'm8-c@smoke.test', fonteLead: fonte, empresa: 'Acme' },
+          usuarioId,
+        ),
+      ).resolves.toHaveProperty('id');
+
+      // A do sistema desliga, mas não sai.
+      await editarRegra(tenantId, doSistema.id, { ativo: false });
+      await expect(
+        registrarNovoLead(
+          tenantId,
+          { nome: 'M8 perdido', email: 'm8-d@smoke.test', status: perdido },
+          usuarioId,
+        ),
+      ).resolves.toHaveProperty('id');
+      await expect(removerRegra(tenantId, doSistema.id)).rejects.toMatchObject({
+        statusCode: HTTP_STATUS.CONFLICT,
+      });
+    },
+    TIMEOUT_TESTE_LONGO_MS,
+  );
+
+  it(
+    'Lead esfriando (M9): limite, pausa por atividade agendada, reset, filtro e resumo diário',
+    async () => {
+      await prisma.tenantModuleFeature.createMany({
+        data: [{ tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.INATIVIDADE }],
+        skipDuplicates: true,
+      });
+      await invalidarFeatures(tenantId);
+      const HORA_MS = 3_600_000;
+      const HORAS_POR_DIA = 24;
+      const DIA_MS = HORAS_POR_DIA * HORA_MS;
+      const EM_CONTATO = SUGESTAO_DIAS_ESFRIAR.em_contato;
+      const QUALIFICADO = SUGESTAO_DIAS_ESFRIAR.qualificado;
+      const DIAS_ATE_A_AGENDADA = 10;
+      const DIAS_ATE_O_RESUMO = 30;
+      const MEIO_DIA_EM_SAO_PAULO_UTC = 15;
+      const depoisDe = (inicio, ms) => new Date(inicio.getTime() + ms);
+      const dias = (quantos) => quantos * DIA_MS;
+
+      // Status semeados com as sugestões; ganho/perdido desligados.
+      const configurados = Object.fromEntries(
+        (await listarInatividade(tenantId)).map((opcao) => [opcao.key, opcao.dias]),
+      );
+      const { novo, em_contato: emContato, qualificado, proposta } = SUGESTAO_DIAS_ESFRIAR;
+      // Tenant sem lead nasce com os status sugeridos (sem "negociacao").
+      expect(configurados).toEqual({
+        novo,
+        em_contato: emContato,
+        qualificado,
+        proposta,
+        ganho: null,
+        perdido: null,
+      });
+      await expect(salvarInatividade(tenantId, { status: { ganho: EM_CONTATO } })).rejects.toThrow(
+        'não esfria',
+      );
+
+      const { id: leadId } = await registrarNovoLead(
+        tenantId,
+        { nome: 'M9 esfriando', email: 'm9@smoke.test', status: 'em_contato' },
+        usuarioId,
+      );
+      const interacao = new Date('2026-01-10T12:00:00Z');
+      await prisma.$executeRaw`UPDATE modulo_crm.leads SET ultima_interacao_em = ${interacao} WHERE id = ${leadId}::uuid`;
+      const esfriandoDesde = async (agora) =>
+        (await buscarLeadPorId(tenantId, leadId, { inatividade: agora }))?.esfriando_desde ?? null;
+      const limite = depoisDe(interacao, dias(EM_CONTATO));
+
+      // Limite: 1h antes ainda não; no limite, sim (desde a data-limite).
+      expect(await esfriandoDesde(depoisDe(limite, -HORA_MS))).toBeNull();
+      expect(await esfriandoDesde(limite)).toEqual(limite);
+
+      // O filtro bate com o indicador, no mesmo relógio.
+      const noFiltro = async (agora) =>
+        (
+          await buscarLeadsComFiltro(tenantId, [condicaoEsfriando(agora)], {
+            limite: TAMANHO_PAGINA,
+            offset: 0,
+          })
+        ).itens.some((lead) => lead.id === leadId);
+      expect(await noFiltro(depoisDe(limite, -HORA_MS))).toBe(false);
+      expect(await noFiltro(limite)).toBe(true);
+
+      // Pausa: atividade agendada empurra a contagem até a data dela; depois, volta.
+      const agendada = depoisDe(interacao, dias(DIAS_ATE_A_AGENDADA));
+      await prisma.$executeRaw`
       INSERT INTO modulo_crm.crm_activity (tenant_id, lead_id, tipo, titulo, agendada_para)
       VALUES (${tenantId}::uuid, ${leadId}::uuid, 'ligacao', 'Retornar', ${agendada})
     `;
-    const limiteDepoisDaPausa = depoisDe(agendada, dias(EM_CONTATO));
-    expect(await esfriandoDesde(limite)).toBeNull();
-    expect(await esfriandoDesde(depoisDe(limiteDepoisDaPausa, -HORA_MS))).toBeNull();
-    expect(await esfriandoDesde(limiteDepoisDaPausa)).toEqual(limiteDepoisDaPausa);
+      const limiteDepoisDaPausa = depoisDe(agendada, dias(EM_CONTATO));
+      expect(await esfriandoDesde(limite)).toBeNull();
+      expect(await esfriandoDesde(depoisDe(limiteDepoisDaPausa, -HORA_MS))).toBeNull();
+      expect(await esfriandoDesde(limiteDepoisDaPausa)).toEqual(limiteDepoisDaPausa);
 
-    // Pela busca de verdade (relógio real): o lead parado desde janeiro está esfriando.
-    const { itens } = await pesquisarLeads(tenantId, {
-      esfriando: true,
-      filtros: [],
-      paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
-    });
-    expect(itens.find((lead) => lead.id === leadId)?.esfriando_desde).toEqual(limiteDepoisDaPausa);
+      // Pela busca de verdade (relógio real): o lead parado desde janeiro está esfriando.
+      const { itens } = await pesquisarLeads(tenantId, {
+        esfriando: true,
+        filtros: [],
+        paginacao: { pagina: 1, tamanho: TAMANHO_PAGINA },
+      });
+      expect(itens.find((lead) => lead.id === leadId)?.esfriando_desde).toEqual(
+        limiteDepoisDaPausa,
+      );
 
-    // Reset: concluir uma atividade conta como interação (agora, relógio real).
-    await prisma.$executeRaw`DELETE FROM modulo_crm.crm_activity WHERE lead_id = ${leadId}::uuid`;
-    await registrarAtividade(tenantId, leadId, { tipo: 'ligacao', titulo: 'Liguei', concluida: true }, usuarioId);
-    expect(await esfriandoDesde(depoisDe(new Date(), dias(EM_CONTATO) - HORA_MS))).toBeNull();
-    expect(await esfriandoDesde(depoisDe(new Date(), dias(EM_CONTATO) + HORA_MS))).not.toBeNull();
+      // Reset: concluir uma atividade conta como interação (agora, relógio real).
+      await prisma.$executeRaw`DELETE FROM modulo_crm.crm_activity WHERE lead_id = ${leadId}::uuid`;
+      await registrarAtividade(
+        tenantId,
+        leadId,
+        { tipo: 'ligacao', titulo: 'Liguei', concluida: true },
+        usuarioId,
+      );
+      expect(await esfriandoDesde(depoisDe(new Date(), dias(EM_CONTATO) - HORA_MS))).toBeNull();
+      expect(await esfriandoDesde(depoisDe(new Date(), dias(EM_CONTATO) + HORA_MS))).not.toBeNull();
 
-    // Reset: trocar o status também — e passa a valer o prazo do status novo.
-    await atualizarLeadExistente(tenantId, leadId, { status: 'qualificado' }, usuarioId);
-    expect(await esfriandoDesde(depoisDe(new Date(), dias(QUALIFICADO) - HORA_MS))).toBeNull();
-    expect(await esfriandoDesde(depoisDe(new Date(), dias(QUALIFICADO) + HORA_MS))).not.toBeNull();
+      // Reset: trocar o status também — e passa a valer o prazo do status novo.
+      await atualizarLeadExistente(tenantId, leadId, { status: 'qualificado' }, usuarioId);
+      expect(await esfriandoDesde(depoisDe(new Date(), dias(QUALIFICADO) - HORA_MS))).toBeNull();
+      expect(
+        await esfriandoDesde(depoisDe(new Date(), dias(QUALIFICADO) + HORA_MS)),
+      ).not.toBeNull();
 
-    // Resumo do dia: um pro responsável e, do lead sem responsável, um pro DONO.
-    // Rodar de novo no mesmo dia (local) não cria nada.
-    await registrarNovoLead(tenantId, { nome: 'M9 sem dono', email: 'm9-b@smoke.test', status: 'novo' });
-    const meioDia = depoisDe(new Date(), dias(DIAS_ATE_O_RESUMO));
-    meioDia.setUTCHours(MEIO_DIA_EM_SAO_PAULO_UTC, 0, 0, 0);
-    const tenant = { tenantId, fusoHorario: 'America/Sao_Paulo' };
-    const esperadas = [
-      [usuarioId, 'crm.esfriando'],
-      [usuarioId, 'crm.esfriando_sem_responsavel'],
-    ];
-    await expect(notificarEsfriandoNoTenant(tenant, meioDia)).resolves.toBe(esperadas.length);
-    await expect(notificarEsfriandoNoTenant(tenant, depoisDe(meioDia, HORA_MS))).resolves.toBe(0);
-    const notificacoes = await prisma.$queryRaw`
+      // Resumo do dia: um pro responsável e, do lead sem responsável, um pro DONO.
+      // Rodar de novo no mesmo dia (local) não cria nada.
+      await registrarNovoLead(tenantId, {
+        nome: 'M9 sem dono',
+        email: 'm9-b@smoke.test',
+        status: 'novo',
+      });
+      const meioDia = depoisDe(new Date(), dias(DIAS_ATE_O_RESUMO));
+      meioDia.setUTCHours(MEIO_DIA_EM_SAO_PAULO_UTC, 0, 0, 0);
+      const tenant = { tenantId, fusoHorario: 'America/Sao_Paulo' };
+      const esperadas = [
+        [usuarioId, 'crm.esfriando'],
+        [usuarioId, 'crm.esfriando_sem_responsavel'],
+      ];
+      await expect(notificarEsfriandoNoTenant(tenant, meioDia)).resolves.toBe(esperadas.length);
+      await expect(notificarEsfriandoNoTenant(tenant, depoisDe(meioDia, HORA_MS))).resolves.toBe(0);
+      const notificacoes = await prisma.$queryRaw`
       SELECT usuario_id, tipo FROM notificacoes WHERE tenant_id = ${tenantId}::uuid ORDER BY tipo
     `;
-    expect(notificacoes.map((notificacao) => [notificacao.usuario_id, notificacao.tipo])).toEqual(esperadas);
-  }, TIMEOUT_TESTE_LONGO_MS);
+      expect(notificacoes.map((notificacao) => [notificacao.usuario_id, notificacao.tipo])).toEqual(
+        esperadas,
+      );
+    },
+    TIMEOUT_TESTE_LONGO_MS,
+  );
 });

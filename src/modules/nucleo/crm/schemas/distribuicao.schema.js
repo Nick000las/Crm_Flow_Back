@@ -1,18 +1,28 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { FILTRO_OPERADORES, LISTA_FALLBACK_DISTRIBUICAO, LISTA_TIPOS_DESTINO } from '../constants.js';
+import {
+  FILTRO_OPERADORES,
+  LISTA_FALLBACK_DISTRIBUICAO,
+  LISTA_TIPOS_DESTINO,
+} from '../constants.js';
 
 // Distribuição automática (M12). Forma só: se o campo existe, se o operador
 // serve pro tipo dele, se usuário/grupo existem e os limites são regra por
 // tenant (`distribuicao.service.js`).
 
 const enumDe = (valores, mensagem) =>
-  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), { errorMap: () => ({ message: mensagem }) });
+  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), {
+    errorMap: () => ({ message: mensagem }),
+  });
 
-const uuid = (mensagem) => z.string({ required_error: mensagem, invalid_type_error: mensagem }).uuid(mensagem);
+const uuid = (mensagem) =>
+  z.string({ required_error: mensagem, invalid_type_error: mensagem }).uuid(mensagem);
 
 const nome = (mensagem) =>
-  z.string({ required_error: mensagem, invalid_type_error: mensagem }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem);
+  z
+    .string({ required_error: mensagem, invalid_type_error: mensagem })
+    .trim()
+    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem);
 
 const condicao = z
   .object({
@@ -42,7 +52,10 @@ const regra = z
 export const salvarDistribuicaoBodySchema = z
   .object({
     ativo: z.boolean({ required_error: 'Informe se a distribuição está ligada' }),
-    fallback: enumDe(LISTA_FALLBACK_DISTRIBUICAO, 'Sem regra que case: "rodizio_geral" ou "sem_responsavel"'),
+    fallback: enumDe(
+      LISTA_FALLBACK_DISTRIBUICAO,
+      'Sem regra que case: "rodizio_geral" ou "sem_responsavel"',
+    ),
     regras: z.array(regra),
   })
   .strict();

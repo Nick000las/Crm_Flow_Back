@@ -17,9 +17,16 @@ import { CAMADA, CRM_FEATURES } from '../constants.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { buscarCandidatos, buscarRegras } from '../adapters/crm-duplicates.repository.js';
-import { buscarUsuarioAtivoDoTenant, listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
+import {
+  buscarUsuarioAtivoDoTenant,
+  listarUsuariosAtivosDoTenant,
+} from '../adapters/usuarios.repository.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
-import { carregarContextoDistribuicao, distribuir, notificarAtribuicao } from './distribuicao.service.js';
+import {
+  carregarContextoDistribuicao,
+  distribuir,
+  notificarAtribuicao,
+} from './distribuicao.service.js';
 import { emTodosOsContextos, montarCampos, obterSchemaCampos } from './field-schema.service.js';
 
 // Layout (M4): tenant que nunca configurou (identificador = Nome).
@@ -29,20 +36,29 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
   garantirScoreNaoEditado: vi.fn(),
 }));
-vi.mock('../adapters/crm-layout.repository.js', () => ({ buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../adapters/crm-layout.repository.js', () => ({
+  buscarLayoutPadrao: vi.fn().mockResolvedValue(undefined),
+}));
 // M15: tenant sem base legal padrão e nenhum lead anonimizado (o bloco do M15 troca).
 vi.mock('../adapters/crm-lgpd.repository.js', () => ({
   buscarConfigLgpd: vi.fn().mockResolvedValue(undefined),
   buscarSituacaoLgpd: vi.fn().mockResolvedValue(undefined),
 }));
 // Listas (M3): tenant já semeado com as keys antigas.
-vi.mock('../adapters/crm-options.repository.js', async () => (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes());
-vi.mock('../adapters/usuarios.repository.js', () => ({ buscarUsuarioAtivoDoTenant: vi.fn(), listarUsuariosAtivosDoTenant: vi.fn() }));
+vi.mock('../adapters/crm-options.repository.js', async () =>
+  (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes(),
+);
+vi.mock('../adapters/usuarios.repository.js', () => ({
+  buscarUsuarioAtivoDoTenant: vi.fn(),
+  listarUsuariosAtivosDoTenant: vi.fn(),
+}));
 // Arquivo (M5) ligado; os testes de situação estão em arquivo.service.test.js.
 // Flags: todas ligadas, menos `crm.duplicidade` e `crm.inatividade`
 // (testadas nos blocos do M7 e do M9).
 vi.mock('#core/tenant/feature-flags.js', () => ({
-  featureAtiva: vi.fn(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave)),
+  featureAtiva: vi.fn(
+    async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave),
+  ),
   garantirFeature: vi.fn(),
 }));
 // M11b: o enriquecimento tem teste próprio; aqui só o gancho depois de salvar.
@@ -54,7 +70,10 @@ vi.mock('./distribuicao.service.js', async (importOriginal) => ({
   distribuir: vi.fn(),
   notificarAtribuicao: vi.fn().mockResolvedValue(1),
 }));
-vi.mock('../adapters/crm-duplicates.repository.js', () => ({ buscarRegras: vi.fn(), buscarCandidatos: vi.fn() }));
+vi.mock('../adapters/crm-duplicates.repository.js', () => ({
+  buscarRegras: vi.fn(),
+  buscarCandidatos: vi.fn(),
+}));
 
 // Configuração da Camada 2 que o resolver devolveria (`visibilidade`); cada
 // teste define a sua. Default: nenhuma coluna de Camada 2 configurada.
@@ -63,7 +82,6 @@ const { listarVisibilidadeDoTenant, regrasDoTeste } = vi.hoisted(() => ({
   // Regras do M8 que o schema devolve (resolvidas); cada bloco define as suas.
   regrasDoTeste: { valor: [] },
 }));
-
 
 // O service lê o schema do resolver; aqui ele é montado com as funções
 // reais a partir dos mocks de visibilidade/definições abaixo — os testes
@@ -74,7 +92,10 @@ vi.mock('./field-schema.service.js', async (importOriginal) => {
   return {
     ...real,
     obterSchemaCampos: vi.fn(async (tenantId) => {
-      const [vis, defs] = await Promise.all([listarVisibilidadeDoTenant(tenantId), definicoes(tenantId)]);
+      const [vis, defs] = await Promise.all([
+        listarVisibilidadeDoTenant(tenantId),
+        definicoes(tenantId),
+      ]);
       const { opcoesSemeadas } = await import('../testing/listas.fixture.js');
       const listas = real.agruparPorLista(opcoesSemeadas());
       return {
@@ -218,9 +239,9 @@ describe('buscarLeadFormatado', () => {
 
 describe('atualizarLeadExistente', () => {
   it('rejeita nome vazio quando o campo é enviado', async () => {
-    await expect(
-      atualizarLeadExistente('tenant-1', 'lead-1', { nome: '   ' }),
-    ).rejects.toThrow('Nome do lead não pode ser vazio');
+    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { nome: '   ' })).rejects.toThrow(
+      'Nome do lead não pode ser vazio',
+    );
     expect(atualizarLead).not.toHaveBeenCalled();
   });
 
@@ -271,7 +292,9 @@ describe('pesquisarLeads', () => {
   });
 
   it('não deixa filtrar por coluna de Camada 2 desligada', async () => {
-    listarVisibilidadeDoTenant.mockResolvedValue([{ coluna: 'cpf', visivel: false, ordem: 0, obrigatorio: false }]);
+    listarVisibilidadeDoTenant.mockResolvedValue([
+      { coluna: 'cpf', visivel: false, ordem: 0, obrigatorio: false },
+    ]);
     await expect(
       pesquisarLeads('tenant-1', {
         filtros: [{ chave: 'cpf', operador: 'igual', valor: '123' }],
@@ -304,9 +327,14 @@ describe('situação na busca (M5)', () => {
   it('lead da lixeira volta com purga_em (30 dias depois da exclusão)', async () => {
     buscarLeadsComFiltro.mockResolvedValueOnce({
       total: 1,
-      itens: [{ id: 'lead-1', nome: 'Ana', telefone: null, deleted_at: new Date('2026-10-01T00:00:00Z') }],
+      itens: [
+        { id: 'lead-1', nome: 'Ana', telefone: null, deleted_at: new Date('2026-10-01T00:00:00Z') },
+      ],
     });
-    const { itens } = await pesquisarLeads('tenant-1', { situacao: 'lixeira', paginacao: PRIMEIRA_PAGINA });
+    const { itens } = await pesquisarLeads('tenant-1', {
+      situacao: 'lixeira',
+      paginacao: PRIMEIRA_PAGINA,
+    });
     expect(itens[0].purga_em).toEqual(new Date('2026-10-31T00:00:00Z'));
   });
 });
@@ -348,7 +376,11 @@ describe('responsável pelo lead', () => {
   it('responsável de outro tenant (ou inativo) é rejeitado', async () => {
     buscarUsuarioAtivoDoTenant.mockResolvedValue(undefined);
     await expect(
-      registrarNovoLead('tenant-1', { ...NOVO_LEAD, usuarioResponsavelId: 'usuario-de-fora' }, 'usuario-criador'),
+      registrarNovoLead(
+        'tenant-1',
+        { ...NOVO_LEAD, usuarioResponsavelId: 'usuario-de-fora' },
+        'usuario-criador',
+      ),
     ).rejects.toThrow('Responsável inválido');
     expect(criarLead).not.toHaveBeenCalled();
   });
@@ -377,22 +409,40 @@ describe('edição limpando campos (null)', () => {
   });
 
   it('deixa limpar o e-mail quando o telefone continua', async () => {
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', email: 'ana@x.com', telefone: '11999999999' });
-    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: null, telefone: '11999999999' });
-    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { email: null })).resolves.toMatchObject({
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      email: 'ana@x.com',
+      telefone: '11999999999',
+    });
+    atualizarLead.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      email: null,
+      telefone: '11999999999',
+    });
+    await expect(
+      atualizarLeadExistente('tenant-1', 'lead-1', { email: null }),
+    ).resolves.toMatchObject({
       email: null,
     });
   });
 
   it('não busca o lead atual quando nada de contato é limpo', async () => {
-    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Bia', telefone: null, cargo: 'Gerente' });
+    atualizarLead.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Bia',
+      telefone: null,
+      cargo: 'Gerente',
+    });
     // `nome` não: mudar o nome lê o lead pra decidir o primeiro nome (M10).
     await atualizarLeadExistente('tenant-1', 'lead-1', { cargo: 'Gerente' });
     expect(buscarLeadPorId).not.toHaveBeenCalled();
   });
 
   it('não deixa limpar campo obrigatório de Camada 2 visível', async () => {
-    listarVisibilidadeDoTenant.mockResolvedValue([{ coluna: 'empresa', visivel: true, ordem: 0, obrigatorio: true }]);
+    listarVisibilidadeDoTenant.mockResolvedValue([
+      { coluna: 'empresa', visivel: true, ordem: 0, obrigatorio: true },
+    ]);
     await expect(atualizarLeadExistente('tenant-1', 'lead-1', { empresa: null })).rejects.toThrow(
       '"Empresa" é obrigatório e não pode ser limpo',
     );
@@ -407,7 +457,12 @@ describe('edição limpando campos (null)', () => {
 
   it('deixa remover campo customizado opcional', async () => {
     listarDefinicoesPorTenant.mockResolvedValue([CAMPO_TEXTO]);
-    atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null, custom_fields: {} });
+    atualizarLead.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      telefone: null,
+      custom_fields: {},
+    });
     await atualizarLeadExistente('tenant-1', 'lead-1', { customFields: { origem: null } });
     expect(atualizarLead).toHaveBeenCalled();
   });
@@ -416,7 +471,11 @@ describe('edição limpando campos (null)', () => {
 describe('custom_fields gravado por id, API por chave', () => {
   it('criar troca a chave pelo id do campo', async () => {
     listarDefinicoesPorTenant.mockResolvedValueOnce([CAMPO_TEXTO]);
-    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', customFields: { origem: 'site' } });
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '11999999999',
+      customFields: { origem: 'site' },
+    });
     expect(criarLead.mock.calls[0][1].customFields).toEqual({ [ID_ORIGEM]: 'site' });
   });
 
@@ -460,7 +519,9 @@ describe('M2 — obrigatoriedade configurada e tipos novos', () => {
 
   it('obrigatório fora do formulário de criação não trava o cadastro', async () => {
     obterSchemaCampos.mockResolvedValueOnce(schemaComStatusObrigatorio(false));
-    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999' })).resolves.toEqual({
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999' }),
+    ).resolves.toEqual({
       id: 'lead-123',
     });
   });
@@ -473,7 +534,14 @@ describe('M2 — obrigatoriedade configurada e tipos novos', () => {
   });
 
   it('telefone personalizado é validado e gravado só com dígitos', async () => {
-    const celular = { id: ID_CELULAR, chave: 'celular', label: 'Celular', tipo: 'telefone', opcoes: null, obrigatorio: false };
+    const celular = {
+      id: ID_CELULAR,
+      chave: 'celular',
+      label: 'Celular',
+      tipo: 'telefone',
+      opcoes: null,
+      obrigatorio: false,
+    };
     listarDefinicoesPorTenant.mockResolvedValueOnce([celular]);
     await registrarNovoLead('tenant-1', {
       nome: 'Ana',
@@ -484,7 +552,11 @@ describe('M2 — obrigatoriedade configurada e tipos novos', () => {
 
     listarDefinicoesPorTenant.mockResolvedValueOnce([celular]);
     await expect(
-      registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', customFields: { celular: '12' } }),
+      registrarNovoLead('tenant-1', {
+        nome: 'Ana',
+        telefone: '11999999999',
+        customFields: { celular: '12' },
+      }),
     ).rejects.toThrow(/Valor inválido/);
   });
 });
@@ -501,13 +573,20 @@ describe('campo oculto em todos os contextos não sai na resposta', () => {
 
   /** @param {Record<string, import('./field-schema.service.js').Sobreposicao>} sobreposicoes */
   function schema(sobreposicoes) {
-    return { visibilidade: [], definicoes: [CAMPO_TEXTO], campos: montarCampos([], [CAMPO_TEXTO], sobreposicoes) };
+    return {
+      visibilidade: [],
+      definicoes: [CAMPO_TEXTO],
+      campos: montarCampos([], [CAMPO_TEXTO], sobreposicoes),
+    };
   }
 
   it('Camada 1 ocultável e personalizado desligados somem do lead', async () => {
     buscarLeadPorId.mockResolvedValueOnce(LEAD_GRAVADO);
     obterSchemaCampos.mockResolvedValueOnce(
-      schema({ fonteLead: { visibilidade: emTodosOsContextos(false) }, origem: { visibilidade: emTodosOsContextos(false) } }),
+      schema({
+        fonteLead: { visibilidade: emTodosOsContextos(false) },
+        origem: { visibilidade: emTodosOsContextos(false) },
+      }),
     );
 
     const lead = await buscarLeadFormatado('tenant-1', 'lead-1');
@@ -520,7 +599,9 @@ describe('campo oculto em todos os contextos não sai na resposta', () => {
   it('oculto só em um contexto (tabela) continua na resposta', async () => {
     buscarLeadPorId.mockResolvedValueOnce(LEAD_GRAVADO);
     const soForaDaTabela = { visibilidade: { ...emTodosOsContextos(true), table: false } };
-    obterSchemaCampos.mockResolvedValueOnce(schema({ fonteLead: soForaDaTabela, origem: soForaDaTabela }));
+    obterSchemaCampos.mockResolvedValueOnce(
+      schema({ fonteLead: soForaDaTabela, origem: soForaDaTabela }),
+    );
 
     const lead = await buscarLeadFormatado('tenant-1', 'lead-1');
 
@@ -531,12 +612,21 @@ describe('campo oculto em todos os contextos não sai na resposta', () => {
 
 describe('e-mail e telefone nativos na forma canônica', () => {
   it('criar grava telefone só com dígitos (sem DDI) e e-mail minúsculo', async () => {
-    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '+55 (11) 98888-7777', email: ' Ana@X.com ' });
-    expect(criarLead.mock.calls[0][1]).toMatchObject({ telefone: '11988887777', email: 'ana@x.com' });
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '+55 (11) 98888-7777',
+      email: ' Ana@X.com ',
+    });
+    expect(criarLead.mock.calls[0][1]).toMatchObject({
+      telefone: '11988887777',
+      email: 'ana@x.com',
+    });
   });
 
   it('telefone que não é BR válido é rejeitado', async () => {
-    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', telefone: 'abcdefghijk' })).rejects.toMatchObject({
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', telefone: 'abcdefghijk' }),
+    ).rejects.toMatchObject({
       fields: { telefone: [expect.stringContaining('DDD')] },
     });
     expect(criarLead).not.toHaveBeenCalled();
@@ -547,7 +637,11 @@ describe('e-mail e telefone nativos na forma canônica', () => {
     await atualizarLeadExistente('tenant-1', 'lead-1', { telefone: '(11) 98888-7777' });
     expect(atualizarLead.mock.calls[0][2].telefone).toBe('11988887777');
 
-    buscarLeadPorId.mockResolvedValueOnce({ id: 'lead-1', email: 'a@x.com', telefone: '11988887777' });
+    buscarLeadPorId.mockResolvedValueOnce({
+      id: 'lead-1',
+      email: 'a@x.com',
+      telefone: '11988887777',
+    });
     atualizarLead.mockResolvedValueOnce({ id: 'lead-1', telefone: null });
     await atualizarLeadExistente('tenant-1', 'lead-1', { telefone: null });
     expect(atualizarLead.mock.calls[1][2].telefone).toBeNull();
@@ -564,7 +658,11 @@ describe('listas configuráveis (M3)', () => {
 
   it('tag nova é criada na lista e o lead grava a key', async () => {
     const { inserirOpcoes } = await import('../adapters/crm-options.repository.js');
-    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', tags: ['Feira 2026'] });
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '11999999999',
+      tags: ['Feira 2026'],
+    });
 
     expect(inserirOpcoes).toHaveBeenCalledWith('tenant-1', 'tag', [
       expect.objectContaining({ key: 'feira_2026', label: 'Feira 2026' }),
@@ -585,16 +683,24 @@ describe('duplicidade no formulário (M7)', () => {
   });
 
   afterEach(() => {
-    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+    featureAtiva.mockImplementation(
+      async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave),
+    );
   });
 
   it('criar com parecido: 409 DUPLICATE_WARNING; confirmando, salva', async () => {
-    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com' })).rejects.toMatchObject({
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com' }),
+    ).rejects.toMatchObject({
       code: 'DUPLICATE_WARNING',
     });
     expect(criarLead).not.toHaveBeenCalled();
 
-    await registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', ignorarDuplicados: true });
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      email: 'ana@x.com',
+      ignorarDuplicados: true,
+    });
     expect(criarLead).toHaveBeenCalledTimes(1);
     expect(criarLead.mock.calls[0][1]).not.toHaveProperty('ignorarDuplicados');
   });
@@ -606,7 +712,9 @@ describe('duplicidade no formulário (M7)', () => {
     await atualizarLeadExistente('tenant-1', 'lead-1', { email: 'ANA@x.com' });
     expect(buscarCandidatos).not.toHaveBeenCalled();
 
-    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { email: 'bia@x.com' })).rejects.toMatchObject({
+    await expect(
+      atualizarLeadExistente('tenant-1', 'lead-1', { email: 'bia@x.com' }),
+    ).rejects.toMatchObject({
       code: 'DUPLICATE_WARNING',
     });
     expect(buscarCandidatos).toHaveBeenCalledWith('tenant-1', { email: 'bia@x.com' }, 'lead-1');
@@ -614,7 +722,13 @@ describe('duplicidade no formulário (M7)', () => {
 });
 
 describe('regras de obrigatoriedade (M8)', () => {
-  const MOTIVO = { id: 'f-motivo', chave: 'motivoPerda', label: 'Motivo da perda', tipo: 'selecao', camada: CAMADA.CAMADA_2 };
+  const MOTIVO = {
+    id: 'f-motivo',
+    chave: 'motivoPerda',
+    label: 'Motivo da perda',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_2,
+  };
   const REGRA_MOTIVO = {
     id: 'r-motivo',
     kind: 'required_from_status',
@@ -628,7 +742,9 @@ describe('regras de obrigatoriedade (M8)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Motivo da perda (Camada 2) ligado — sem isso a regra nem resolveria.
-    listarVisibilidadeDoTenant.mockResolvedValue([{ coluna: 'motivo_perda', visivel: true, ordem: 0, obrigatorio: false }]);
+    listarVisibilidadeDoTenant.mockResolvedValue([
+      { coluna: 'motivo_perda', visivel: true, ordem: 0, obrigatorio: false },
+    ]);
     regrasDoTeste.valor = [REGRA_MOTIVO];
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
   });
@@ -638,8 +754,16 @@ describe('regras de obrigatoriedade (M8)', () => {
   });
 
   it('edição parcial que só muda o status pra perdido, num lead sem motivo → 400 em motivoPerda', async () => {
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: null });
-    await expect(atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido' })).rejects.toMatchObject({
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      email: 'ana@x.com',
+      status: 'novo',
+      motivo_perda: null,
+    });
+    await expect(
+      atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido' }),
+    ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { motivoPerda: ['"Motivo da perda" é obrigatório quando o status é perdido'] },
     });
@@ -647,22 +771,40 @@ describe('regras de obrigatoriedade (M8)', () => {
   });
 
   it('com o motivo no payload, ou já no lead, passa', async () => {
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: null });
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      email: 'ana@x.com',
+      status: 'novo',
+      motivo_perda: null,
+    });
     await atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido', motivoPerda: 'preco' });
 
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', email: 'ana@x.com', status: 'novo', motivo_perda: 'preco' });
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      email: 'ana@x.com',
+      status: 'novo',
+      motivo_perda: 'preco',
+    });
     await atualizarLeadExistente('tenant-1', 'lead-1', { status: 'perdido' });
     expect(atualizarLead).toHaveBeenCalledTimes(['payload', 'lead'].length);
   });
 
   it('criar já perdido sem motivo → 400; com a flag desligada, passa', async () => {
-    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' })).rejects.toThrow(
-      'Motivo da perda',
-    );
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' }),
+    ).rejects.toThrow('Motivo da perda');
 
-    featureAtiva.mockImplementation(async (_tenant, chave) => chave !== 'crm.regras' && chave !== 'crm.duplicidade');
-    await expect(registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' })).resolves.toBeDefined();
-    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+    featureAtiva.mockImplementation(
+      async (_tenant, chave) => chave !== 'crm.regras' && chave !== 'crm.duplicidade',
+    );
+    await expect(
+      registrarNovoLead('tenant-1', { nome: 'Ana', email: 'ana@x.com', status: 'perdido' }),
+    ).resolves.toBeDefined();
+    featureAtiva.mockImplementation(
+      async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave),
+    );
   });
 });
 
@@ -678,7 +820,9 @@ describe('lead esfriando (M9)', () => {
   });
 
   afterEach(() => {
-    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+    featureAtiva.mockImplementation(
+      async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave),
+    );
   });
 
   it('com a flag, a busca lê com o relógio e o filtro "esfriando" vira condição', async () => {
@@ -691,7 +835,9 @@ describe('lead esfriando (M9)', () => {
   });
 
   it('sem a flag, nada é calculado; pedir "esfriando" confere a flag (403)', async () => {
-    featureAtiva.mockImplementation(async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave));
+    featureAtiva.mockImplementation(
+      async (_tenant, chave) => !['crm.duplicidade', 'crm.inatividade'].includes(chave),
+    );
     await pesquisarLeads('tenant-1', { filtros: [], paginacao: PAGINACAO });
     expect(buscarLeadsComFiltro.mock.calls[0][2].inatividade).toBeNull();
 
@@ -703,9 +849,16 @@ describe('lead esfriando (M9)', () => {
   });
 
   it('o detalhe e a edição também leem com o relógio', async () => {
-    buscarLeadPorId.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null, esfriando_desde: null });
+    buscarLeadPorId.mockResolvedValue({
+      id: 'lead-1',
+      nome: 'Ana',
+      telefone: null,
+      esfriando_desde: null,
+    });
     await buscarLeadFormatado('tenant-1', 'lead-1');
-    expect(buscarLeadPorId).toHaveBeenCalledWith('tenant-1', 'lead-1', { inatividade: expect.any(Date) });
+    expect(buscarLeadPorId).toHaveBeenCalledWith('tenant-1', 'lead-1', {
+      inatividade: expect.any(Date),
+    });
 
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
     await atualizarLeadExistente('tenant-1', 'lead-1', { nome: 'Ana B' });
@@ -717,11 +870,22 @@ describe('tipos do M11 no formulário', () => {
   const ID_CONSULTOR = '44444444-4444-4444-4444-444444444444';
   const USUARIO_ATIVO = '00000000-0000-0000-0000-0000000000aa';
   const CONSULTAS_DE_USUARIOS = 2; // uma por chamada (a recusada e a aceita)
-  const CAMPO_USUARIO = { id: ID_CONSULTOR, chave: 'consultor', label: 'Consultor', tipo: 'usuario', opcoes: null, obrigatorio: false };
+  const CAMPO_USUARIO = {
+    id: ID_CONSULTOR,
+    chave: 'consultor',
+    label: 'Consultor',
+    tipo: 'usuario',
+    opcoes: null,
+    obrigatorio: false,
+  };
 
   it('CPF/CNPJ/CEP nativos: inválido → 400 no campo; válido vai gravado sem máscara', async () => {
     await expect(
-      registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', cpf: '529.982.247-24' }),
+      registrarNovoLead('tenant-1', {
+        nome: 'Ana',
+        telefone: '11999999999',
+        cpf: '529.982.247-24',
+      }),
     ).rejects.toMatchObject({ fields: { cpf: [expect.any(String)] } });
 
     await registrarNovoLead('tenant-1', {
@@ -731,7 +895,11 @@ describe('tipos do M11 no formulário', () => {
       cnpj: '12.abc.345/01de-35',
       cep: '01310-100',
     });
-    expect(criarLead.mock.calls[0][1]).toMatchObject({ cpf: '52998224725', cnpj: '12ABC34501DE35', cep: '01310100' });
+    expect(criarLead.mock.calls[0][1]).toMatchObject({
+      cpf: '52998224725',
+      cnpj: '12ABC34501DE35',
+      cep: '01310100',
+    });
   });
 
   it('personalizado "usuario" tem que ser usuário ativo do tenant (uma consulta só)', async () => {
@@ -746,7 +914,11 @@ describe('tipos do M11 no formulário', () => {
       }),
     ).rejects.toThrow('"Consultor" precisa ser um usuário ativo desta conta');
 
-    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', customFields: { consultor: USUARIO_ATIVO } });
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '11999999999',
+      customFields: { consultor: USUARIO_ATIVO },
+    });
     expect(listarUsuariosAtivosDoTenant).toHaveBeenCalledTimes(CONSULTAS_DE_USUARIOS);
     expect(criarLead).toHaveBeenCalledTimes(1);
   });
@@ -760,8 +932,14 @@ describe('tipos do M11 no formulário', () => {
 
 describe('enriquecimento por CNPJ depois de salvar (M11b)', () => {
   it('criação agenda com o id do lead novo; PUT só quando mexe no CNPJ', async () => {
-    await registrarNovoLead('tenant-1', { nome: 'Ana', telefone: '11999999999', cnpj: '11.222.333/0001-81' });
-    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [{ leadId: 'lead-123', cnpj: '11222333000181' }]);
+    await registrarNovoLead('tenant-1', {
+      nome: 'Ana',
+      telefone: '11999999999',
+      cnpj: '11.222.333/0001-81',
+    });
+    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [
+      { leadId: 'lead-123', cnpj: '11222333000181' },
+    ]);
 
     vi.clearAllMocks();
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', cnpj: '11222333000181' });
@@ -769,14 +947,28 @@ describe('enriquecimento por CNPJ depois de salvar (M11b)', () => {
     expect(agendarEnriquecimento).not.toHaveBeenCalled();
 
     await atualizarLeadExistente('tenant-1', 'lead-1', { cnpj: '11.222.333/0001-81' });
-    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [{ leadId: 'lead-1', cnpj: '11222333000181' }]);
+    expect(agendarEnriquecimento).toHaveBeenCalledWith('tenant-1', [
+      { leadId: 'lead-1', cnpj: '11222333000181' },
+    ]);
   });
 });
 
 describe('distribuição automática (M12)', () => {
   const LEAD = { nome: 'Bia', email: 'bia@x.com', funilEstagioId: 'estagio-1' };
-  const CONTEXTO = { fallback: 'rodizio_geral', regras: [], campos: [], ativos: new Set(), rodizioGeral: [], membrosPorGrupo: new Map() };
-  const PELA_REGRA = { usuarioId: 'usuario-vendas', regraId: 'regra-1', regraNome: 'Site', origem: 'regra' };
+  const CONTEXTO = {
+    fallback: 'rodizio_geral',
+    regras: [],
+    campos: [],
+    ativos: new Set(),
+    rodizioGeral: [],
+    membrosPorGrupo: new Map(),
+  };
+  const PELA_REGRA = {
+    usuarioId: 'usuario-vendas',
+    regraId: 'regra-1',
+    regraNome: 'Site',
+    origem: 'regra',
+  };
 
   beforeEach(() => {
     carregarContextoDistribuicao.mockResolvedValue(CONTEXTO);
@@ -786,7 +978,10 @@ describe('distribuição automática (M12)', () => {
   it('sem responsável no payload: distribui, grava a regra e o rastro no histórico, e notifica', async () => {
     await registrarNovoLead('tenant-1', LEAD, 'usuario-criador');
     const [, dados, historico] = criarLead.mock.calls[0];
-    expect(dados).toMatchObject({ usuarioResponsavelId: 'usuario-vendas', atribuidoPorRegraId: 'regra-1' });
+    expect(dados).toMatchObject({
+      usuarioResponsavelId: 'usuario-vendas',
+      atribuidoPorRegraId: 'regra-1',
+    });
     expect(historico).toEqual({
       autorId: 'usuario-criador',
       detalhes: { distribuicao: { origem: 'regra', regraId: 'regra-1', regraNome: 'Site' } },
@@ -800,14 +995,26 @@ describe('distribuição automática (M12)', () => {
   });
 
   it('responsável escolhido (mesmo o próprio criador) não é redistribuído', async () => {
-    await registrarNovoLead('tenant-1', { ...LEAD, usuarioResponsavelId: 'usuario-criador' }, 'usuario-criador');
+    await registrarNovoLead(
+      'tenant-1',
+      { ...LEAD, usuarioResponsavelId: 'usuario-criador' },
+      'usuario-criador',
+    );
     expect(carregarContextoDistribuicao).not.toHaveBeenCalled();
     expect(distribuir).not.toHaveBeenCalled();
-    expect(criarLead.mock.calls[0][1]).toMatchObject({ usuarioResponsavelId: 'usuario-criador', atribuidoPorRegraId: null });
+    expect(criarLead.mock.calls[0][1]).toMatchObject({
+      usuarioResponsavelId: 'usuario-criador',
+      atribuidoPorRegraId: null,
+    });
   });
 
   it('fallback "sem responsável" grava o lead sem dono (não cai no criador)', async () => {
-    distribuir.mockResolvedValue({ usuarioId: null, regraId: null, regraNome: null, origem: 'sem_responsavel' });
+    distribuir.mockResolvedValue({
+      usuarioId: null,
+      regraId: null,
+      regraNome: null,
+      origem: 'sem_responsavel',
+    });
     await registrarNovoLead('tenant-1', LEAD, 'usuario-criador');
     expect(criarLead.mock.calls[0][1].usuarioResponsavelId).toBeNull();
   });

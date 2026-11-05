@@ -84,7 +84,9 @@ export async function carregarContextoDistribuicao(tenantId) {
     campos,
     ativos,
     rodizioGeral: candidatosAtivos(
-      usuarios.filter((usuario) => PAPEIS_RODIZIO_GERAL.has(usuario.role)).map((usuario) => usuario.id),
+      usuarios
+        .filter((usuario) => PAPEIS_RODIZIO_GERAL.has(usuario.role))
+        .map((usuario) => usuario.id),
       ativos,
     ),
     membrosPorGrupo: new Map(grupos.map((grupo) => [grupo.id, grupo.membros])),
@@ -104,17 +106,35 @@ export async function distribuir(tenantId, contexto, lead) {
   const destino = escolherDestino({ ...contexto, lead });
 
   if (destino.tipo === 'usuario') {
-    return { usuarioId: destino.usuarioId, regraId: destino.regra.id, regraNome: destino.regra.nome, origem: ORIGEM_DISTRIBUICAO.REGRA };
+    return {
+      usuarioId: destino.usuarioId,
+      regraId: destino.regra.id,
+      regraNome: destino.regra.nome,
+      origem: ORIGEM_DISTRIBUICAO.REGRA,
+    };
   }
   if (destino.tipo === 'grupo') {
     const usuarioId = await avancarRodizio(tenantId, destino.grupoId, destino.candidatos);
-    return { usuarioId, regraId: destino.regra.id, regraNome: destino.regra.nome, origem: ORIGEM_DISTRIBUICAO.REGRA };
+    return {
+      usuarioId,
+      regraId: destino.regra.id,
+      regraNome: destino.regra.nome,
+      origem: ORIGEM_DISTRIBUICAO.REGRA,
+    };
   }
-  if (contexto.fallback === FALLBACK_DISTRIBUICAO.RODIZIO_GERAL && contexto.rodizioGeral.length > 0) {
+  if (
+    contexto.fallback === FALLBACK_DISTRIBUICAO.RODIZIO_GERAL &&
+    contexto.rodizioGeral.length > 0
+  ) {
     const usuarioId = await avancarRodizio(tenantId, CHAVE_RODIZIO_GERAL, contexto.rodizioGeral);
     return { usuarioId, regraId: null, regraNome: null, origem: ORIGEM_DISTRIBUICAO.RODIZIO_GERAL };
   }
-  return { usuarioId: null, regraId: null, regraNome: null, origem: ORIGEM_DISTRIBUICAO.SEM_RESPONSAVEL };
+  return {
+    usuarioId: null,
+    regraId: null,
+    regraNome: null,
+    origem: ORIGEM_DISTRIBUICAO.SEM_RESPONSAVEL,
+  };
 }
 
 /**
@@ -133,7 +153,10 @@ export function detalhesDaAtribuicao({ origem, regraId, regraNome }) {
  * @param {string} tenantId
  * @param {{ leadId: string, leadNome: string, atribuicao: Atribuicao, criadorId?: string | null }} dados
  */
-export async function notificarAtribuicao(tenantId, { leadId, leadNome, atribuicao, criadorId = null }) {
+export async function notificarAtribuicao(
+  tenantId,
+  { leadId, leadNome, atribuicao, criadorId = null },
+) {
   const { usuarioId, regraNome } = atribuicao;
   if (!usuarioId || usuarioId === criadorId) return 0;
   const { MODULO, LEAD_ATRIBUIDO, ROTA } = NOTIFICACOES_DISTRIBUICAO;
@@ -161,7 +184,10 @@ export async function notificarAtribuicao(tenantId, { leadId, leadNome, atribuic
  * @param {string} tenantId
  * @param {{ importJobId: string, totais: Map<string, number>, importadorId?: string | null }} dados
  */
-export async function notificarAtribuicoesDoImport(tenantId, { importJobId, totais, importadorId = null }) {
+export async function notificarAtribuicoesDoImport(
+  tenantId,
+  { importJobId, totais, importadorId = null },
+) {
   const { MODULO, LEADS_ATRIBUIDOS, ROTA } = NOTIFICACOES_DISTRIBUICAO;
   const itens = [...totais]
     .filter(([usuarioId, total]) => usuarioId !== importadorId && total > 0)
@@ -215,7 +241,10 @@ export async function obterConfigDistribuicao(tenantId) {
  */
 export async function salvarConfigDistribuicao(tenantId, { ativo, fallback, regras }) {
   if (regras.length > LIMITES_DISTRIBUICAO.REGRAS_POR_TENANT) {
-    throw erroDeValidacao('regras', `Use no máximo ${LIMITES_DISTRIBUICAO.REGRAS_POR_TENANT} regras`);
+    throw erroDeValidacao(
+      'regras',
+      `Use no máximo ${LIMITES_DISTRIBUICAO.REGRAS_POR_TENANT} regras`,
+    );
   }
   const [atuais, grupos, usuarios, { campos }] = await Promise.all([
     listarRegrasDistribuicao(tenantId),
@@ -233,7 +262,8 @@ export async function salvarConfigDistribuicao(tenantId, { ativo, fallback, regr
   const vistos = new Set();
   const paraGravar = regras.map((regra, indice) => {
     if (regra.id) {
-      if (vistos.has(regra.id)) throw erroDeValidacao(`regras.${indice}.id`, 'A mesma regra aparece duas vezes');
+      if (vistos.has(regra.id))
+        throw erroDeValidacao(`regras.${indice}.id`, 'A mesma regra aparece duas vezes');
       vistos.add(regra.id);
     }
     return normalizarRegra(regra, indice, contexto);
@@ -248,23 +278,41 @@ export async function salvarConfigDistribuicao(tenantId, { ativo, fallback, regr
  * @param {number} indice
  * @param {{ idsAtuais: Set<string>, gruposExistentes: Set<string>, ativos: Set<string>, campoPorId: Map<string, any> }} contexto
  */
-function normalizarRegra({ id, nome, ativo, condicoes, destino }, indice, { idsAtuais, gruposExistentes, ativos, campoPorId }) {
+function normalizarRegra(
+  { id, nome, ativo, condicoes, destino },
+  indice,
+  { idsAtuais, gruposExistentes, ativos, campoPorId },
+) {
   const caminho = `regras.${indice}`;
-  if (id && !idsAtuais.has(id)) throw erroDeValidacao(`${caminho}.id`, 'Regra não encontrada; recarregue a página');
+  if (id && !idsAtuais.has(id))
+    throw erroDeValidacao(`${caminho}.id`, 'Regra não encontrada; recarregue a página');
   const nomeLimpo = nome.trim();
   if (!nomeLimpo) throw erroDeValidacao(`${caminho}.nome`, 'Dê um nome à regra');
   if (condicoes.length > LIMITES_DISTRIBUICAO.CONDICOES_POR_REGRA) {
-    throw erroDeValidacao(`${caminho}.condicoes`, `Use no máximo ${LIMITES_DISTRIBUICAO.CONDICOES_POR_REGRA} condições`);
+    throw erroDeValidacao(
+      `${caminho}.condicoes`,
+      `Use no máximo ${LIMITES_DISTRIBUICAO.CONDICOES_POR_REGRA} condições`,
+    );
   }
 
   const condicoesLimpas = condicoes.map((condicao, posicao) => {
     const campo = campoPorId.get(condicao.campoId);
-    if (!campo) throw erroDeValidacao(`${caminho}.condicoes.${posicao}`, 'Escolha um campo ativo para a condição');
+    if (!campo)
+      throw erroDeValidacao(
+        `${caminho}.condicoes.${posicao}`,
+        'Escolha um campo ativo para a condição',
+      );
     try {
       // Mesmas regras de operador × tipo e de formato de valor do filtro (como o M8).
-      montarCondicoes({ filtros: [{ chave: campo.chave, operador: condicao.operador, valor: condicao.valor }] }, [campo]);
+      montarCondicoes(
+        { filtros: [{ chave: campo.chave, operador: condicao.operador, valor: condicao.valor }] },
+        [campo],
+      );
     } catch (erro) {
-      throw erroDeValidacao(`${caminho}.condicoes.${posicao}`, erro instanceof Error ? erro.message : 'Condição inválida');
+      throw erroDeValidacao(
+        `${caminho}.condicoes.${posicao}`,
+        erro instanceof Error ? erro.message : 'Condição inválida',
+      );
     }
     return OPERADORES_SEM_VALOR.has(condicao.operador)
       ? { campoId: condicao.campoId, operador: condicao.operador }
@@ -329,7 +377,11 @@ export async function criarGrupo(tenantId, input) {
 export async function editarGrupo(tenantId, grupoId, input) {
   const grupos = await listarGrupos(tenantId);
   if (!grupos.some((grupo) => grupo.id === grupoId)) throw grupoNaoEncontrado();
-  const grupo = await validarGrupo(tenantId, input, grupos.filter((outro) => outro.id !== grupoId));
+  const grupo = await validarGrupo(
+    tenantId,
+    input,
+    grupos.filter((outro) => outro.id !== grupoId),
+  );
   await atualizarGrupo(tenantId, grupoId, grupo);
   return grupoGravado(tenantId, grupoId);
 }
@@ -341,11 +393,17 @@ export async function editarGrupo(tenantId, grupoId, input) {
  * @param {string} grupoId
  */
 export async function excluirGrupo(tenantId, grupoId) {
-  const [grupos, regras] = await Promise.all([listarGrupos(tenantId), listarRegrasDistribuicao(tenantId)]);
+  const [grupos, regras] = await Promise.all([
+    listarGrupos(tenantId),
+    listarRegrasDistribuicao(tenantId),
+  ]);
   if (!grupos.some((grupo) => grupo.id === grupoId)) throw grupoNaoEncontrado();
   const emUso = regras.filter((regra) => regra.destino_grupo_id === grupoId);
   if (emUso.length > 0) {
-    throw erroDeConflito('id', `O grupo é destino da regra "${emUso[0].nome}"; troque o destino antes de excluir`);
+    throw erroDeConflito(
+      'id',
+      `O grupo é destino da regra "${emUso[0].nome}"; troque o destino antes de excluir`,
+    );
   }
   await excluirGrupoRepository(tenantId, grupoId);
   return { removido: true };
@@ -364,9 +422,14 @@ async function validarGrupo(tenantId, { nome, membros }, outros) {
   }
   const unicos = [...new Set(membros)];
   if (unicos.length > LIMITES_DISTRIBUICAO.MEMBROS_POR_GRUPO) {
-    throw erroDeValidacao('membros', `Use no máximo ${LIMITES_DISTRIBUICAO.MEMBROS_POR_GRUPO} membros`);
+    throw erroDeValidacao(
+      'membros',
+      `Use no máximo ${LIMITES_DISTRIBUICAO.MEMBROS_POR_GRUPO} membros`,
+    );
   }
-  const ativos = new Set((await listarUsuariosAtivosComPapel(tenantId)).map((usuario) => usuario.id));
+  const ativos = new Set(
+    (await listarUsuariosAtivosComPapel(tenantId)).map((usuario) => usuario.id),
+  );
   if (unicos.some((id) => !ativos.has(id))) {
     throw erroDeValidacao('membros', 'Escolha só usuários ativos desta conta');
   }

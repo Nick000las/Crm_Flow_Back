@@ -26,7 +26,9 @@ export function registrarModulos(modulos) {
 /** @returns {readonly import('#core/types/module.js').Module[]} */
 export function modulosRegistrados() {
   if (!registrados) {
-    throw new Error('Módulos não registrados: chame registrarModulos(MODULES) ao subir o processo.');
+    throw new Error(
+      'Módulos não registrados: chame registrarModulos(MODULES) ao subir o processo.',
+    );
   }
   return registrados;
 }

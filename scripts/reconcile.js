@@ -36,12 +36,18 @@ const argsSchema = z.object({
 async function main() {
   const args = parseArgs();
   const prisma = getAdminClient();
-  const modulos = MODULOS_RECONCILIAVEIS.filter((modulo) => !args.modulo || modulo.key === args.modulo);
+  const modulos = MODULOS_RECONCILIAVEIS.filter(
+    (modulo) => !args.modulo || modulo.key === args.modulo,
+  );
   let falhas = 0;
 
   for (const modulo of modulos) {
     const contratos = await prisma.tenantModule.findMany({
-      where: { moduleKey: modulo.key, disabledAt: null, ...(args.tenant && { tenantId: args.tenant }) },
+      where: {
+        moduleKey: modulo.key,
+        disabledAt: null,
+        ...(args.tenant && { tenantId: args.tenant }),
+      },
       select: { tenantId: true },
       orderBy: { tenantId: 'asc' },
     });
@@ -59,7 +65,9 @@ async function main() {
   }
 
   if (falhas > 0) {
-    throw new Error(`${falhas} reconciliação(ões) falharam — rode de novo depois de corrigir (é idempotente).`);
+    throw new Error(
+      `${falhas} reconciliação(ões) falharam — rode de novo depois de corrigir (é idempotente).`,
+    );
   }
 }
 

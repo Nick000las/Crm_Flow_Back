@@ -45,14 +45,28 @@ describe('escolherDestino', () => {
       regra({ id: 'r1', condicoes: [doSite], destino_usuario_id: ANA }),
       regra({ id: 'r2', destino_usuario_id: BRUNO }),
     ];
-    expect(escolherDestino(contexto(regras, { fonteLead: 'site' }))).toMatchObject({ tipo: 'usuario', usuarioId: ANA });
-    expect(escolherDestino(contexto(regras, { fonteLead: 'indicacao' }))).toMatchObject({ tipo: 'usuario', usuarioId: BRUNO });
+    expect(escolherDestino(contexto(regras, { fonteLead: 'site' }))).toMatchObject({
+      tipo: 'usuario',
+      usuarioId: ANA,
+    });
+    expect(escolherDestino(contexto(regras, { fonteLead: 'indicacao' }))).toMatchObject({
+      tipo: 'usuario',
+      usuarioId: BRUNO,
+    });
   });
 
   it('condições combinadas com E (personalizado pela chave em customFields)', () => {
     const regras = [regra({ condicoes: [doSite, varejo], destino_usuario_id: ANA })];
-    expect(escolherDestino(contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Varejo SP' } })).tipo).toBe('usuario');
-    expect(escolherDestino(contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Indústria' } })).tipo).toBe('fallback');
+    expect(
+      escolherDestino(
+        contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Varejo SP' } }),
+      ).tipo,
+    ).toBe('usuario');
+    expect(
+      escolherDestino(
+        contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Indústria' } }),
+      ).tipo,
+    ).toBe('fallback');
   });
 
   it('regra desligada não conta; nenhuma casa → fallback', () => {
@@ -62,7 +76,11 @@ describe('escolherDestino', () => {
 
   it('grupo: candidatos ativos e ordenados (a ordem do rodízio)', () => {
     const regras = [regra({ destino_grupo_id: GRUPO })];
-    expect(escolherDestino(contexto(regras, {}))).toMatchObject({ tipo: 'grupo', grupoId: GRUPO, candidatos: [BRUNO, CARLA] });
+    expect(escolherDestino(contexto(regras, {}))).toMatchObject({
+      tipo: 'grupo',
+      grupoId: GRUPO,
+      candidatos: [BRUNO, CARLA],
+    });
   });
 
   it('destino indisponível pula a regra: usuário inativo ou grupo sem membro ativo', () => {
@@ -71,19 +89,33 @@ describe('escolherDestino', () => {
       regra({ id: 'r2', destino_grupo_id: GRUPO }),
       regra({ id: 'r3', destino_usuario_id: CARLA }),
     ];
-    const destino = escolherDestino(contexto(regras, {}, { ativos: new Set([CARLA]), membrosPorGrupo: new Map([[GRUPO, [BRUNO]]]) }));
+    const destino = escolherDestino(
+      contexto(
+        regras,
+        {},
+        { ativos: new Set([CARLA]), membrosPorGrupo: new Map([[GRUPO, [BRUNO]]]) },
+      ),
+    );
     expect(destino).toMatchObject({ tipo: 'usuario', usuarioId: CARLA, regra: { id: 'r3' } });
   });
 
   it('campo da condição excluído ou desligado: a regra não casa', () => {
-    const regras = [regra({ condicoes: [{ campoId: '00000000-0000-0000-0000-00000000dead', operador: 'vazio' }], destino_usuario_id: ANA })];
+    const regras = [
+      regra({
+        condicoes: [{ campoId: '00000000-0000-0000-0000-00000000dead', operador: 'vazio' }],
+        destino_usuario_id: ANA,
+      }),
+    ];
     expect(escolherDestino(contexto(regras, {})).tipo).toBe('fallback');
   });
 });
 
 describe('rodízio', () => {
   it('candidatosAtivos tira inativo e repetido e ordena', () => {
-    expect(candidatosAtivos([CARLA, ANA, CARLA, BRUNO], new Set([ANA, CARLA]))).toEqual([ANA, CARLA]);
+    expect(candidatosAtivos([CARLA, ANA, CARLA, BRUNO], new Set([ANA, CARLA]))).toEqual([
+      ANA,
+      CARLA,
+    ]);
   });
 
   it('proximoDaVez: o seguinte ao último, voltando ao início; sem histórico, o primeiro', () => {

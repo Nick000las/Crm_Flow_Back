@@ -4,7 +4,12 @@ import { EDICAO_EM_MASSA } from '../constants.js';
 import { opcaoDeLista, usuarioResponsavelIdSchema } from './leads.schema.js';
 
 const listaDeTags = z
-  .array(z.string({ invalid_type_error: 'Tag inválida' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'))
+  .array(
+    z
+      .string({ invalid_type_error: 'Tag inválida' })
+      .trim()
+      .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'),
+  )
   .optional();
 
 // PATCH /crm/leads/bulk (M10). Mesma forma do PUT de um lead para Status,
@@ -18,7 +23,10 @@ export const editarEmMassaBodySchema = z.object({
     })
     .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Selecione ao menos um lead')
     .max(EDICAO_EM_MASSA.MAX_LEADS, `Selecione no máximo ${EDICAO_EM_MASSA.MAX_LEADS} leads`)
-    .refine((ids) => new Set(ids).size === ids.length, 'O mesmo lead foi selecionado mais de uma vez'),
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      'O mesmo lead foi selecionado mais de uma vez',
+    ),
   alteracoes: z
     .object(
       {

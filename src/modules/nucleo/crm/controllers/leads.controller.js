@@ -17,9 +17,17 @@ import {
   leadIdParamSchema,
   mesclarLeadsBodySchema,
 } from '../schemas/leads.schema.js';
-import { pesquisarLeadsBodySchema, listarLeadsQuerySchema } from '../schemas/leads-search.schema.js';
+import {
+  pesquisarLeadsBodySchema,
+  listarLeadsQuerySchema,
+} from '../schemas/leads-search.schema.js';
 import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
-import { arquivarLead, desarquivarLead, excluirLead, restaurarLead } from '../services/arquivo.service.js';
+import {
+  arquivarLead,
+  desarquivarLead,
+  excluirLead,
+  restaurarLead,
+} from '../services/arquivo.service.js';
 import { mesclarLeads } from '../services/mesclagem.service.js';
 import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
 import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
@@ -38,7 +46,10 @@ export function registrarRotasLeads(app) {
     const { tenantId, role } = req.tenantContext;
     // Mesma implementação do /search (sem filtro), paginada.
     const paginacao = listarLeadsQuerySchema.parse(req.query);
-    return sendSuccess(reply, await pesquisarLeads(tenantId, { filtros: [], paginacao }, { papel: role }));
+    return sendSuccess(
+      reply,
+      await pesquisarLeads(tenantId, { filtros: [], paginacao }, { papel: role }),
+    );
   });
 
   app.post('/crm/leads', async (req, reply) => {
@@ -90,11 +101,15 @@ export function registrarRotasLeads(app) {
 
   // Edição em massa (M10): qualquer papel, como o PUT de um lead. Responde
   // 200 com o relatório por lead mesmo se alguns falharem.
-  app.patch('/crm/leads/bulk', { preHandler: [exigirFeature(CRM_FEATURES.MASSA)] }, async (req, reply) => {
-    const { tenantId, userId, role } = req.tenantContext;
-    const body = editarEmMassaBodySchema.parse(req.body);
-    return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId, { papel: role }));
-  });
+  app.patch(
+    '/crm/leads/bulk',
+    { preHandler: [exigirFeature(CRM_FEATURES.MASSA)] },
+    async (req, reply) => {
+      const { tenantId, userId, role } = req.tenantContext;
+      const body = editarEmMassaBodySchema.parse(req.body);
+      return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId, { papel: role }));
+    },
+  );
 
   app.get('/crm/leads/:id', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
@@ -106,7 +121,10 @@ export function registrarRotasLeads(app) {
     const { tenantId, userId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = atualizarLeadBodySchema.parse(req.body);
-    return sendSuccess(reply, await atualizarLeadExistente(tenantId, leadId, body, userId, { papel: role }));
+    return sendSuccess(
+      reply,
+      await atualizarLeadExistente(tenantId, leadId, body, userId, { papel: role }),
+    );
   });
 
   // "Excluir" é sempre lixeira (M5), com ou sem a flag: sem ela só não há

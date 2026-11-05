@@ -28,7 +28,6 @@ const inputValido = {
   modulosContratados: ['crm'],
 };
 
-
 registrarModulos(MODULES);
 
 describe('provisionarTenant', () => {

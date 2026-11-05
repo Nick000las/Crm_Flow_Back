@@ -4,7 +4,12 @@ import { encerrarCache } from '#core/cache/cache.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { exigirFeature, featureAtiva, invalidarFeatures, listarFeaturesAtivas } from './feature-flags.js';
+import {
+  exigirFeature,
+  featureAtiva,
+  invalidarFeatures,
+  listarFeaturesAtivas,
+} from './feature-flags.js';
 
 const findMany = vi.fn();
 
@@ -27,7 +32,9 @@ describe('listarFeaturesAtivas / featureAtiva', () => {
   it('lê as flags do tenant pelo client admin, com tenant_id explícito', async () => {
     findMany.mockResolvedValue([{ featureKey: FLAG }]);
     await expect(listarFeaturesAtivas(TENANT_A)).resolves.toEqual([FLAG]);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: TENANT_A } }));
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT_A } }),
+    );
   });
 
   it('usa o cache e só consulta de novo depois de invalidar', async () => {

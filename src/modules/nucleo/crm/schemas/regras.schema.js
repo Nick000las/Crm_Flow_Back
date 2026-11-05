@@ -5,14 +5,19 @@ import { FILTRO_OPERADORES, LISTA_CATEGORIAS_STATUS, LISTA_TIPOS_REGRA } from '.
 // pro tipo dele e se os status existem é regra por tenant (`regras.service.js`).
 
 const enumDe = (valores, mensagem) =>
-  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), { errorMap: () => ({ message: mensagem }) });
+  z.enum(/** @type {[string, ...string[]]} */ ([...valores]), {
+    errorMap: () => ({ message: mensagem }),
+  });
 
-const uuid = (mensagem) => z.string({ required_error: mensagem, invalid_type_error: mensagem }).uuid(mensagem);
+const uuid = (mensagem) =>
+  z.string({ required_error: mensagem, invalid_type_error: mensagem }).uuid(mensagem);
 
 const condicaoPorStatus = z
   .object({
     status: z.array(z.string().min(1)).optional(),
-    categorias: z.array(enumDe(LISTA_CATEGORIAS_STATUS, 'Categoria deve ser aberto, ganho ou perdido')).optional(),
+    categorias: z
+      .array(enumDe(LISTA_CATEGORIAS_STATUS, 'Categoria deve ser aberto, ganho ou perdido'))
+      .optional(),
   })
   .strict();
 
@@ -53,7 +58,9 @@ export const criarRegraBodySchema = z.discriminatedUnion(
       })
       .strict(),
   ],
-  { errorMap: () => ({ message: `Tipo de regra deve ser um de: ${LISTA_TIPOS_REGRA.join(', ')}` }) },
+  {
+    errorMap: () => ({ message: `Tipo de regra deve ser um de: ${LISTA_TIPOS_REGRA.join(', ')}` }),
+  },
 );
 
 // PUT /crm/configuracoes/regras/:id — parcial; o `kind` não muda. A

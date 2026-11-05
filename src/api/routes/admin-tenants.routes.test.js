@@ -47,7 +47,11 @@ const comoMaster = () => ({ authorization: `Bearer ${tokenMaster}` });
 
 describe('feature flags no admin', () => {
   it('GET /admin/features devolve o catálogo declarado pelos módulos', async () => {
-    const resposta = await app.inject({ method: 'GET', url: '/admin/features', headers: comoMaster() });
+    const resposta = await app.inject({
+      method: 'GET',
+      url: '/admin/features',
+      headers: comoMaster(),
+    });
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
     expect(resposta.json().data).toContainEqual({ moduleKey: 'crm', featureKey: 'crm.layout' });
   });
@@ -97,7 +101,9 @@ describe('fuso horário do tenant', () => {
       payload: { fusoHorario: 'america/manaus' },
     });
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
-    expect(TenantManagement.atualizarTenant).toHaveBeenCalledWith(TENANT, { fusoHorario: 'America/Manaus' });
+    expect(TenantManagement.atualizarTenant).toHaveBeenCalledWith(TENANT, {
+      fusoHorario: 'America/Manaus',
+    });
   });
 
   it('rejeita fuso inexistente com erro no campo', async () => {

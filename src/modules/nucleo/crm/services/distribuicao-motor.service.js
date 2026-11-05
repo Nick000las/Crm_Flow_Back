@@ -29,7 +29,9 @@ import { avaliarCondicao, valorDoCampo } from './regras-campos.service.js';
 export function regraCasa(regra, lead, campoPorId) {
   return regra.condicoes.every(({ campoId, operador, valor }) => {
     const campo = campoPorId.get(campoId);
-    return campo !== undefined && avaliarCondicao(campo.tipo, operador, valor, valorDoCampo(lead, campo));
+    return (
+      campo !== undefined && avaliarCondicao(campo.tipo, operador, valor, valorDoCampo(lead, campo))
+    );
   });
 }
 
@@ -50,11 +52,21 @@ export function escolherDestino({ regras, lead, campos, ativos, membrosPorGrupo 
     if (!regra.ativo || !regraCasa(regra, lead, campoPorId)) continue;
 
     if (regra.destino_usuario_id) {
-      if (ativos.has(regra.destino_usuario_id)) return { tipo: 'usuario', usuarioId: regra.destino_usuario_id, regra };
+      if (ativos.has(regra.destino_usuario_id))
+        return { tipo: 'usuario', usuarioId: regra.destino_usuario_id, regra };
       continue;
     }
-    const candidatos = candidatosAtivos(membrosPorGrupo.get(regra.destino_grupo_id ?? '') ?? [], ativos);
-    if (candidatos.length > 0) return { tipo: 'grupo', grupoId: /** @type {string} */ (regra.destino_grupo_id), candidatos, regra };
+    const candidatos = candidatosAtivos(
+      membrosPorGrupo.get(regra.destino_grupo_id ?? '') ?? [],
+      ativos,
+    );
+    if (candidatos.length > 0)
+      return {
+        tipo: 'grupo',
+        grupoId: /** @type {string} */ (regra.destino_grupo_id),
+        candidatos,
+        regra,
+      };
   }
   return { tipo: 'fallback' };
 }

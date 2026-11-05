@@ -21,7 +21,10 @@ export const validarImportacaoCamposSchema = z.object({
       try {
         return JSON.parse(texto);
       } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Mapeamento deve ser um JSON válido' });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Mapeamento deve ser um JSON válido',
+        });
         return z.NEVER;
       }
     })
@@ -40,7 +43,9 @@ export const validarImportacaoCamposSchema = z.object({
     (valor) => (valor === '' ? undefined : valor),
     z
       .enum(/** @type {[string, ...string[]]} */ ([...LISTA_BASES_LEGAIS]), {
-        errorMap: () => ({ message: `Base legal deve ser uma de: ${LISTA_BASES_LEGAIS.join(', ')}` }),
+        errorMap: () => ({
+          message: `Base legal deve ser uma de: ${LISTA_BASES_LEGAIS.join(', ')}`,
+        }),
       })
       .optional(),
   ),
@@ -53,14 +58,18 @@ export const confirmarImportacaoBodySchema = z
     acoes: z
       .record(
         z.string().regex(/^\d+$/, 'Informe o número da linha'),
-        z.enum(ESTRATEGIAS_DUPLICATA, { errorMap: () => ({ message: 'Ação deve ser pular, atualizar ou criar' }) }),
+        z.enum(ESTRATEGIAS_DUPLICATA, {
+          errorMap: () => ({ message: 'Ação deve ser pular, atualizar ou criar' }),
+        }),
       )
       .optional(),
   })
   .strict();
 
 export const importJobIdParamSchema = z.object({
-  jobId: z.string({ required_error: 'Informe o id da importação' }).uuid('Id de importação inválido'),
+  jobId: z
+    .string({ required_error: 'Informe o id da importação' })
+    .uuid('Id de importação inválido'),
 });
 
 export const exportarLeadsBodySchema = z.object({
@@ -73,7 +82,9 @@ export const exportarLeadsBodySchema = z.object({
   // `csv` (M10) exige `crm.massa`.
   formato: z
     .enum(/** @type {[string, ...string[]]} */ ([...LISTA_FORMATOS_EXPORTACAO]), {
-      errorMap: () => ({ message: `Formato deve ser um de: ${LISTA_FORMATOS_EXPORTACAO.join(', ')}` }),
+      errorMap: () => ({
+        message: `Formato deve ser um de: ${LISTA_FORMATOS_EXPORTACAO.join(', ')}`,
+      }),
     })
     .default(FORMATOS_EXPORTACAO.XLSX),
   // A lixeira não sai em planilha (M5).

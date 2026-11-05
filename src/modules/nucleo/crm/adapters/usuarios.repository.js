@@ -16,9 +16,8 @@ const FIRST_RESULT_INDEX = 0;
  * @returns {Promise<{ id: string } | undefined>}
  */
 export function buscarUsuarioAtivoDoTenant(tenantId, usuarioId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id FROM usuarios
       WHERE id = ${usuarioId}::uuid AND tenant_id = ${tenantId}::uuid AND ativo = true
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
@@ -51,9 +50,8 @@ export function listarUsuariosAtivosDoTenant(tenantId) {
  * @returns {Promise<string[]>}
  */
 export function listarDonosAtivosDoTenant(tenantId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id FROM usuarios
       WHERE tenant_id = ${tenantId}::uuid AND ativo = true AND role = ${ROLES.DONO}
       ORDER BY id
@@ -89,9 +87,8 @@ export function listarUsuariosAtivosComPapel(tenantId) {
  */
 export function buscarNomesDeUsuarios(tenantId, ids) {
   if (ids.length === 0) return Promise.resolve(new Map());
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id::text, nome FROM usuarios
       WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
     `.then((rows) => new Map(rows.map((row) => [row.id, row.nome]))),

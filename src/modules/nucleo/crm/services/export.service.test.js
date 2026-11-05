@@ -12,7 +12,10 @@ vi.mock('./leads.service.js', () => ({
   buscarLeadsFiltrados: vi.fn(),
   listarCamposDoTenant: vi.fn(),
 }));
-vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn(), garantirFeature: vi.fn() }));
+vi.mock('#core/tenant/feature-flags.js', () => ({
+  featureAtiva: vi.fn(),
+  garantirFeature: vi.fn(),
+}));
 vi.mock('./layout.service.js', () => ({ obterLayout: vi.fn() }));
 vi.mock('../adapters/usuarios.repository.js', () => ({ listarUsuariosAtivosDoTenant: vi.fn() }));
 
@@ -84,10 +87,20 @@ describe('valorParaPlanilha — tipos MVP do M2', () => {
   it('telefone sai com máscara; monetário sai como número', () => {
     const lead = { custom_fields: { celular: '11999990000', contrato: VALOR } };
     expect(
-      valorParaPlanilha(lead, { chave: 'celular', label: 'Celular', tipo: 'telefone', camada: CAMADA.CAMADA_3 }),
+      valorParaPlanilha(lead, {
+        chave: 'celular',
+        label: 'Celular',
+        tipo: 'telefone',
+        camada: CAMADA.CAMADA_3,
+      }),
     ).toBe('(11) 99999-0000');
     expect(
-      valorParaPlanilha(lead, { chave: 'contrato', label: 'Contrato', tipo: 'monetario', camada: CAMADA.CAMADA_3 }),
+      valorParaPlanilha(lead, {
+        chave: 'contrato',
+        label: 'Contrato',
+        tipo: 'monetario',
+        camada: CAMADA.CAMADA_3,
+      }),
     ).toBe(VALOR);
   });
 });
@@ -95,8 +108,20 @@ describe('valorParaPlanilha — tipos MVP do M2', () => {
 describe('valorParaPlanilha — campo de lista (M3)', () => {
   it('sai o nome da opção, não a key (lista e tags)', () => {
     const lead = { status: 'ganho', tags: ['vip', 'sumiu'] };
-    const status = { chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1, opcoesLista: [{ key: 'ganho', label: 'Fechou' }] };
-    const tags = { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', camada: CAMADA.CAMADA_1, opcoesLista: [{ key: 'vip', label: 'Cliente VIP' }] };
+    const status = {
+      chave: 'status',
+      label: 'Status',
+      tipo: 'selecao',
+      camada: CAMADA.CAMADA_1,
+      opcoesLista: [{ key: 'ganho', label: 'Fechou' }],
+    };
+    const tags = {
+      chave: 'tags',
+      label: 'Tags',
+      tipo: 'selecao_multipla',
+      camada: CAMADA.CAMADA_1,
+      opcoesLista: [{ key: 'vip', label: 'Cliente VIP' }],
+    };
 
     expect(valorParaPlanilha(lead, status)).toBe('Fechou');
     expect(valorParaPlanilha(lead, tags)).toBe('Cliente VIP, sumiu');
@@ -112,34 +137,51 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
     obterLayout.mockResolvedValue({
       efetivo: {
         identificador: { ref: 'f-nome', chave: 'nome' },
-        colunas: [{ ref: 'lead.responsavel', chave: 'usuarioResponsavelId' }, { ref: 'lead.criadoEm', chave: 'createdAt' }],
+        colunas: [
+          { ref: 'lead.responsavel', chave: 'usuarioResponsavelId' },
+          { ref: 'lead.criadoEm', chave: 'createdAt' },
+        ],
       },
     });
     listarUsuariosAtivosDoTenant.mockResolvedValue([{ id: USUARIO, nome: 'Bia' }]);
     buscarLeadsFiltrados.mockResolvedValue({
       total: 1,
-      itens: [{ nome: 'Ana', usuario_responsavel_id: USUARIO, created_at: new Date('2026-10-18T12:00:00Z') }],
+      itens: [
+        {
+          nome: 'Ana',
+          usuario_responsavel_id: USUARIO,
+          created_at: new Date('2026-10-18T12:00:00Z'),
+        },
+      ],
     });
 
     const { colunas, linhas } = await lerPlanilha(await exportarLeads(TENANT, {}, USUARIO));
 
     expect(colunas).toEqual(['Nome', 'Responsável', 'Criado em']);
-    expect(linhas[0].valores).toMatchObject({ Nome: 'Ana', 'Responsável': 'Bia' });
+    expect(linhas[0].valores).toMatchObject({ Nome: 'Ana', Responsável: 'Bia' });
     expect(obterLayout).toHaveBeenCalledWith(TENANT, USUARIO);
   });
 
   it('sem colunas e sem crm.massa: continua obrigatório escolher', async () => {
     featureAtiva.mockResolvedValue(false);
-    await expect(exportarLeads(TENANT, {}, USUARIO)).rejects.toMatchObject({ fields: { colunas: [expect.any(String)] } });
+    await expect(exportarLeads(TENANT, {}, USUARIO)).rejects.toMatchObject({
+      fields: { colunas: [expect.any(String)] },
+    });
   });
 
   it('csv pro Excel pt-BR: BOM, ; , vírgula decimal, aspas e sem fórmula', async () => {
     buscarLeadsFiltrados.mockResolvedValue({
       total: 1,
-      itens: [{ nome: 'João; "Jota"', valor: VALOR_CSV, tags: ['=cmd'], custom_fields: { vip: false } }],
+      itens: [
+        { nome: 'João; "Jota"', valor: VALOR_CSV, tags: ['=cmd'], custom_fields: { vip: false } },
+      ],
     });
 
-    const buffer = await exportarLeads(TENANT, { colunas: ['nome', 'valor', 'tags', 'vip'], formato: 'csv' }, USUARIO);
+    const buffer = await exportarLeads(
+      TENANT,
+      { colunas: ['nome', 'valor', 'tags', 'vip'], formato: 'csv' },
+      USUARIO,
+    );
     const texto = buffer.toString('utf8');
 
     expect(garantirFeature).toHaveBeenCalledWith(TENANT, 'crm.massa');
@@ -149,7 +191,9 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
 
   it('csv com crm.massa desligada → o erro da flag', async () => {
     garantirFeature.mockRejectedValue(new Error('FEATURE_NOT_ENABLED'));
-    await expect(exportarLeads(TENANT, { colunas: ['nome'], formato: 'csv' }, USUARIO)).rejects.toThrow('FEATURE_NOT_ENABLED');
+    await expect(
+      exportarLeads(TENANT, { colunas: ['nome'], formato: 'csv' }, USUARIO),
+    ).rejects.toThrow('FEATURE_NOT_ENABLED');
     expect(buscarLeadsFiltrados).not.toHaveBeenCalled();
   });
 });
@@ -161,14 +205,23 @@ describe('valorParaPlanilha — tipos do M11', () => {
   it('documentos com máscara (nativos e personalizados)', () => {
     const lead = { cpf: '52998224725', cnpj: '12ABC34501DE35', custom_fields: { cep: '01310100' } };
     expect(valorParaPlanilha(lead, campo('cpf', 'cpf', CAMADA.CAMADA_2))).toBe('529.982.247-25');
-    expect(valorParaPlanilha(lead, campo('cnpj', 'cnpj', CAMADA.CAMADA_2))).toBe('12.ABC.345/01DE-35');
+    expect(valorParaPlanilha(lead, campo('cnpj', 'cnpj', CAMADA.CAMADA_2))).toBe(
+      '12.ABC.345/01DE-35',
+    );
     expect(valorParaPlanilha(lead, campo('cep', 'cep'))).toBe('01310-100');
   });
 
   it('endereço e período numa linha; usuário pelo nome', () => {
     const lead = {
       custom_fields: {
-        entrega: { cep: '01310100', logradouro: 'Av. Paulista', numero: '1000', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'SP' },
+        entrega: {
+          cep: '01310100',
+          logradouro: 'Av. Paulista',
+          numero: '1000',
+          bairro: 'Bela Vista',
+          cidade: 'São Paulo',
+          uf: 'SP',
+        },
         viagem: { de: '2026-02-01', ate: '2026-02-10' },
         consultor: USUARIO,
       },
@@ -176,7 +229,13 @@ describe('valorParaPlanilha — tipos do M11', () => {
     expect(valorParaPlanilha(lead, campo('entrega', 'endereco'))).toBe(
       'Av. Paulista, 1000 - Bela Vista, São Paulo/SP, CEP 01310-100',
     );
-    expect(valorParaPlanilha(lead, campo('viagem', 'intervalo_datas'))).toBe('01/02/2026 – 10/02/2026');
-    expect(valorParaPlanilha(lead, campo('consultor', 'usuario'), { responsaveis: new Map([[USUARIO, 'Bia']]) })).toBe('Bia');
+    expect(valorParaPlanilha(lead, campo('viagem', 'intervalo_datas'))).toBe(
+      '01/02/2026 – 10/02/2026',
+    );
+    expect(
+      valorParaPlanilha(lead, campo('consultor', 'usuario'), {
+        responsaveis: new Map([[USUARIO, 'Bia']]),
+      }),
+    ).toBe('Bia');
   });
 });

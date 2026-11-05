@@ -4,7 +4,13 @@ import {
   inserirOpcoes,
   tenantTemLeads,
 } from '../adapters/crm-options.repository.js';
-import { LISTAS_SEMEADAS, OPCOES_LEGADAS, OPCOES_SUGERIDAS, SUGESTAO_DIAS_ESFRIAR, TIPOS_LISTA } from '../constants.js';
+import {
+  LISTAS_SEMEADAS,
+  OPCOES_LEGADAS,
+  OPCOES_SUGERIDAS,
+  SUGESTAO_DIAS_ESFRIAR,
+  TIPOS_LISTA,
+} from '../constants.js';
 
 /**
  * Reconciliação das listas (docs/crm/plano-configuracoes.md, M3.2):
@@ -66,4 +72,6 @@ export async function reconciliarListas(tenantId) {
 }
 
 /** @type {import('./reconcile.service.js').PassoReconciliacao[]} */
-export const PASSOS_LISTAS = Object.freeze([{ nome: 'listas-padrao', executar: reconciliarListas }]);
+export const PASSOS_LISTAS = Object.freeze([
+  { nome: 'listas-padrao', executar: reconciliarListas },
+]);

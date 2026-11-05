@@ -27,7 +27,10 @@ export const CATEGORIAS_STATUS = Object.freeze({
 export const LISTA_CATEGORIAS_STATUS = Object.freeze(Object.values(CATEGORIAS_STATUS));
 
 /** Categorias que precisam de ao menos um status ativo (fechar o funil). */
-export const CATEGORIAS_OBRIGATORIAS = Object.freeze([CATEGORIAS_STATUS.GANHO, CATEGORIAS_STATUS.PERDIDO]);
+export const CATEGORIAS_OBRIGATORIAS = Object.freeze([
+  CATEGORIAS_STATUS.GANHO,
+  CATEGORIAS_STATUS.PERDIDO,
+]);
 
 /**
  * Campo do sistema (`systemKey`) → lista que dá as opções dele. A coluna
@@ -75,10 +78,25 @@ const COR_PERDIDO = '#DC2626';
 export const OPCOES_LEGADAS = Object.freeze({
   [TIPOS_LISTA.STATUS]: [
     { key: 'novo', label: 'Novo', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
-    { key: 'em_contato', label: 'Em contato', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
-    { key: 'qualificado', label: 'Qualificado', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
+    {
+      key: 'em_contato',
+      label: 'Em contato',
+      color: COR_ABERTO,
+      category: CATEGORIAS_STATUS.ABERTO,
+    },
+    {
+      key: 'qualificado',
+      label: 'Qualificado',
+      color: COR_ABERTO,
+      category: CATEGORIAS_STATUS.ABERTO,
+    },
     { key: 'proposta', label: 'Proposta', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
-    { key: 'negociacao', label: 'Negociação', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
+    {
+      key: 'negociacao',
+      label: 'Negociação',
+      color: COR_ABERTO,
+      category: CATEGORIAS_STATUS.ABERTO,
+    },
     { key: 'ganho', label: 'Ganho', color: COR_GANHO, category: CATEGORIAS_STATUS.GANHO },
     { key: 'perdido', label: 'Perdido', color: COR_PERDIDO, category: CATEGORIAS_STATUS.PERDIDO },
   ],
@@ -110,8 +128,18 @@ export const OPCOES_LEGADAS = Object.freeze({
 export const OPCOES_SUGERIDAS = Object.freeze({
   [TIPOS_LISTA.STATUS]: [
     { key: 'novo', label: 'Novo', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
-    { key: 'em_contato', label: 'Em contato', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
-    { key: 'qualificado', label: 'Qualificado', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
+    {
+      key: 'em_contato',
+      label: 'Em contato',
+      color: COR_ABERTO,
+      category: CATEGORIAS_STATUS.ABERTO,
+    },
+    {
+      key: 'qualificado',
+      label: 'Qualificado',
+      color: COR_ABERTO,
+      category: CATEGORIAS_STATUS.ABERTO,
+    },
     { key: 'proposta', label: 'Proposta', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
     { key: 'ganho', label: 'Ganho', color: COR_GANHO, category: CATEGORIAS_STATUS.GANHO },
     { key: 'perdido', label: 'Perdido', color: COR_PERDIDO, category: CATEGORIAS_STATUS.PERDIDO },

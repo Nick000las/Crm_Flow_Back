@@ -4,7 +4,10 @@ import { CHAVES_RECEITA, LISTA_MODOS_CNPJ } from '../constants.js';
 
 // GET /crm/cnpj/:cnpj (M11b) — com ou sem máscara; o service confere o DV.
 export const cnpjParamSchema = z.object({
-  cnpj: z.string({ required_error: 'Informe o CNPJ' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o CNPJ'),
+  cnpj: z
+    .string({ required_error: 'Informe o CNPJ' })
+    .trim()
+    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o CNPJ'),
 });
 
 const chaveReceita = z.enum(/** @type {[string, ...string[]]} */ ([...CHAVES_RECEITA]), {

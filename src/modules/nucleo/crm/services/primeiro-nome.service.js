@@ -34,7 +34,10 @@ function textoInformado(valor) {
  * @returns {T}
  */
 export function comPrimeiroNomeNaCriacao(dados) {
-  return { ...dados, primeiroNome: textoInformado(dados.primeiroNome) || primeiroNomeDe(dados.nome) };
+  return {
+    ...dados,
+    primeiroNome: textoInformado(dados.primeiroNome) || primeiroNomeDe(dados.nome),
+  };
 }
 
 /**

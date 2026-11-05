@@ -55,9 +55,13 @@ export function assertModule(candidato) {
     if (!Array.isArray(mod.featureFlags)) {
       throw new Error(`Módulo "${mod.key}" inválido: \`featureFlags\` deve ser um array.`);
     }
-    const semPrefixo = mod.featureFlags.find((flag) => typeof flag !== 'string' || !flag.startsWith(`${mod.key}.`));
+    const semPrefixo = mod.featureFlags.find(
+      (flag) => typeof flag !== 'string' || !flag.startsWith(`${mod.key}.`),
+    );
     if (semPrefixo !== undefined) {
-      throw new Error(`Módulo "${mod.key}" inválido: a flag "${semPrefixo}" deve começar com "${mod.key}.".`);
+      throw new Error(
+        `Módulo "${mod.key}" inválido: a flag "${semPrefixo}" deve começar com "${mod.key}.".`,
+      );
     }
   }
   if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {

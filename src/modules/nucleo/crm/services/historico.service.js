@@ -87,7 +87,11 @@ export function diffDoLead(antes, depois, { ignorar = [] } = {}) {
   const customAntes = antes.custom_fields ?? {};
   const customDepois = depois.custom_fields ?? {};
   for (const campoId of new Set([...Object.keys(customAntes), ...Object.keys(customDepois)])) {
-    comparar({ campo: CAMPO_PERSONALIZADO_NO_DIFF, campoId }, customAntes[campoId], customDepois[campoId]);
+    comparar(
+      { campo: CAMPO_PERSONALIZADO_NO_DIFF, campoId },
+      customAntes[campoId],
+      customDepois[campoId],
+    );
   }
 
   return diff;
@@ -114,9 +118,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * @param {{ pagina: number, tamanho: number, categorias?: string[] }} paginacao
  * @param {{ papel?: string }} [acesso]
  */
-export async function listarHistorico(tenantId, leadId, { pagina, tamanho, categorias = [] }, { papel } = {}) {
+export async function listarHistorico(
+  tenantId,
+  leadId,
+  { pagina, tamanho, categorias = [] },
+  { papel } = {},
+) {
   if (categorias.length > 0) await garantirFeature(tenantId, CRM_FEATURES.TIMELINE);
-  const [lead, schema] = await Promise.all([buscarLeadPorId(tenantId, leadId), obterSchemaDoPapel(tenantId, papel)]);
+  const [lead, schema] = await Promise.all([
+    buscarLeadPorId(tenantId, leadId),
+    obterSchemaDoPapel(tenantId, papel),
+  ]);
   if (!lead) throw erroNaoEncontrado('Lead não encontrado');
 
   const { itens, total } = await listarEventosDoLead(tenantId, leadId, {
@@ -140,7 +152,10 @@ export async function listarHistorico(tenantId, leadId, { pagina, tamanho, categ
   const nomes = await buscarNomesDeUsuarios(tenantId, idsDeUsuario(descritos));
 
   return {
-    itens: descritos.map((evento) => ({ ...evento, diff: evento.diff.map((entrada) => comNomeDoUsuario(entrada, nomes)) })),
+    itens: descritos.map((evento) => ({
+      ...evento,
+      diff: evento.diff.map((entrada) => comNomeDoUsuario(entrada, nomes)),
+    })),
     total,
     pagina,
     tamanho,
@@ -157,7 +172,10 @@ export async function listarHistorico(tenantId, leadId, { pagina, tamanho, categ
 export function categoriasDoEvento({ tipo, diff, detalhes }) {
   const categorias = [];
   if (tipo === TIPOS_EVENTO_LEAD.ATUALIZADO) categorias.push(CATEGORIAS_EVENTO.CAMPOS);
-  if ((diff ?? []).some((entrada) => entrada.campo === CAMPO_RESPONSAVEL_NO_DIFF) || detalhes?.distribuicao) {
+  if (
+    (diff ?? []).some((entrada) => entrada.campo === CAMPO_RESPONSAVEL_NO_DIFF) ||
+    detalhes?.distribuicao
+  ) {
     categorias.push(CATEGORIAS_EVENTO.ATRIBUICAO);
   }
   if (tipo === TIPOS_EVENTO_LEAD.MESCLADO) categorias.push(CATEGORIAS_EVENTO.MESCLAGEM);
@@ -180,19 +198,23 @@ export function visiveisDoSchema({ campos, definicoes }) {
       ...campos.filter((campo) => campo.camada !== CAMADA.CAMADA_3).map((campo) => campo.chave),
       ...PROPRIEDADES_NO_HISTORICO.map((propriedade) => propriedade.campo),
     ],
-    campoIds: definicoes.filter((definicao) => ligados.has(definicao.chave)).map((definicao) => definicao.id),
+    campoIds: definicoes
+      .filter((definicao) => ligados.has(definicao.chave))
+      .map((definicao) => definicao.id),
   };
 }
 
 /** @param {{ chave: string, tipo: string }} entrada */
-const ehDeUsuario = (entrada) => entrada.chave === CAMPO_RESPONSAVEL_NO_DIFF || entrada.tipo === TIPOS_CAMPO.USUARIO;
+const ehDeUsuario = (entrada) =>
+  entrada.chave === CAMPO_RESPONSAVEL_NO_DIFF || entrada.tipo === TIPOS_CAMPO.USUARIO;
 
 /** @param {{ diff: (EntradaDiff & { chave: string, tipo: string })[] }[]} eventos */
 function idsDeUsuario(eventos) {
   const ids = new Set();
   for (const { diff } of eventos) {
     for (const entrada of diff.filter(ehDeUsuario)) {
-      for (const valor of [entrada.antes, entrada.depois]) if (typeof valor === 'string' && UUID.test(valor)) ids.add(valor);
+      for (const valor of [entrada.antes, entrada.depois])
+        if (typeof valor === 'string' && UUID.test(valor)) ids.add(valor);
     }
   }
   return [...ids];
@@ -229,10 +251,15 @@ function descritorDoDiff({ campos, definicoes }) {
     campos.filter((campo) => campo.camada !== CAMADA.CAMADA_3).map((campo) => [campo.chave, campo]),
   );
   const personalizadoPorId = new Map(
-    definicoes.filter((definicao) => ligados.has(definicao.chave)).map((definicao) => [definicao.id, definicao]),
+    definicoes
+      .filter((definicao) => ligados.has(definicao.chave))
+      .map((definicao) => [definicao.id, definicao]),
   );
   const propriedadePorCampo = new Map(
-    PROPRIEDADES_NO_HISTORICO.map((propriedade) => [propriedade.campo, REFERENCIAS_FIXAS[propriedade.ref]]),
+    PROPRIEDADES_NO_HISTORICO.map((propriedade) => [
+      propriedade.campo,
+      REFERENCIAS_FIXAS[propriedade.ref],
+    ]),
   );
 
   return (entrada) => {

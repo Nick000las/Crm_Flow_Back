@@ -23,9 +23,8 @@ const COLUNAS_STATUS = Prisma.sql`
  * @returns {Promise<{ id: string }>}
  */
 export function criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, payload }) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       INSERT INTO modulo_crm.import_jobs (tenant_id, usuario_id, estrategia_duplicata, payload, total_linhas)
       VALUES (${tenantId}::uuid, ${usuarioId}::uuid, ${estrategiaDuplicata}, ${JSON.stringify(payload)}::jsonb, ${payload.length})
       RETURNING id
@@ -39,9 +38,8 @@ export function criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, paylo
  * @returns {Promise<ImportJob | undefined>}
  */
 export function buscarImportJob(tenantId, jobId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT ${COLUNAS_STATUS}
       FROM modulo_crm.import_jobs
       WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
@@ -57,9 +55,8 @@ export function buscarImportJob(tenantId, jobId) {
  * @returns {Promise<{ id: string, status: string, estrategia_duplicata: string, payload: object[], usuario_id: string, acoes: Record<string, string> } | undefined>}
  */
 export function buscarImportJobComPayload(tenantId, jobId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       SELECT id, status, estrategia_duplicata, payload, usuario_id, acoes
       FROM modulo_crm.import_jobs
       WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
@@ -99,9 +96,8 @@ export async function definirAcoesDuplicata(tenantId, jobId, acoes) {
  * @returns {Promise<boolean>} se a transição aconteceu
  */
 export function transicionarStatus(tenantId, jobId, de, para) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
+  return getTenantClient(tenantId, (tx) =>
+    tx.$queryRaw`
       UPDATE modulo_crm.import_jobs
       SET status = ${para}
       WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid AND status = ${de}

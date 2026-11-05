@@ -21,7 +21,10 @@ import { invalidarSchemaCampos, reconciliarRegras } from './field-schema.service
  * @type {readonly PassoReconciliacao[]}
  */
 const PASSOS_REGRAS = Object.freeze([
-  { nome: 'regras-padrao', executar: async (tenantId) => ({ criadas: await reconciliarRegras(tenantId) }) },
+  {
+    nome: 'regras-padrao',
+    executar: async (tenantId) => ({ criadas: await reconciliarRegras(tenantId) }),
+  },
 ]);
 
 /** @type {readonly PassoReconciliacao[]} */

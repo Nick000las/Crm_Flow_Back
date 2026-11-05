@@ -1,5 +1,10 @@
 import { CAMADA, CATEGORIA_NA_FRASE, TIPOS_CAMPO, TIPOS_REGRA } from '../constants.js';
-import { chaveDocumento, normalizarHora, somenteDigitos, valorAusente } from './tipos-campo.service.js';
+import {
+  chaveDocumento,
+  normalizarHora,
+  somenteDigitos,
+  valorAusente,
+} from './tipos-campo.service.js';
 
 /**
  * SERVICE (puro): regras de obrigatoriedade por status e condicionais (M8).
@@ -30,7 +35,8 @@ const TAMANHO_DIA = 10;
 const textoNormalizado = (valor) => String(valor).trim().toLowerCase();
 
 /** @param {unknown} valor */
-const diaDe = (valor) => (valor instanceof Date ? valor.toISOString() : String(valor)).slice(0, TAMANHO_DIA);
+const diaDe = (valor) =>
+  (valor instanceof Date ? valor.toISOString() : String(valor)).slice(0, TAMANHO_DIA);
 
 /**
  * Valor comparável conforme o tipo do campo da condição.
@@ -57,7 +63,9 @@ function comparavel(tipo, valor) {
       return normalizarHora(String(valor)) ?? String(valor);
     // Endereço (M11): só os valores das partes, como o filtro.
     case TIPOS_CAMPO.ENDERECO:
-      return textoNormalizado(typeof valor === 'object' && valor !== null ? Object.values(valor).join(' ') : valor);
+      return textoNormalizado(
+        typeof valor === 'object' && valor !== null ? Object.values(valor).join(' ') : valor,
+      );
     case TIPOS_CAMPO.SELECAO:
       return valor;
     default:
@@ -88,18 +96,26 @@ export function avaliarCondicao(tipo, operador, valorRegra, valorLead) {
     case 'contem':
       return lista
         ? lista.includes(valorRegra)
-        : textoNormalizado(comparavel(tipo, valorLead)).includes(textoNormalizado(comparavel(tipo, valorRegra)));
+        : textoNormalizado(comparavel(tipo, valorLead)).includes(
+            textoNormalizado(comparavel(tipo, valorRegra)),
+          );
     case 'e_um_dos': {
-      const opcoes = (Array.isArray(valorRegra) ? valorRegra : []).map((item) => comparavel(tipo, item));
-      return lista ? lista.some((item) => opcoes.includes(item)) : opcoes.includes(comparavel(tipo, valorLead));
+      const opcoes = (Array.isArray(valorRegra) ? valorRegra : []).map((item) =>
+        comparavel(tipo, item),
+      );
+      return lista
+        ? lista.some((item) => opcoes.includes(item))
+        : opcoes.includes(comparavel(tipo, valorLead));
     }
     case 'entre': {
       const { de, ate } = /** @type {{ de?: unknown, ate?: unknown }} */ (valorRegra ?? {});
       if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
         // Sobreposição, como o filtro: começa até o fim da regra e termina depois do início dela.
         const periodo = /** @type {{ de?: unknown, ate?: unknown }} */ (valorLead);
-        const comecaAntesDoFim = ate === undefined || ate === null || diaDe(periodo.de) <= diaDe(ate);
-        const terminaDepoisDoInicio = de === undefined || de === null || diaDe(periodo.ate) >= diaDe(de);
+        const comecaAntesDoFim =
+          ate === undefined || ate === null || diaDe(periodo.de) <= diaDe(ate);
+        const terminaDepoisDoInicio =
+          de === undefined || de === null || diaDe(periodo.ate) >= diaDe(de);
         return comecaAntesDoFim && terminaDepoisDoInicio;
       }
       const atual = comparavel(tipo, valorLead);
@@ -127,10 +143,15 @@ export function valorDoCampo(lead, campo) {
  */
 function regraCasa(regra, lead, { categoriaDoStatus = null }) {
   if (regra.kind === TIPOS_REGRA.POR_STATUS) {
-    const { status = [], categorias = [] } = /** @type {{ status?: string[], categorias?: string[] }} */ (regra.condicao);
-    return (lead.status != null && status.includes(lead.status)) || (categoriaDoStatus != null && categorias.includes(categoriaDoStatus));
+    const { status = [], categorias = [] } =
+      /** @type {{ status?: string[], categorias?: string[] }} */ (regra.condicao);
+    return (
+      (lead.status != null && status.includes(lead.status)) ||
+      (categoriaDoStatus != null && categorias.includes(categoriaDoStatus))
+    );
   }
-  const { campo, operador, valor } = /** @type {{ campo: CampoDaRegra, operador: string, valor?: unknown }} */ (regra.condicao);
+  const { campo, operador, valor } =
+    /** @type {{ campo: CampoDaRegra, operador: string, valor?: unknown }} */ (regra.condicao);
   return avaliarCondicao(campo.tipo, operador, valor, valorDoCampo(lead, campo));
 }
 
@@ -159,7 +180,8 @@ export function avaliarRegras(regras, lead, contexto = {}) {
     const casa = regraCasa(regra, lead, contexto);
     const { chave } = regra.alvo;
     if (regra.efeito.visivel) visibilidade.set(chave, (visibilidade.get(chave) ?? false) || casa);
-    if (regra.efeito.obrigatorio && casa && !obrigatorios.has(chave)) obrigatorios.set(chave, regra);
+    if (regra.efeito.obrigatorio && casa && !obrigatorios.has(chave))
+      obrigatorios.set(chave, regra);
   }
 
   const ocultos = [...visibilidade].filter(([, visivel]) => !visivel).map(([chave]) => chave);
@@ -179,7 +201,8 @@ export function avaliarRegras(regras, lead, contexto = {}) {
  */
 export function motivoDaRegra(regra, labelDoStatus = {}) {
   if (regra.kind === TIPOS_REGRA.POR_STATUS) {
-    const { status = [], categorias = [] } = /** @type {{ status?: string[], categorias?: string[] }} */ (regra.condicao);
+    const { status = [], categorias = [] } =
+      /** @type {{ status?: string[], categorias?: string[] }} */ (regra.condicao);
     const partes = [
       ...status.map((key) => labelDoStatus[key] ?? key),
       ...categorias.map((categoria) => CATEGORIA_NA_FRASE[categoria] ?? categoria),
@@ -229,7 +252,11 @@ export function resolverRegras(linhas, campos) {
     if (linha.kind === TIPOS_REGRA.CONDICIONAL) {
       const campo = porId.get(linha.condition.campoId);
       if (!campo) return [];
-      condicao = { campo: resumo(campo), operador: linha.condition.operador, valor: linha.condition.valor };
+      condicao = {
+        campo: resumo(campo),
+        operador: linha.condition.operador,
+        valor: linha.condition.valor,
+      };
     }
     return [
       {

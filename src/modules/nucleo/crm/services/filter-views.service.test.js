@@ -25,14 +25,18 @@ const FILTROS = { filtros: [{ chave: 'status', operador: 'igual', valor: 'ganho'
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listarCamposDoTenant.mockResolvedValue([{ chave: 'status', label: 'Status', tipo: 'selecao', camada: 1 }]);
+  listarCamposDoTenant.mockResolvedValue([
+    { chave: 'status', label: 'Status', tipo: 'selecao', camada: 1 },
+  ]);
   buscarViewPorNome.mockResolvedValue(undefined);
   criarView.mockResolvedValue({ id: 'view-1', nome: 'Ganhos', filtros: FILTROS });
 });
 
 describe('salvarView', () => {
   it('salva view com filtro válido', async () => {
-    await expect(salvarView(TENANT, USUARIO, { nome: 'Ganhos', filtros: FILTROS })).resolves.toMatchObject({
+    await expect(
+      salvarView(TENANT, USUARIO, { nome: 'Ganhos', filtros: FILTROS }),
+    ).resolves.toMatchObject({
       id: 'view-1',
     });
     expect(criarView).toHaveBeenCalledWith(TENANT, USUARIO, { nome: 'Ganhos', filtros: FILTROS });
@@ -40,7 +44,9 @@ describe('salvarView', () => {
 
   it('não salva view com filtro que já nasce inválido', async () => {
     const filtros = { filtros: [{ chave: 'cpf', operador: 'igual', valor: '1' }] };
-    await expect(salvarView(TENANT, USUARIO, { nome: 'X', filtros })).rejects.toThrow('não é um campo ativo');
+    await expect(salvarView(TENANT, USUARIO, { nome: 'X', filtros })).rejects.toThrow(
+      'não é um campo ativo',
+    );
     expect(criarView).not.toHaveBeenCalled();
   });
 

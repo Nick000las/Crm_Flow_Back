@@ -85,7 +85,13 @@ export async function criarOpcao(tenantId, kind, { label, color = null, category
 
   const key = chaveUnica(slugify(nome) || KEY_PADRAO, new Set(opcoes.map((opcao) => opcao.key)));
   const [criada] = await inserirOpcoes(tenantId, kind, [
-    { key, label: nome, color, category: category ?? null, position: await proximaPosicao(tenantId, kind) },
+    {
+      key,
+      label: nome,
+      color,
+      category: category ?? null,
+      position: await proximaPosicao(tenantId, kind),
+    },
   ]);
   // Outra requisição criou a mesma key entre a leitura e o INSERT.
   if (!criada) throw erroDeConflito('label', 'Já existe uma opção com esse nome');
@@ -109,7 +115,8 @@ export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas) {
   const atual = opcoes.find((opcao) => opcao.id === opcaoId);
   if (!atual) throw opcaoNaoEncontrada();
 
-  const label = mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
+  const label =
+    mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
   validarCategoria(kind, mudancas.category, { obrigatoria: false });
 
   const depois = { ...atual, ...(mudancas.category && { category: mudancas.category }) };
@@ -139,9 +146,14 @@ export async function reordenarLista(tenantId, kind, ids) {
   const esperados = new Set(opcoes.map((opcao) => opcao.id));
   const recebidos = new Set(ids);
   const completa =
-    recebidos.size === ids.length && ids.length === esperados.size && ids.every((id) => esperados.has(id));
+    recebidos.size === ids.length &&
+    ids.length === esperados.size &&
+    ids.every((id) => esperados.has(id));
   if (!completa) {
-    throw erroDeValidacao('ids', 'Envie todas as opções da lista, cada uma uma única vez, na ordem desejada');
+    throw erroDeValidacao(
+      'ids',
+      'Envie todas as opções da lista, cada uma uma única vez, na ordem desejada',
+    );
   }
 
   await reordenarOpcoes(tenantId, kind, ids);
@@ -238,7 +250,11 @@ export async function resolverOpcoesDoLead(listas, input, carregarAtual = async 
   }
 
   if (!Array.isArray(input.tags)) return { input, tagsNovas: [] };
-  const { keys, tagsNovas } = await resolverTags(listas[TIPOS_LISTA.TAG] ?? [], input.tags, leadAtual);
+  const { keys, tagsNovas } = await resolverTags(
+    listas[TIPOS_LISTA.TAG] ?? [],
+    input.tags,
+    leadAtual,
+  );
   return { input: { ...input, tags: keys }, tagsNovas };
 }
 
@@ -256,7 +272,11 @@ export function buscadorDeTags(tags) {
   return (bruto) => {
     const texto = bruto.trim();
     const slug = slugify(texto);
-    return porKey.get(texto) ?? porLabel.get(texto.toLowerCase()) ?? (slug ? porKey.get(slug) : undefined);
+    return (
+      porKey.get(texto) ??
+      porLabel.get(texto.toLowerCase()) ??
+      (slug ? porKey.get(slug) : undefined)
+    );
   };
 }
 
@@ -361,7 +381,8 @@ function garantirLabelLivre(opcoes, label, ignorarId) {
  */
 function validarCategoria(kind, category, { obrigatoria }) {
   if (kind !== TIPOS_LISTA.STATUS) {
-    if (category !== undefined) throw erroDeValidacao('category', 'Só a lista Status tem categoria');
+    if (category !== undefined)
+      throw erroDeValidacao('category', 'Só a lista Status tem categoria');
     return;
   }
   if (obrigatoria && category === undefined) {
@@ -380,7 +401,10 @@ function garantirCategoriasObrigatorias(kind, opcoesDepois) {
   if (kind !== TIPOS_LISTA.STATUS) return;
   for (const categoria of CATEGORIAS_OBRIGATORIAS) {
     if (!opcoesDepois.some((opcao) => opcao.ativo && opcao.category === categoria)) {
-      throw erroDeConflito('category', `É preciso manter ao menos um status ativo da categoria "${categoria}"`);
+      throw erroDeConflito(
+        'category',
+        `É preciso manter ao menos um status ativo da categoria "${categoria}"`,
+      );
     }
   }
 }

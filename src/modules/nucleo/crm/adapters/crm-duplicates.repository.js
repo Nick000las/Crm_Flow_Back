@@ -57,7 +57,8 @@ export function buscarCandidatosEmLote(tenantId, chavesPorCampo) {
   if (entradas.length === 0) return Promise.resolve([]);
 
   const condicoes = entradas.map(
-    ([campo, chaves]) => Prisma.sql`${Prisma.raw(`l.${CAMPOS_DUPLICIDADE[campo].coluna}`)} = ANY(${chaves}::text[])`,
+    ([campo, chaves]) =>
+      Prisma.sql`${Prisma.raw(`l.${CAMPOS_DUPLICIDADE[campo].coluna}`)} = ANY(${chaves}::text[])`,
   );
   return getTenantClient(
     tenantId,
@@ -81,7 +82,9 @@ export function buscarCandidatosEmLote(tenantId, chavesPorCampo) {
  * @returns {Promise<{ id: string, nome: string, campos: string[] }[]>}
  */
 export function buscarCandidatos(tenantId, chaves, ignorarId = null) {
-  const entradas = Object.entries(chaves).filter(([campo, chave]) => CAMPOS_DUPLICIDADE[campo] && chave);
+  const entradas = Object.entries(chaves).filter(
+    ([campo, chave]) => CAMPOS_DUPLICIDADE[campo] && chave,
+  );
   if (entradas.length === 0) return Promise.resolve([]);
 
   const coluna = (campo) => Prisma.raw(`l.${CAMPOS_DUPLICIDADE[campo].coluna}`);

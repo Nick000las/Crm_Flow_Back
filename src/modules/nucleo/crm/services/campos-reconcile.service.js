@@ -28,7 +28,9 @@ export async function reconciliarCamposSistema(tenantId) {
 }
 
 /** @type {import('./reconcile.service.js').PassoReconciliacao[]} */
-export const PASSOS_CAMPOS = Object.freeze([{ nome: 'campos-sistema', executar: reconciliarCamposSistema }]);
+export const PASSOS_CAMPOS = Object.freeze([
+  { nome: 'campos-sistema', executar: reconciliarCamposSistema },
+]);
 
 /**
  * Todos os passos de campos em sequência — usado pelo resolver quando

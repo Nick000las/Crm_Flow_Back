@@ -8,10 +8,18 @@ import { LISTA_BASES_LEGAIS } from '../constants.js';
 // completo — não dá pra expressar "A ou B obrigatório" por campo isolado).
 /** @param {string} mensagem */
 export const opcaoDeLista = (mensagem) =>
-  z.string({ invalid_type_error: mensagem }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem).optional();
+  z
+    .string({ invalid_type_error: mensagem })
+    .trim()
+    .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, mensagem)
+    .optional();
 
 const camposCamada1 = {
-  email: z.string({ invalid_type_error: 'Informe um e-mail válido' }).trim().email('Informe um e-mail válido').optional(),
+  email: z
+    .string({ invalid_type_error: 'Informe um e-mail válido' })
+    .trim()
+    .email('Informe um e-mail válido')
+    .optional(),
   telefone: z
     .string({ invalid_type_error: 'Informe um telefone válido' })
     .min(BRAZIL_PHONE.LANDLINE_LENGTH, 'Informe um telefone válido')
@@ -21,12 +29,20 @@ const camposCamada1 = {
   fonteLead: opcaoDeLista('Origem do lead inválida'),
   status: opcaoDeLista('Status de lead inválido'),
   tags: z
-    .array(z.string({ invalid_type_error: 'Tag inválida' }).trim().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'))
+    .array(
+      z
+        .string({ invalid_type_error: 'Tag inválida' })
+        .trim()
+        .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Tag vazia'),
+    )
     .optional(),
   ultimaInteracaoEm: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
   // M10: omitido (ou vazio) → a primeira palavra do nome; `null` na edição
   // volta ao derivado. Ver primeiro-nome.service.js.
-  primeiroNome: z.string({ invalid_type_error: 'Informe um primeiro nome válido' }).trim().optional(),
+  primeiroNome: z
+    .string({ invalid_type_error: 'Informe um primeiro nome válido' })
+    .trim()
+    .optional(),
 };
 
 // Camada 2 — nativa, mas só visível/obrigatória se o tenant ligar (ver
@@ -44,7 +60,9 @@ const camposCamada2 = {
   campanhaUtm: z.string({ invalid_type_error: 'Informe um valor válido' }).optional(),
   dataConversao: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
   probabilidadeFechamento: z.number({ invalid_type_error: 'Informe um número válido' }).optional(),
-  dataPrevistaFechamento: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
+  dataPrevistaFechamento: z.coerce
+    .date({ invalid_type_error: 'Informe uma data válida' })
+    .optional(),
   motivoPerda: opcaoDeLista('Motivo de perda inválido'),
   leadScore: z.number({ invalid_type_error: 'Informe um número válido' }).optional(),
   proximoFollowup: z.coerce.date({ invalid_type_error: 'Informe uma data válida' }).optional(),
@@ -58,7 +76,9 @@ const camposCamada2 = {
 };
 
 // M15: opt-out de marketing como sim/não; o back carimba a data.
-const optOutMarketing = z.boolean({ invalid_type_error: 'Informe sim ou não para o opt-out' }).optional();
+const optOutMarketing = z
+  .boolean({ invalid_type_error: 'Informe sim ou não para o opt-out' })
+  .optional();
 
 export const usuarioResponsavelIdSchema = z
   .string({ invalid_type_error: 'Informe um responsável válido' })
@@ -73,10 +93,14 @@ export const usuarioResponsavelIdSchema = z
  */
 // M7: o usuário viu o aviso de possível duplicado (409 DUPLICATE_WARNING)
 // e confirmou. Não destrava `block`.
-const ignorarDuplicados = z.boolean({ invalid_type_error: 'Informe se deve ignorar duplicados' }).optional();
+const ignorarDuplicados = z
+  .boolean({ invalid_type_error: 'Informe se deve ignorar duplicados' })
+  .optional();
 
 function aceitandoNull(campos) {
-  return Object.fromEntries(Object.entries(campos).map(([chave, schema]) => [chave, schema.nullable()]));
+  return Object.fromEntries(
+    Object.entries(campos).map(([chave, schema]) => [chave, schema.nullable()]),
+  );
 }
 
 export const criarLeadBodySchema = z
@@ -144,10 +168,18 @@ export const atualizarLeadBodySchema = z.object({
 // ou o do secundário se o do principal estiver vazio.
 export const mesclarLeadsBodySchema = z
   .object({
-    principalId: z.string({ required_error: 'Informe o lead que fica' }).uuid('Id de lead inválido'),
-    secundarioId: z.string({ required_error: 'Informe o lead que será descartado' }).uuid('Id de lead inválido'),
+    principalId: z
+      .string({ required_error: 'Informe o lead que fica' })
+      .uuid('Id de lead inválido'),
+    secundarioId: z
+      .string({ required_error: 'Informe o lead que será descartado' })
+      .uuid('Id de lead inválido'),
     escolhas: z
-      .record(z.enum(['principal', 'secundario'], { errorMap: () => ({ message: 'Escolha "principal" ou "secundario"' }) }))
+      .record(
+        z.enum(['principal', 'secundario'], {
+          errorMap: () => ({ message: 'Escolha "principal" ou "secundario"' }),
+        }),
+      )
       .optional(),
   })
   .strict();

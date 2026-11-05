@@ -16,7 +16,9 @@ describe('montarAtribuicoes (SET dinâmico do PUT de lead)', () => {
     );
     expect(sqlDe(montarAtribuicoes({ nome: 'Ana' }))).not.toContain('ultima_interacao_em');
     // Valor explícito manda: sem o CASE.
-    expect(sqlDe(montarAtribuicoes({ status: 'ganho', ultimaInteracaoEm: null }))).not.toContain('CASE');
+    expect(sqlDe(montarAtribuicoes({ status: 'ganho', ultimaInteracaoEm: null }))).not.toContain(
+      'CASE',
+    );
   });
 
   it('campo omitido não entra no UPDATE; updated_at sempre entra', () => {
@@ -33,7 +35,9 @@ describe('montarAtribuicoes (SET dinâmico do PUT de lead)', () => {
   });
 
   it('usa a coluna real (snake_case) e cast de uuid onde precisa', () => {
-    const sql = sqlDe(montarAtribuicoes({ fonteLead: 'evento', usuarioResponsavelId: null, cpf: '1' }));
+    const sql = sqlDe(
+      montarAtribuicoes({ fonteLead: 'evento', usuarioResponsavelId: null, cpf: '1' }),
+    );
     expect(sql).toContain('fonte_lead = ?');
     expect(sql).toContain('usuario_responsavel_id = ?::uuid');
     expect(sql).toContain('cpf = ?');

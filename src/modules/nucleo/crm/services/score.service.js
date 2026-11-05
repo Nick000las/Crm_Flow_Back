@@ -12,8 +12,17 @@ import {
   registrarProgressoRecalculo,
   salvarRegrasEFaixas,
 } from '../adapters/crm-score.repository.js';
-import { CHAVE_CAMPO_SCORE, CONTEXTOS_VISIBILIDADE, CRM_FEATURES, FAIXAS_SCORE_PADRAO, LIMITES_SCORE } from '../constants.js';
-import { atualizarConfiguracaoCampo, listarConfiguracaoCampos } from './configuracoes-campos.service.js';
+import {
+  CHAVE_CAMPO_SCORE,
+  CONTEXTOS_VISIBILIDADE,
+  CRM_FEATURES,
+  FAIXAS_SCORE_PADRAO,
+  LIMITES_SCORE,
+} from '../constants.js';
+import {
+  atualizarConfiguracaoCampo,
+  listarConfiguracaoCampos,
+} from './configuracoes-campos.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { condicaoDoCampo, erroDeFiltro } from './lead-filter.service.js';
 
@@ -70,7 +79,10 @@ export function expressaoDoScore(regras, campos) {
  */
 async function expressaoDoTenant(tenantId) {
   if (!(await featureAtiva(tenantId, CRM_FEATURES.SCORE))) return null;
-  const [regras, { campos }] = await Promise.all([listarRegrasScore(tenantId), obterSchemaCampos(tenantId)]);
+  const [regras, { campos }] = await Promise.all([
+    listarRegrasScore(tenantId),
+    obterSchemaCampos(tenantId),
+  ]);
   return expressaoDoScore(regras, campos);
 }
 
@@ -108,10 +120,17 @@ export async function recalcularTodos(tenantId) {
     if (ids.length === 0) break;
     processados += ids.length;
     cursor = ids[ids.length - 1];
-    await registrarProgressoRecalculo(tenantId, { total: Math.max(total, processados), processados });
+    await registrarProgressoRecalculo(tenantId, {
+      total: Math.max(total, processados),
+      processados,
+    });
     if (ids.length < LIMITES_SCORE.LOTE_RECALCULO) break;
   }
-  await registrarProgressoRecalculo(tenantId, { total: Math.max(total, processados), processados, concluido: true });
+  await registrarProgressoRecalculo(tenantId, {
+    total: Math.max(total, processados),
+    processados,
+    concluido: true,
+  });
   return { total: Math.max(total, processados), processados };
 }
 
@@ -124,7 +143,10 @@ export async function recalcularTodos(tenantId) {
 export async function garantirScoreNaoEditado(tenantId, input) {
   if (input[CHAVE_CAMPO_SCORE] === undefined) return;
   if (await featureAtiva(tenantId, CRM_FEATURES.SCORE)) {
-    throw erroDeValidacao(CHAVE_CAMPO_SCORE, 'O Lead score é calculado pelas regras de pontuação e não pode ser editado');
+    throw erroDeValidacao(
+      CHAVE_CAMPO_SCORE,
+      'O Lead score é calculado pelas regras de pontuação e não pode ser editado',
+    );
   }
 }
 
@@ -155,7 +177,9 @@ export function faixaDoScore(faixas, score) {
   const valor = Number(score);
   return (
     faixas.find(
-      (faixa) => (faixa.minimo === null || valor >= faixa.minimo) && (faixa.maximo === null || valor <= faixa.maximo),
+      (faixa) =>
+        (faixa.minimo === null || valor >= faixa.minimo) &&
+        (faixa.maximo === null || valor <= faixa.maximo),
     ) ?? null
   );
 }
@@ -191,14 +215,22 @@ export async function obterConfigScore(tenantId) {
     buscarProgressoRecalculo(tenantId),
   ]);
   return {
-    regras: regras.map(({ id, nome, ativo, pontos, condicoes }) => ({ id, nome, ativo, pontos, condicoes })),
-    faixas: faixasSalvas.length > 0 ? faixasSalvas : FAIXAS_SCORE_PADRAO.map((faixa) => ({ ...faixa })),
+    regras: regras.map(({ id, nome, ativo, pontos, condicoes }) => ({
+      id,
+      nome,
+      ativo,
+      pontos,
+      condicoes,
+    })),
+    faixas:
+      faixasSalvas.length > 0 ? faixasSalvas : FAIXAS_SCORE_PADRAO.map((faixa) => ({ ...faixa })),
     faixasConfiguradas: faixasSalvas.length > 0,
     recalculo: progresso
       ? {
           total: progresso.recalculo_total,
           processados: progresso.recalculo_processados,
-          emAndamento: progresso.recalculo_iniciado_em !== null && progresso.recalculo_concluido_em === null,
+          emAndamento:
+            progresso.recalculo_iniciado_em !== null && progresso.recalculo_concluido_em === null,
           concluidoEm: progresso.recalculo_concluido_em,
         }
       : null,
@@ -232,7 +264,11 @@ export async function salvarConfigScore(tenantId, { regras, faixas }) {
 }
 
 /** Onde o score aparece: o formulário de criação fica como está (é só leitura). */
-const CONTEXTOS_DO_SCORE = [CONTEXTOS_VISIBILIDADE.FICHA, CONTEXTOS_VISIBILIDADE.TABELA, CONTEXTOS_VISIBILIDADE.FILTRO];
+const CONTEXTOS_DO_SCORE = [
+  CONTEXTOS_VISIBILIDADE.FICHA,
+  CONTEXTOS_VISIBILIDADE.TABELA,
+  CONTEXTOS_VISIBILIDADE.FILTRO,
+];
 
 /**
  * O "Lead score" é um campo da Camada 2, que o tenant pode ter desligado.
@@ -242,7 +278,9 @@ const CONTEXTOS_DO_SCORE = [CONTEXTOS_VISIBILIDADE.FICHA, CONTEXTOS_VISIBILIDADE
  * @param {string} tenantId
  */
 async function garantirScoreVisivel(tenantId) {
-  const campo = (await listarConfiguracaoCampos(tenantId)).find((item) => item.chave === CHAVE_CAMPO_SCORE);
+  const campo = (await listarConfiguracaoCampos(tenantId)).find(
+    (item) => item.chave === CHAVE_CAMPO_SCORE,
+  );
   if (!campo || CONTEXTOS_DO_SCORE.every((contexto) => campo.visibilidade[contexto])) return;
   await atualizarConfiguracaoCampo(tenantId, campo.id, {
     visibilidade: Object.fromEntries(CONTEXTOS_DO_SCORE.map((contexto) => [contexto, true])),
@@ -259,18 +297,29 @@ function normalizarRegra({ nome, ativo, pontos, condicoes }, indice, campoPorId)
   const nomeLimpo = nome.trim();
   if (!nomeLimpo) throw erroDeValidacao(`${caminho}.nome`, 'Dê um nome à regra');
   if (condicoes.length > LIMITES_SCORE.CONDICOES_POR_REGRA) {
-    throw erroDeValidacao(`${caminho}.condicoes`, `Use no máximo ${LIMITES_SCORE.CONDICOES_POR_REGRA} condições`);
+    throw erroDeValidacao(
+      `${caminho}.condicoes`,
+      `Use no máximo ${LIMITES_SCORE.CONDICOES_POR_REGRA} condições`,
+    );
   }
   const condicoesLimpas = condicoes.map((condicao, posicao) => {
     const campo = campoPorId.get(condicao.campoId);
     const caminhoCondicao = `${caminho}.condicoes.${posicao}`;
     if (!campo) throw erroDeValidacao(caminhoCondicao, 'Escolha um campo ativo para a condição');
-    if (campo.chave === CHAVE_CAMPO_SCORE) throw erroDeValidacao(caminhoCondicao, 'O score não pode depender dele mesmo');
+    if (campo.chave === CHAVE_CAMPO_SCORE)
+      throw erroDeValidacao(caminhoCondicao, 'O score não pode depender dele mesmo');
     try {
       // Mesmas regras de operador × tipo e de formato de valor do filtro.
-      condicaoDoCampo(campo, { chave: campo.chave, operador: condicao.operador, valor: condicao.valor });
+      condicaoDoCampo(campo, {
+        chave: campo.chave,
+        operador: condicao.operador,
+        valor: condicao.valor,
+      });
     } catch (erro) {
-      throw erroDeValidacao(caminhoCondicao, erro instanceof Error ? erro.message : 'Condição inválida');
+      throw erroDeValidacao(
+        caminhoCondicao,
+        erro instanceof Error ? erro.message : 'Condição inválida',
+      );
     }
     return OPERADORES_SEM_VALOR.has(condicao.operador)
       ? { campoId: condicao.campoId, operador: condicao.operador }
@@ -297,7 +346,13 @@ export function normalizarFaixas(faixas) {
     if (faixa.minimo !== null && faixa.maximo !== null && faixa.minimo > faixa.maximo) {
       throw erroDeValidacao(`faixas.${indice}`, `"${rotulo}": o mínimo passa do máximo`);
     }
-    return { chave: faixa.chave?.trim() || slugify(rotulo) || `faixa_${indice + 1}`, rotulo, minimo: faixa.minimo, maximo: faixa.maximo, cor: faixa.cor };
+    return {
+      chave: faixa.chave?.trim() || slugify(rotulo) || `faixa_${indice + 1}`,
+      rotulo,
+      minimo: faixa.minimo,
+      maximo: faixa.maximo,
+      cor: faixa.cor,
+    };
   });
 
   const chaves = limpas.map((faixa) => faixa.chave);
@@ -309,7 +364,10 @@ export function normalizarFaixas(faixas) {
     const anterior = ordenadas[i - 1];
     const atual = ordenadas[i];
     if (anterior.maximo === null || atual.minimo === null || atual.minimo <= anterior.maximo) {
-      throw erroDeValidacao('faixas', `As faixas "${anterior.rotulo}" e "${atual.rotulo}" se sobrepõem`);
+      throw erroDeValidacao(
+        'faixas',
+        `As faixas "${anterior.rotulo}" e "${atual.rotulo}" se sobrepõem`,
+      );
     }
   }
   return limpas;

@@ -47,7 +47,11 @@ export function registrarRotasAtividades(app) {
     const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = criarAtividadeBodySchema.parse(req.body);
-    return sendSuccess(reply, await registrarAtividade(tenantId, leadId, body, userId), HTTP_STATUS.CREATED);
+    return sendSuccess(
+      reply,
+      await registrarAtividade(tenantId, leadId, body, userId),
+      HTTP_STATUS.CREATED,
+    );
   });
 
   app.put('/crm/leads/:id/atividades/:atividadeId', comFlag, async (req, reply) => {
@@ -63,8 +67,10 @@ export function registrarRotasAtividades(app) {
     return sendSuccess(reply, await removerAtividade(tenantId, leadId, atividadeId));
   });
 
-  app.get('/crm/historico/categorias', { preHandler: [exigirFeature(CRM_FEATURES.TIMELINE)] }, async (req, reply) =>
-    sendSuccess(reply, OPCOES_CATEGORIA_EVENTO),
+  app.get(
+    '/crm/historico/categorias',
+    { preHandler: [exigirFeature(CRM_FEATURES.TIMELINE)] },
+    async (req, reply) => sendSuccess(reply, OPCOES_CATEGORIA_EVENTO),
   );
 
   app.get('/crm/leads/:id/historico', comFlag, async (req, reply) => {

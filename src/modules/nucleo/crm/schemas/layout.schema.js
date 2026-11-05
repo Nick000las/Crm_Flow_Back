@@ -11,18 +11,28 @@ const referencia = z
 const secao = z
   .object({
     nome: z
-      .string({ required_error: 'Informe o nome da seção', invalid_type_error: 'Informe o nome da seção' })
+      .string({
+        required_error: 'Informe o nome da seção',
+        invalid_type_error: 'Informe o nome da seção',
+      })
       .trim()
       .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o nome da seção')
-      .max(LIMITES_LAYOUT.NOME_SECAO, `O nome da seção vai até ${LIMITES_LAYOUT.NOME_SECAO} caracteres`),
+      .max(
+        LIMITES_LAYOUT.NOME_SECAO,
+        `O nome da seção vai até ${LIMITES_LAYOUT.NOME_SECAO} caracteres`,
+      ),
     campos: z.array(referencia),
   })
   .strict();
 
 const propriedades = {
   identificador: referencia,
-  subtitulo: z.array(referencia).max(LIMITES_LAYOUT.SUBTITULO, `Subtítulo: até ${LIMITES_LAYOUT.SUBTITULO} campos`),
-  destaques: z.array(referencia).max(LIMITES_LAYOUT.DESTAQUES, `Destaques: até ${LIMITES_LAYOUT.DESTAQUES} campos`),
+  subtitulo: z
+    .array(referencia)
+    .max(LIMITES_LAYOUT.SUBTITULO, `Subtítulo: até ${LIMITES_LAYOUT.SUBTITULO} campos`),
+  destaques: z
+    .array(referencia)
+    .max(LIMITES_LAYOUT.DESTAQUES, `Destaques: até ${LIMITES_LAYOUT.DESTAQUES} campos`),
   secoes: z.array(secao).max(LIMITES_LAYOUT.SECOES, `Até ${LIMITES_LAYOUT.SECOES} seções`),
   colunas: z.array(referencia),
 };

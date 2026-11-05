@@ -1,7 +1,10 @@
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
 import { listarPermissoes } from '../adapters/crm-field-permissions.repository.js';
-import { buscarRegrasDoTenant, semearRegrasDoSistema } from '../adapters/crm-field-rules.repository.js';
+import {
+  buscarRegrasDoTenant,
+  semearRegrasDoSistema,
+} from '../adapters/crm-field-rules.repository.js';
 import { buscarOpcoesDoTenant } from '../adapters/crm-options.repository.js';
 import {
   CAMADA,
@@ -74,13 +77,23 @@ const chaveCache = (tenantId) => `crm:campos:${tenantId}`;
  * @returns {Promise<SchemaCampos>}
  */
 export async function obterSchemaCampos(tenantId) {
-  const { visibilidade, definicoes, sobreposicoes, listas = {}, regras = [], permissoes = [] } = await lerComCache(
-    chaveCache(tenantId),
-    TTL_CACHE_SEGUNDOS,
-    () => carregarSchema(tenantId),
-  );
+  const {
+    visibilidade,
+    definicoes,
+    sobreposicoes,
+    listas = {},
+    regras = [],
+    permissoes = [],
+  } = await lerComCache(chaveCache(tenantId), TTL_CACHE_SEGUNDOS, () => carregarSchema(tenantId));
   const campos = montarCampos(visibilidade, definicoes, sobreposicoes, listas);
-  return { visibilidade, definicoes, listas, campos, regras: resolverRegras(regras, campos), permissoes };
+  return {
+    visibilidade,
+    definicoes,
+    listas,
+    campos,
+    regras: resolverRegras(regras, campos),
+    permissoes,
+  };
 }
 
 /**
@@ -98,9 +111,15 @@ export function invalidarSchemaCampos(tenantId) {
  * @returns {Promise<BaseSchema>}
  */
 async function carregarSchema(tenantId) {
-  const [linhas, opcoes] = await Promise.all([garantirCamposSistema(tenantId), garantirListas(tenantId)]);
+  const [linhas, opcoes] = await Promise.all([
+    garantirCamposSistema(tenantId),
+    garantirListas(tenantId),
+  ]);
   // Regras depois dos campos: a semente aponta pro campo do sistema (M8).
-  const [regras, permissoes] = await Promise.all([garantirRegras(tenantId), listarPermissoes(tenantId)]);
+  const [regras, permissoes] = await Promise.all([
+    garantirRegras(tenantId),
+    listarPermissoes(tenantId),
+  ]);
   return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes), regras, permissoes };
 }
 
@@ -175,8 +194,17 @@ function comOpcoesDaLista(campo, listas) {
   const opcoes = listas[campo.lista] ?? [];
   return {
     ...campo,
-    opcoes: campo.lista === TIPOS_LISTA.TAG ? null : opcoes.filter((opcao) => opcao.ativo).map((opcao) => opcao.key),
-    opcoesLista: opcoes.map(({ key, label, color, category, ativo }) => ({ key, label, color, category, ativo })),
+    opcoes:
+      campo.lista === TIPOS_LISTA.TAG
+        ? null
+        : opcoes.filter((opcao) => opcao.ativo).map((opcao) => opcao.key),
+    opcoesLista: opcoes.map(({ key, label, color, category, ativo }) => ({
+      key,
+      label,
+      color,
+      category,
+      ativo,
+    })),
   };
 }
 
@@ -190,7 +218,8 @@ function comOpcoesDaLista(campo, listas) {
  */
 export async function garantirCamposSistema(tenantId) {
   const linhas = await buscarCamposDoTenant(tenantId);
-  if (linhas.filter((linha) => linha.system_key !== null).length >= CAMPOS_SISTEMA.length) return linhas;
+  if (linhas.filter((linha) => linha.system_key !== null).length >= CAMPOS_SISTEMA.length)
+    return linhas;
 
   await reconciliarCampos(tenantId);
   return buscarCamposDoTenant(tenantId);
@@ -204,9 +233,15 @@ export async function garantirCamposSistema(tenantId) {
  * @returns {VisibilidadePorContexto}
  */
 export function visibilidadeDaLinha(linha) {
-  const padrao = linha.system_key === null ? true : (CONTRATO_POR_CHAVE.get(linha.system_key)?.visivelPadrao ?? false);
+  const padrao =
+    linha.system_key === null
+      ? true
+      : (CONTRATO_POR_CHAVE.get(linha.system_key)?.visivelPadrao ?? false);
   return Object.fromEntries(
-    LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [contexto, linha.visibilidade?.[contexto] ?? padrao]),
+    LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [
+      contexto,
+      linha.visibilidade?.[contexto] ?? padrao,
+    ]),
   );
 }
 
@@ -240,12 +275,14 @@ export function montarBaseDoModeloNovo(linhas) {
   const sobreposicoes = {};
   for (const linha of linhas) {
     if (!linha.is_active) continue;
-    const contrato = linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
+    const contrato =
+      linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
     if (linha.system_key !== null && !contrato) continue; // system_key fora do contrato atual
     sobreposicoes[linha.system_key ?? linha.chave] = {
       id: linha.id,
       label: contrato && !contrato.canRename ? contrato.label : linha.label,
-      obrigatorio: contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
+      obrigatorio:
+        contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
       ordem: linha.position,
       visibilidade: visibilidadeDaLinha(linha),
     };

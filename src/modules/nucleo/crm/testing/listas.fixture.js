@@ -34,7 +34,14 @@ export function mockRepositorioOpcoes() {
     tenantTemLeads: vi.fn(async () => true),
     buscarTagsDosLeads: vi.fn(async () => []),
     inserirOpcoes: vi.fn(async (_tenantId, kind, opcoes) =>
-      opcoes.map((opcao) => ({ id: `nova-${opcao.key}`, kind, ativo: true, color: null, category: null, ...opcao })),
+      opcoes.map((opcao) => ({
+        id: `nova-${opcao.key}`,
+        kind,
+        ativo: true,
+        color: null,
+        category: null,
+        ...opcao,
+      })),
     ),
     proximaPosicao: vi.fn(async () => 0),
     atualizarOpcao: vi.fn(),

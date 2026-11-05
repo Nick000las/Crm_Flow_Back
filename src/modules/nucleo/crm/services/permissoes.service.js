@@ -50,27 +50,37 @@ export function schemaDoPapel(schema, papel) {
   if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) return schema;
 
   const acessoPorId = new Map(
-    (schema.permissoes ?? []).filter((linha) => linha.role === papel).map((linha) => [linha.field_id, linha.access]),
+    (schema.permissoes ?? [])
+      .filter((linha) => linha.role === papel)
+      .map((linha) => [linha.field_id, linha.access]),
   );
   /** @param {{ id?: string | null, chave: string }} campo */
   const acessoDe = (campo) =>
-    CHAVES_SEM_RESTRICAO.includes(campo.chave) ? ACESSOS_CAMPO.EDITAR : (acessoPorId.get(campo.id ?? '') ?? ACESSOS_CAMPO.EDITAR);
+    CHAVES_SEM_RESTRICAO.includes(campo.chave)
+      ? ACESSOS_CAMPO.EDITAR
+      : (acessoPorId.get(campo.id ?? '') ?? ACESSOS_CAMPO.EDITAR);
 
   /** @type {Map<string, Restricao>} */
   const restritos = new Map();
   for (const campo of schema.campos) {
     const acesso = acessoDe(campo);
-    if (acesso !== ACESSOS_CAMPO.EDITAR) restritos.set(campo.chave, { acesso, label: campo.label, camada: campo.camada });
+    if (acesso !== ACESSOS_CAMPO.EDITAR)
+      restritos.set(campo.chave, { acesso, label: campo.label, camada: campo.camada });
   }
   const oculto = (chave) => restritos.get(chave)?.acesso === ACESSOS_CAMPO.OCULTO;
 
   return {
     ...schema,
-    campos: schema.campos.filter((campo) => !oculto(campo.chave)).map((campo) => ({ ...campo, acesso: acessoDe(campo) })),
+    campos: schema.campos
+      .filter((campo) => !oculto(campo.chave))
+      .map((campo) => ({ ...campo, acesso: acessoDe(campo) })),
     definicoes: schema.definicoes.filter((definicao) => !oculto(definicao.chave)),
     regras: (schema.regras ?? []).filter((regra) => {
       if (restritos.has(regra.alvo.chave)) return false;
-      return regra.kind !== TIPOS_REGRA.CONDICIONAL || !oculto(/** @type {any} */ (regra.condicao).campo.chave);
+      return (
+        regra.kind !== TIPOS_REGRA.CONDICIONAL ||
+        !oculto(/** @type {any} */ (regra.condicao).campo.chave)
+      );
     }),
     restritos,
   };
@@ -110,7 +120,8 @@ export function garantirEscritaPermitida(schema, input) {
   }
   for (const [chave, valor] of Object.entries(input.customFields ?? {})) {
     const restricao = restritos.get(chave);
-    if (valor !== undefined && restricao?.camada === CAMADA.CAMADA_3) bloqueados.push([chave, restricao]);
+    if (valor !== undefined && restricao?.camada === CAMADA.CAMADA_3)
+      bloqueados.push([chave, restricao]);
   }
   if (bloqueados.length === 0) return;
 
@@ -133,7 +144,9 @@ export function garantirEscritaPermitida(schema, input) {
  */
 export function identificadorVisivel(identificador, schema) {
   if (!identificador || !schema.restritos) return identificador;
-  return schema.restritos.get(identificador.chave)?.acesso === ACESSOS_CAMPO.OCULTO ? null : identificador;
+  return schema.restritos.get(identificador.chave)?.acesso === ACESSOS_CAMPO.OCULTO
+    ? null
+    : identificador;
 }
 
 /**
@@ -159,7 +172,9 @@ export function contatoNaBusca(schema) {
  */
 export async function obterPermissoes(tenantId) {
   const { campos, permissoes = [] } = await obterSchemaCampos(tenantId);
-  const acesso = new Map(permissoes.map((linha) => [`${linha.role}:${linha.field_id}`, linha.access]));
+  const acesso = new Map(
+    permissoes.map((linha) => [`${linha.role}:${linha.field_id}`, linha.access]),
+  );
   return {
     papeis: [...PAPEIS_COM_PERMISSAO],
     campos: campos
@@ -171,7 +186,10 @@ export async function obterPermissoes(tenantId) {
         camada: campo.camada,
         podeRestringir: !CHAVES_SEM_RESTRICAO.includes(campo.chave),
         acessos: Object.fromEntries(
-          PAPEIS_COM_PERMISSAO.map((papel) => [papel, acesso.get(`${papel}:${campo.id}`) ?? ACESSOS_CAMPO.EDITAR]),
+          PAPEIS_COM_PERMISSAO.map((papel) => [
+            papel,
+            acesso.get(`${papel}:${campo.id}`) ?? ACESSOS_CAMPO.EDITAR,
+          ]),
         ),
       })),
   };
@@ -199,9 +217,14 @@ export async function salvarPermissoes(tenantId, porPapel) {
       }
       restricoes.push({ campoId, acesso, chave: campo.chave });
     }
-    const contatoTravado = CHAVES_CONTATO.every((chave) => restricoes.some((restricao) => restricao.chave === chave));
+    const contatoTravado = CHAVES_CONTATO.every((chave) =>
+      restricoes.some((restricao) => restricao.chave === chave),
+    );
     if (contatoTravado) {
-      throw erroDeValidacao(papel, 'Deixe e-mail ou telefone editável: sem um dos dois, não dá pra criar lead');
+      throw erroDeValidacao(
+        papel,
+        'Deixe e-mail ou telefone editável: sem um dos dois, não dá pra criar lead',
+      );
     }
     return { papel, restricoes: restricoes.map(({ campoId, acesso }) => ({ campoId, acesso })) };
   });

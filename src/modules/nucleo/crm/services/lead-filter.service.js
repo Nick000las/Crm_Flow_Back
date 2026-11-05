@@ -14,7 +14,12 @@ import {
   TIPOS_CAMPO,
 } from '../constants.js';
 import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
-import { chaveDocumento, normalizarHora, somenteDigitos, textoDeBusca } from './tipos-campo.service.js';
+import {
+  chaveDocumento,
+  normalizarHora,
+  somenteDigitos,
+  textoDeBusca,
+} from './tipos-campo.service.js';
 
 /** Tipos guardados como número (faixa e igualdade numérica). */
 const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
@@ -91,7 +96,10 @@ export function dataDaPurga(excluidoEm) {
  * @param {{ comArquivo?: boolean, agora?: Date }} [opcoes]
  * @returns {Prisma.Sql}
  */
-export function condicaoDaSituacao(situacao = SITUACOES_LEAD.ATIVOS, { comArquivo = true, agora } = {}) {
+export function condicaoDaSituacao(
+  situacao = SITUACOES_LEAD.ATIVOS,
+  { comArquivo = true, agora } = {},
+) {
   if (situacao === SITUACOES_LEAD.LIXEIRA) {
     return Prisma.sql`l.deleted_at >= ${inicioDaLixeira(agora)}`;
   }
@@ -121,7 +129,12 @@ export function condicaoDaSituacao(situacao = SITUACOES_LEAD.ATIVOS, { comArquiv
 export function montarCondicoes(
   filtro,
   campos,
-  { identificador = null, comArquivo = true, agora, contato = { email: true, telefone: true } } = {},
+  {
+    identificador = null,
+    comArquivo = true,
+    agora,
+    contato = { email: true, telefone: true },
+  } = {},
 ) {
   const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
 
@@ -211,12 +224,18 @@ export function montarCondicoes(
  */
 export function condicaoDoCampo(campo, item) {
   if (!OPERADORES_POR_TIPO[campo.tipo]?.includes(item.operador)) {
-    throw erroDeFiltro(item.chave, `Operador "${item.operador}" não se aplica ao campo "${campo.label}"`);
+    throw erroDeFiltro(
+      item.chave,
+      `Operador "${item.operador}" não se aplica ao campo "${campo.label}"`,
+    );
   }
   if (campo.camada !== CAMADA.CAMADA_3) return condicaoColuna(colunaNativa(campo), campo, item);
   // O personalizado é gravado pelo `id` (`camposParaFiltro` já põe o
   // caminho; um campo cru do schema, como o do score, ainda não).
-  return condicaoCamada3(campo.chaveArmazenamento || !campo.id ? campo : { ...campo, chaveArmazenamento: campo.id }, item);
+  return condicaoCamada3(
+    campo.chaveArmazenamento || !campo.id ? campo : { ...campo, chaveArmazenamento: campo.id },
+    item,
+  );
 }
 
 /**
@@ -257,7 +276,8 @@ function condicaoBuscaIdentificador(identificador, busca, padrao) {
  * @returns {Prisma.Sql}
  */
 function colunaNativa(campo) {
-  const coluna = campo.camada === CAMADA.CAMADA_1 ? CAMADA_1_CAMPOS[campo.chave] : CAMADA_2_CAMPOS[campo.chave];
+  const coluna =
+    campo.camada === CAMADA.CAMADA_1 ? CAMADA_1_CAMPOS[campo.chave] : CAMADA_2_CAMPOS[campo.chave];
   if (!coluna) {
     // `campos` sempre vem de constants.js + banco, nunca do cliente — só
     // defesa em profundidade, pra nunca cair num Prisma.raw sem mapa.
@@ -269,7 +289,8 @@ function colunaNativa(campo) {
   if (campo.tipo === TIPOS_CAMPO.EMAIL) return Prisma.raw(`lower(l.${coluna})`);
   // M11: CPF/CNPJ nativos pela coluna de duplicidade (M7), já sem máscara e
   // em maiúsculas — cobre as linhas antigas gravadas com pontuação.
-  if (campo.tipo === TIPOS_CAMPO.CPF || campo.tipo === TIPOS_CAMPO.CNPJ) return Prisma.raw(`l.dedup_${coluna}`);
+  if (campo.tipo === TIPOS_CAMPO.CPF || campo.tipo === TIPOS_CAMPO.CNPJ)
+    return Prisma.raw(`l.dedup_${coluna}`);
   return Prisma.raw(`l.${coluna}`);
 }
 
@@ -370,7 +391,8 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
  */
 function expressaoDeFaixa(campo, json, texto) {
   if (campo.tipo === 'data') return dataCamada3(texto);
-  if (campo.tipo === TIPOS_CAMPO.HORA) return Prisma.sql`(CASE WHEN ${texto} ~ '^[0-9]{2}:[0-9]{2}$' THEN ${texto}::time END)`;
+  if (campo.tipo === TIPOS_CAMPO.HORA)
+    return Prisma.sql`(CASE WHEN ${texto} ~ '^[0-9]{2}:[0-9]{2}$' THEN ${texto}::time END)`;
   return numeroCamada3(json, texto);
 }
 
@@ -390,8 +412,14 @@ function condicaoSobrepoe(json, chave, valor) {
     throw erroDeFiltro(chave, 'Informe "de" e/ou "ate" para o filtro de faixa');
   }
   const partes = [];
-  if (temAte) partes.push(Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'de')`)} <= ${exigirData(chave, faixa.ate)}::date`);
-  if (temDe) partes.push(Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'ate')`)} >= ${exigirData(chave, faixa.de)}::date`);
+  if (temAte)
+    partes.push(
+      Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'de')`)} <= ${exigirData(chave, faixa.ate)}::date`,
+    );
+  if (temDe)
+    partes.push(
+      Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'ate')`)} >= ${exigirData(chave, faixa.de)}::date`,
+    );
   return Prisma.sql`(${Prisma.join(partes, ' AND ')})`;
 }
 
@@ -445,7 +473,8 @@ function condicaoEntre(expressao, campo, chave, valor) {
  */
 function conversorDeFaixa(campo, chave) {
   if (campo.tipo === 'data') return (valor) => exigirData(chave, valor);
-  if (campo.tipo === TIPOS_CAMPO.HORA) return (valor) => Prisma.sql`${exigirHora(chave, valor)}::time`;
+  if (campo.tipo === TIPOS_CAMPO.HORA)
+    return (valor) => Prisma.sql`${exigirHora(chave, valor)}::time`;
   return (valor) => exigirNumero(chave, valor);
 }
 
@@ -480,7 +509,8 @@ function textoDoTipo(campo, texto) {
 
 /** @param {string} chave @param {unknown} valor */
 function exigirTexto(chave, valor) {
-  if (typeof valor !== 'string' || valor.length === 0) throw erroDeFiltro(chave, 'Informe um texto');
+  if (typeof valor !== 'string' || valor.length === 0)
+    throw erroDeFiltro(chave, 'Informe um texto');
   return valor;
 }
 
@@ -494,14 +524,16 @@ function exigirListaDeTexto(chave, valor) {
 
 /** @param {string} chave @param {unknown} valor */
 function exigirNumero(chave, valor) {
-  if (typeof valor !== 'number' || !Number.isFinite(valor)) throw erroDeFiltro(chave, 'Informe um número');
+  if (typeof valor !== 'number' || !Number.isFinite(valor))
+    throw erroDeFiltro(chave, 'Informe um número');
   return valor;
 }
 
 /** @param {string} chave @param {unknown} valor */
 function exigirData(chave, valor) {
   const data = valor instanceof Date ? valor : new Date(/** @type {string} */ (valor));
-  if (typeof valor !== 'string' && !(valor instanceof Date)) throw erroDeFiltro(chave, 'Informe uma data');
+  if (typeof valor !== 'string' && !(valor instanceof Date))
+    throw erroDeFiltro(chave, 'Informe uma data');
   if (Number.isNaN(data.getTime())) throw erroDeFiltro(chave, 'Informe uma data válida');
   return data;
 }

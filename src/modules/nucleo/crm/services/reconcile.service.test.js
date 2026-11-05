@@ -27,7 +27,10 @@ describe('reconciliarTenant', () => {
 
   it('para no primeiro passo que falha (o seguinte pode depender dele)', async () => {
     const segundo = { nome: 'segundo', executar: vi.fn() };
-    const passos = [{ nome: 'quebra', executar: () => Promise.reject(new Error('falhou')) }, segundo];
+    const passos = [
+      { nome: 'quebra', executar: () => Promise.reject(new Error('falhou')) },
+      segundo,
+    ];
 
     await expect(reconciliarTenant(TENANT, passos)).rejects.toThrow('falhou');
     expect(segundo.executar).not.toHaveBeenCalled();

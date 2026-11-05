@@ -100,7 +100,7 @@ Novos arquivos, mesmo padrão de `leads.*`:
   `removerDefinicao`. Tudo via `getTenantClient` + `$queryRaw` tagged
   template, `WHERE tenant_id = ...` explícito (contrato §4).
 - `services/field-definitions.service.js` — regra de negócio pura: gera
-  `chave` a partir do `label` (1.3), valida unicidade *antes* do insert
+  `chave` a partir do `label` (1.3), valida unicidade _antes_ do insert
   pra erro amigável, valida `opcoes` só quando `tipo` é de seleção.
 - `controllers/field-definitions.controller.js` — registra
   `GET/POST/PUT/DELETE /crm/field-definitions[/:id]` +
@@ -158,7 +158,7 @@ existem** `origem`, `status`, `tags`. Duas opções, decisão do usuário:
 
 - (a) Adicionar essas colunas a `leads` agora, como parte desta entrega
   (migration extra na Parte 2, `ALTER TABLE modulo_crm.leads ADD COLUMN
-  origem VARCHAR, ADD COLUMN status VARCHAR, ADD COLUMN tags VARCHAR[]`).
+origem VARCHAR, ADD COLUMN status VARCHAR, ADD COLUMN tags VARCHAR[]`).
 - (b) Cortar esses três filtros do escopo desta entrega e reduzir a lista
   de filtros fixos ao que já existe (estágio, responsável, faixa de valor,
   intervalo de data) + full-text em `nome`.
@@ -268,12 +268,12 @@ silenciosamente no meio do desenvolvimento.
 
 ### 3.1 Infraestrutura nova necessária
 
-| Peça | Hoje | Decisão proposta |
-|---|---|---|
-| Fila de jobs | inexistente | `bullmq` + `ioredis` (novas deps) |
-| Broker Redis | inexistente | Variável `REDIS_URL` nova em `env.js`/`.env.example`. Provedor gerenciado fica a critério do usuário — Upstash é uma opção natural já que apareceu antes no projeto (plano do tema Camaleão do frontend), mas é decisão de infra/custo, não técnica, então não decido aqui. |
-| Upload multipart | inexistente | `@fastify/multipart` |
-| Parse de planilha | inexistente | `exceljs` — mais ativamente mantido e com API de streaming (importa pra planilha grande sem carregar tudo em memória de uma vez); `xlsx`/SheetJS (community edition) teve advisories de ReDoS/prototype pollution não corrigidas há tempo. Recomendo `exceljs`, mas é o roteiro quem deixou as duas em aberto. |
+| Peça               | Hoje        | Decisão proposta                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fila de jobs       | inexistente | `bullmq` + `ioredis` (novas deps)                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Broker Redis       | inexistente | Variável `REDIS_URL` nova em `env.js`/`.env.example`. Provedor gerenciado fica a critério do usuário — Upstash é uma opção natural já que apareceu antes no projeto (plano do tema Camaleão do frontend), mas é decisão de infra/custo, não técnica, então não decido aqui.                                                                                                                                                                                                                  |
+| Upload multipart   | inexistente | `@fastify/multipart`                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Parse de planilha  | inexistente | `exceljs` — mais ativamente mantido e com API de streaming (importa pra planilha grande sem carregar tudo em memória de uma vez); `xlsx`/SheetJS (community edition) teve advisories de ReDoS/prototype pollution não corrigidas há tempo. Recomendo `exceljs`, mas é o roteiro quem deixou as duas em aberto.                                                                                                                                                                               |
 | Processo do worker | inexistente | Novo entrypoint `src/workers/crm-data-jobs.worker.js`, processo separado do servidor HTTP (`node src/workers/crm-data-jobs.worker.js`) — mesmo racional de `src/api/server.js` ser o entrypoint HTTP: um worker de fila é outro tipo de entrypoint, não fica dentro de um módulo. Rodar como processo próprio (não dentro do processo do Fastify) é o padrão de mercado pra job worker — evita que um travamento de processamento de planilha afete requisições HTTP, e escala independente. |
 
 Consequência de arquitetura: `eslint.config.js` precisa de um novo tipo em
@@ -330,8 +330,7 @@ justificar object storage de verdade, é revisão futura, não desta entrega
 
 `arquivo_resultado_url` do export tem a mesma pergunta em aberto: sem
 storage de arquivo (S3 ou similar), "link de download quando pronto" não
-tem onde apontar. Fica registrado como decisão pendente do usuário (seção
-5) — não dá pra resolver só com Postgres, diferente do import.
+tem onde apontar. Fica registrado como decisão pendente do usuário (seção 5) — não dá pra resolver só com Postgres, diferente do import.
 
 ### 3.3 Fluxo de importação (endpoints)
 
@@ -352,7 +351,7 @@ tem onde apontar. Fica registrado como decisão pendente do usuário (seção
   fechar a aba).
 - `POST /crm/import/:jobId/confirm` — só aqui o job é de fato enfileirado
   no BullMQ (`adapters/data-jobs.repository.js` grava `status:
-  'processando'` e chama `queue.add(...)`). Nunca processa a planilha no
+'processando'` e chama `queue.add(...)`). Nunca processa a planilha no
   próprio request, mesmo pequena — regra explícita do roteiro.
 - `GET /crm/import/:jobId` — status/progresso (`linhas_processadas` de
   `total_linhas`), pra UI fazer polling ou o front assinar algum canal
@@ -379,7 +378,7 @@ derrubar o job inteiro.
   customizados, na ordem escolhida) + filtro opcional (reaproveita
   `lead-filter.service.js` da Parte 2 — exportar "os leads filtrados" é o
   caso de uso real, vale já nascer integrado). Cria `data_jobs` com `tipo:
-  'export'`, enfileira.
+'export'`, enfileira.
 - Worker gera o `.xlsx` (`exceljs`) só com as colunas pedidas, na ordem
   pedida — usa `field-definitions` pra rotular colunas customizadas.
 - Onde salvar o arquivo gerado pra virar link de download: decisão em
@@ -432,27 +431,27 @@ quebrar em "import" e "export" como PRs separados dado o tamanho.
 ## 6. Critério de pronto (mapeado do roteiro pros artefatos reais)
 
 - [x] `tenant_lead_field_definitions` com RLS, CRUD completo, `chave`
-  slugificada e validada antes do insert.
+      slugificada e validada antes do insert.
 - [x] `leads.custom_fields` + GIN, formulário de lead 100% dinâmico
-  (nenhum campo customizado hardcoded no componente).
+      (nenhum campo customizado hardcoded no componente).
 - [x] `test:rls-coverage` + `test:tenant-isolation` passando depois de
-  cada mudança de schema (Partes 1, 2 e 3 mexem em schema).
+      cada mudança de schema (Partes 1, 2 e 3 mexem em schema).
 - [x] `POST /crm/leads/search` combinando fixo + customizado, com
-  `EXPLAIN ANALYZE` separado por tipo de filtro (2.4) — GIN confirmado
-  pros containment/igualdade, sequential scan aceito e documentado pra
-  texto/número/data em campo customizado. *(Endpoint pronto; o `EXPLAIN
-  ANALYZE` com volume real continua pendente, porque hoje não há leads em
-  produção.)*
+      `EXPLAIN ANALYZE` separado por tipo de filtro (2.4) — GIN confirmado
+      pros containment/igualdade, sequential scan aceito e documentado pra
+      texto/número/data em campo customizado. _(Endpoint pronto; o `EXPLAIN
+ANALYZE` com volume real continua pendente, porque hoje não há leads em
+      produção.)_
 - [x] Views salvas reaplicando filtro exato.
 - [x] Import assíncrono via BullMQ desde o primeiro commit — nunca
-  processado no request, mesmo planilha pequena. Relatório de erro por
-  linha, sem commit parcial silencioso.
+      processado no request, mesmo planilha pequena. Relatório de erro por
+      linha, sem commit parcial silencioso.
 - [x] 3 estratégias de duplicata testadas (pular/atualizar/criar).
 - [x] Export configurável por coluna, ~~assíncrono~~ síncrono (decisão: download direto na rota, sem storage), decisão de storage
-  resolvida (seção 5) antes de começar essa fatia.
+      resolvida (seção 5) antes de começar essa fatia.
 - [x] `npm run lint` passando com o novo tipo `worker` reconhecido pelo
-  `eslint-plugin-boundaries`.
+      `eslint-plugin-boundaries`.
 - [ ] Fora de escopo, igual o roteiro já registrou: Data Warehouse, grupos
-  AND/OR complexos, promoção de campo customizado pra coluna nativa
-  (é literalmente o que resolveria o caveat da seção 2.4 — fica marcado
-  como o motivo técnico concreto pra essa entrada existir na lista).
+      AND/OR complexos, promoção de campo customizado pra coluna nativa
+      (é literalmente o que resolveria o caveat da seção 2.4 — fica marcado
+      como o motivo técnico concreto pra essa entrada existir na lista).

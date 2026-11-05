@@ -63,7 +63,11 @@ const PREDICADO_DA_CATEGORIA = Object.freeze({
  *   visiveis?: { chaves: string[], campoIds: string[] },
  * }} opcoes
  */
-export function listarEventosDoLead(tenantId, leadId, { limite, offset, categorias = [], visiveis }) {
+export function listarEventosDoLead(
+  tenantId,
+  leadId,
+  { limite, offset, categorias = [], visiveis },
+) {
   const condicoes = [Prisma.sql`e.tenant_id = ${tenantId}::uuid AND e.lead_id = ${leadId}::uuid`];
   if (visiveis) {
     condicoes.push(Prisma.sql`(
@@ -75,7 +79,9 @@ export function listarEventosDoLead(tenantId, leadId, { limite, offset, categori
       )
     )`);
   }
-  const predicados = categorias.map((categoria) => PREDICADO_DA_CATEGORIA[categoria]).filter(Boolean);
+  const predicados = categorias
+    .map((categoria) => PREDICADO_DA_CATEGORIA[categoria])
+    .filter(Boolean);
   if (predicados.length > 0) condicoes.push(Prisma.sql`(${Prisma.join(predicados, ' OR ')})`);
   const where = Prisma.join(condicoes, ' AND ');
 

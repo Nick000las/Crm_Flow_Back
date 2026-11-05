@@ -35,6 +35,8 @@ describe('notificações in-app (core)', () => {
 
   it('marcar a de outro usuário (ou inexistente) → 404', async () => {
     marcarNotificacaoLida.mockResolvedValue(undefined);
-    await expect(marcarComoLida(TENANT, USUARIO, 'n-1')).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
+    await expect(marcarComoLida(TENANT, USUARIO, 'n-1')).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.NOT_FOUND,
+    });
   });
 });

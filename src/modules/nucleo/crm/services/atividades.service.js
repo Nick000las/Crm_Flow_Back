@@ -63,7 +63,12 @@ async function validarTipo(tenantId, tipo, tipoAtual) {
  */
 export async function listarTiposDeAtividade(tenantId) {
   const { listas } = await obterSchemaCampos(tenantId);
-  return (listas[TIPOS_LISTA.TIPO_ATIVIDADE] ?? []).map(({ key, label, color, ativo }) => ({ key, label, color, ativo }));
+  return (listas[TIPOS_LISTA.TIPO_ATIVIDADE] ?? []).map(({ key, label, color, ativo }) => ({
+    key,
+    label,
+    color,
+    ativo,
+  }));
 }
 
 /**

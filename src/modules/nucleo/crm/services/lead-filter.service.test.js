@@ -1,14 +1,31 @@
 import { describe, it, expect } from 'vitest';
-import { condicaoDaSituacao, dataDaPurga, inicioDaLixeira, montarCondicoes } from './lead-filter.service.js';
+import {
+  condicaoDaSituacao,
+  dataDaPurga,
+  inicioDaLixeira,
+  montarCondicoes,
+} from './lead-filter.service.js';
 import { CAMADA } from '../constants.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 
 const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
-  { chave: 'status', label: 'Status', tipo: 'selecao', camada: CAMADA.CAMADA_1, opcoes: ['novo', 'ganho'] },
+  {
+    chave: 'status',
+    label: 'Status',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_1,
+    opcoes: ['novo', 'ganho'],
+  },
   { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', camada: CAMADA.CAMADA_1, opcoes: null },
   { chave: 'leadScore', label: 'Lead score', tipo: 'numero', camada: CAMADA.CAMADA_2 },
-  { chave: 'segmento', label: 'Segmento', tipo: 'selecao', camada: CAMADA.CAMADA_3, opcoes: ['varejo', 'industria'] },
+  {
+    chave: 'segmento',
+    label: 'Segmento',
+    tipo: 'selecao',
+    camada: CAMADA.CAMADA_3,
+    opcoes: ['varejo', 'industria'],
+  },
   { chave: 'renda', label: 'Renda', tipo: 'numero', camada: CAMADA.CAMADA_3 },
   { chave: 'aniversario', label: 'Aniversário', tipo: 'data', camada: CAMADA.CAMADA_3 },
 ];
@@ -57,18 +74,31 @@ describe('montarCondicoes', () => {
 
   it('semResponsavel: sem responsável ou com responsável desativado', () => {
     const sql = sqlDe(montarCondicoes({ semResponsavel: true }, CAMPOS));
-    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)');
+    expect(sql).toContain(
+      'NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)',
+    );
   });
 
   it('semResponsavel junto com usuarioResponsavelId é 400', () => {
     expect(() =>
-      montarCondicoes({ semResponsavel: true, usuarioResponsavelId: '00000000-0000-0000-0000-000000000001' }, CAMPOS),
-    ).toThrow(expect.objectContaining({ statusCode: HTTP_STATUS.BAD_REQUEST, fields: { semResponsavel: [expect.any(String)] } }));
+      montarCondicoes(
+        { semResponsavel: true, usuarioResponsavelId: '00000000-0000-0000-0000-000000000001' },
+        CAMPOS,
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        fields: { semResponsavel: [expect.any(String)] },
+      }),
+    );
   });
 
   it('valor malicioso continua sendo parâmetro, nunca SQL', () => {
     const ataque = "x'; DROP TABLE leads; --";
-    const condicoes = montarCondicoes({ filtros: [{ chave: 'nome', operador: 'contem', valor: ataque }] }, CAMPOS);
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'nome', operador: 'contem', valor: ataque }] },
+      CAMPOS,
+    );
     expect(sqlDe(condicoes)).not.toContain('DROP');
     expect(valoresDe(condicoes)).toContain(`%${ataque}%`);
   });
@@ -91,10 +121,16 @@ describe('montarCondicoes', () => {
   });
 
   it('tags (array nativo) usa ANY / && em vez de igualdade', () => {
-    const contem = montarCondicoes({ filtros: [{ chave: 'tags', operador: 'contem', valor: 'vip' }] }, CAMPOS);
+    const contem = montarCondicoes(
+      { filtros: [{ chave: 'tags', operador: 'contem', valor: 'vip' }] },
+      CAMPOS,
+    );
     expect(sqlDe(contem)).toContain('= ANY(l.tags)');
 
-    const algum = montarCondicoes({ filtros: [{ chave: 'tags', operador: 'e_um_dos', valor: ['vip', 'b2b'] }] }, CAMPOS);
+    const algum = montarCondicoes(
+      { filtros: [{ chave: 'tags', operador: 'e_um_dos', valor: ['vip', 'b2b'] }] },
+      CAMPOS,
+    );
     expect(sqlDe(algum)).toContain('l.tags &&');
   });
 
@@ -106,16 +142,25 @@ describe('montarCondicoes', () => {
 
   it('rejeita operador incompatível com o tipo', () => {
     expect(() =>
-      montarCondicoes({ filtros: [{ chave: 'leadScore', operador: 'contem', valor: 'x' }] }, CAMPOS),
+      montarCondicoes(
+        { filtros: [{ chave: 'leadScore', operador: 'contem', valor: 'x' }] },
+        CAMPOS,
+      ),
     ).toThrow('Operador "contem" não se aplica');
   });
 
   it('rejeita valor de tipo errado', () => {
     expect(() =>
-      montarCondicoes({ filtros: [{ chave: 'leadScore', operador: 'igual', valor: 'alto' }] }, CAMPOS),
+      montarCondicoes(
+        { filtros: [{ chave: 'leadScore', operador: 'igual', valor: 'alto' }] },
+        CAMPOS,
+      ),
     ).toThrow('Informe um número');
     expect(() =>
-      montarCondicoes({ filtros: [{ chave: 'aniversario', operador: 'igual', valor: 'ontem' }] }, CAMPOS),
+      montarCondicoes(
+        { filtros: [{ chave: 'aniversario', operador: 'igual', valor: 'ontem' }] },
+        CAMPOS,
+      ),
     ).toThrow('Informe uma data válida');
   });
 
@@ -155,7 +200,10 @@ describe('personalizado lido pelo id do campo', () => {
   });
 
   it('operadores de texto/vazio também usam o id como caminho', () => {
-    const condicoes = montarCondicoes({ filtros: [{ chave: 'segmento', operador: 'vazio' }] }, CAMPOS_POR_ID);
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'segmento', operador: 'vazio' }] },
+      CAMPOS_POR_ID,
+    );
     expect(valoresDe(condicoes)).toContain(ID_SEGMENTO);
   });
 });
@@ -239,8 +287,12 @@ describe('busca pelo identificador do layout (M4)', () => {
   const CNPJ = { chave: 'cnpj', camada: CAMADA.CAMADA_2, id: 'id-cnpj' };
 
   it('CNPJ com e sem pontuação geram a mesma condição (chave dedup_cnpj, prefixo)', () => {
-    const comMascara = montarCondicoes({ busca: '12.345.678/0001-90' }, CAMPOS, { identificador: CNPJ });
-    const semMascara = montarCondicoes({ busca: '12345678000190' }, CAMPOS, { identificador: CNPJ });
+    const comMascara = montarCondicoes({ busca: '12.345.678/0001-90' }, CAMPOS, {
+      identificador: CNPJ,
+    });
+    const semMascara = montarCondicoes({ busca: '12345678000190' }, CAMPOS, {
+      identificador: CNPJ,
+    });
 
     expect(sqlDe(comMascara)).toContain('l.dedup_cnpj LIKE');
     expect(valoresDe(comMascara)).toContain('12345678000190%');
@@ -248,10 +300,12 @@ describe('busca pelo identificador do layout (M4)', () => {
   });
 
   it('CNPJ alfanumérico (M7): letras viram maiúsculas na chave; identificador de texto vira ILIKE', () => {
-    expect(valoresDe(montarCondicoes({ busca: '12.abc.345/01de' }, CAMPOS, { identificador: CNPJ }))).toContain(
-      '12ABC34501DE%',
+    expect(
+      valoresDe(montarCondicoes({ busca: '12.abc.345/01de' }, CAMPOS, { identificador: CNPJ })),
+    ).toContain('12ABC34501DE%');
+    expect(sqlDe(montarCondicoes({ busca: '---' }, CAMPOS, { identificador: CNPJ }))).not.toContain(
+      'dedup_cnpj',
     );
-    expect(sqlDe(montarCondicoes({ busca: '---' }, CAMPOS, { identificador: CNPJ }))).not.toContain('dedup_cnpj');
 
     const empresa = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
       identificador: { chave: 'empresa', camada: CAMADA.CAMADA_2 },
@@ -275,12 +329,16 @@ describe('situação do lead (M5)', () => {
 
   it('toda consulta exclui a lixeira, a menos que ela seja pedida', () => {
     for (const situacao of [undefined, 'ativos', 'arquivados']) {
-      expect(sqlDe(montarCondicoes({ situacao, busca: 'ana' }, CAMPOS))).toContain('l.deleted_at IS NULL');
+      expect(sqlDe(montarCondicoes({ situacao, busca: 'ana' }, CAMPOS))).toContain(
+        'l.deleted_at IS NULL',
+      );
     }
   });
 
   it('arquivados: fora da lixeira e com archived_at', () => {
-    expect(condicaoDaSituacao('arquivados').sql).toBe('l.deleted_at IS NULL AND l.archived_at IS NOT NULL');
+    expect(condicaoDaSituacao('arquivados').sql).toBe(
+      'l.deleted_at IS NULL AND l.archived_at IS NOT NULL',
+    );
   });
 
   it('lixeira: só o que foi excluído dentro do prazo de 30 dias', () => {
@@ -330,20 +388,33 @@ describe('tipos do M11 no filtro', () => {
   });
 
   it('hora: faixa com cast pra time; igualdade normaliza 9:05 → 09:05', () => {
-    const faixa = montarCondicoes({ filtros: [{ chave: 'horario', operador: 'entre', valor: { de: '8:00', ate: '12:00' } }] }, CAMPOS_M11);
+    const faixa = montarCondicoes(
+      { filtros: [{ chave: 'horario', operador: 'entre', valor: { de: '8:00', ate: '12:00' } }] },
+      CAMPOS_M11,
+    );
     expect(sqlDe(faixa)).toContain('::time');
     expect(valoresDe(faixa)).toEqual(expect.arrayContaining(['08:00', '12:00']));
 
-    const igual = montarCondicoes({ filtros: [{ chave: 'horario', operador: 'igual', valor: '9:05' }] }, CAMPOS_M11);
+    const igual = montarCondicoes(
+      { filtros: [{ chave: 'horario', operador: 'igual', valor: '9:05' }] },
+      CAMPOS_M11,
+    );
     expect(valoresDe(igual)).toContain(JSON.stringify({ horario: '09:05' }));
     expect(() =>
-      montarCondicoes({ filtros: [{ chave: 'horario', operador: 'entre', valor: { de: 'meio-dia' } }] }, CAMPOS_M11),
+      montarCondicoes(
+        { filtros: [{ chave: 'horario', operador: 'entre', valor: { de: 'meio-dia' } }] },
+        CAMPOS_M11,
+      ),
     ).toThrow(/hora/);
   });
 
   it('intervalo: "entre" é sobreposição (começa até o fim do filtro e termina depois do início)', () => {
     const condicoes = montarCondicoes(
-      { filtros: [{ chave: 'viagem', operador: 'entre', valor: { de: '2026-02-01', ate: '2026-02-28' } }] },
+      {
+        filtros: [
+          { chave: 'viagem', operador: 'entre', valor: { de: '2026-02-01', ate: '2026-02-28' } },
+        ],
+      },
       CAMPOS_M11,
     );
     const sql = sqlDe(condicoes);
@@ -353,24 +424,39 @@ describe('tipos do M11 no filtro', () => {
   });
 
   it('endereço: "contém" procura nos valores das partes, não nos nomes das chaves', () => {
-    const condicoes = montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'contem', valor: 'Recife' }] }, CAMPOS_M11);
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'entrega', operador: 'contem', valor: 'Recife' }] },
+      CAMPOS_M11,
+    );
     expect(sqlDe(condicoes)).toContain('jsonb_each_text');
     expect(valoresDe(condicoes)).toContain('%Recife%');
   });
 
   it('objeto vazio conta como vazio', () => {
-    const condicoes = montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'vazio' }] }, CAMPOS_M11);
+    const condicoes = montarCondicoes(
+      { filtros: [{ chave: 'entrega', operador: 'vazio' }] },
+      CAMPOS_M11,
+    );
     expect(sqlDe(condicoes)).toContain("'{}'::jsonb");
   });
 
   it('usuário compara em minúsculas; endereço não aceita igualdade', () => {
     const condicoes = montarCondicoes(
-      { filtros: [{ chave: 'consultor', operador: 'igual', valor: '00000000-0000-0000-0000-0000000000AA' }] },
+      {
+        filtros: [
+          { chave: 'consultor', operador: 'igual', valor: '00000000-0000-0000-0000-0000000000AA' },
+        ],
+      },
       CAMPOS_M11,
     );
-    expect(valoresDe(condicoes)).toContain(JSON.stringify({ consultor: '00000000-0000-0000-0000-0000000000aa' }));
-    expect(() => montarCondicoes({ filtros: [{ chave: 'entrega', operador: 'igual', valor: 'x' }] }, CAMPOS_M11)).toThrow(
-      /não se aplica/,
+    expect(valoresDe(condicoes)).toContain(
+      JSON.stringify({ consultor: '00000000-0000-0000-0000-0000000000aa' }),
     );
+    expect(() =>
+      montarCondicoes(
+        { filtros: [{ chave: 'entrega', operador: 'igual', valor: 'x' }] },
+        CAMPOS_M11,
+      ),
+    ).toThrow(/não se aplica/);
   });
 });

@@ -16,7 +16,9 @@ import {
   salvarInatividade,
 } from './inatividade.service.js';
 
-vi.mock('#core/notificacoes/notificacoes.js', () => ({ criarNotificacoes: vi.fn(async (_t, itens) => itens.length) }));
+vi.mock('#core/notificacoes/notificacoes.js', () => ({
+  criarNotificacoes: vi.fn(async (_t, itens) => itens.length),
+}));
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
 vi.mock('#core/tenant/module-access.js', () => ({ listarTenantsAtivosDoModulo: vi.fn() }));
 vi.mock('../adapters/crm-inatividade.repository.js', () => ({
@@ -25,7 +27,9 @@ vi.mock('../adapters/crm-inatividade.repository.js', () => ({
   definirDiasPorStatus: vi.fn(),
 }));
 vi.mock('../adapters/usuarios.repository.js', () => ({ listarDonosAtivosDoTenant: vi.fn() }));
-vi.mock('../adapters/manutencao-queue.repository.js', () => ({ agendarNotificacaoEsfriando: vi.fn() }));
+vi.mock('../adapters/manutencao-queue.repository.js', () => ({
+  agendarNotificacaoEsfriando: vi.fn(),
+}));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const OUTRO_TENANT = '00000000-0000-0000-0000-000000000002';
@@ -65,7 +69,9 @@ describe('configuração dos dias por status', () => {
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { 'status.sumiu': [expect.stringContaining('não existe')] },
     });
-    await expect(salvarInatividade(TENANT, { status: { ganho: DIAS } })).rejects.toThrow('não esfria');
+    await expect(salvarInatividade(TENANT, { status: { ganho: DIAS } })).rejects.toThrow(
+      'não esfria',
+    );
     expect(definirDiasPorStatus).not.toHaveBeenCalled();
 
     await salvarInatividade(TENANT, { status: { ganho: null } });
@@ -75,13 +81,25 @@ describe('configuração dos dias por status', () => {
 
 describe('dataEHoraLocal', () => {
   it('converte pro fuso do tenant (a data local pode ser outra)', () => {
-    expect(dataEHoraLocal(AS_OITO_E_MEIA, SAO_PAULO)).toEqual({ data: '2026-10-17', hora: HORA_DO_RESUMO });
-    expect(dataEHoraLocal(new Date('2026-10-17T02:00:00Z'), SAO_PAULO)).toEqual({ data: '2026-10-16', hora: HORA_NA_VESPERA });
-    expect(dataEHoraLocal(AS_OITO_E_MEIA, 'Asia/Tokyo')).toEqual({ data: '2026-10-17', hora: HORA_EM_TOQUIO });
+    expect(dataEHoraLocal(AS_OITO_E_MEIA, SAO_PAULO)).toEqual({
+      data: '2026-10-17',
+      hora: HORA_DO_RESUMO,
+    });
+    expect(dataEHoraLocal(new Date('2026-10-17T02:00:00Z'), SAO_PAULO)).toEqual({
+      data: '2026-10-16',
+      hora: HORA_NA_VESPERA,
+    });
+    expect(dataEHoraLocal(AS_OITO_E_MEIA, 'Asia/Tokyo')).toEqual({
+      data: '2026-10-17',
+      hora: HORA_EM_TOQUIO,
+    });
   });
 
   it('fuso inválido cai no padrão', () => {
-    expect(dataEHoraLocal(AS_OITO_E_MEIA, 'Lua/Base')).toEqual({ data: '2026-10-17', hora: HORA_DO_RESUMO });
+    expect(dataEHoraLocal(AS_OITO_E_MEIA, 'Lua/Base')).toEqual({
+      data: '2026-10-17',
+      hora: HORA_DO_RESUMO,
+    });
   });
 });
 
@@ -100,7 +118,11 @@ describe('montarNotificacoesDoDia', () => {
         usuarioId: VENDEDORA,
         tipo: 'crm.esfriando',
         titulo: 'Você tem 4 leads esfriando',
-        dados: { rota: '/crm/leads', filtro: { esfriando: true, usuarioResponsavelId: VENDEDORA }, total: LEADS_DA_VENDEDORA },
+        dados: {
+          rota: '/crm/leads',
+          filtro: { esfriando: true, usuarioResponsavelId: VENDEDORA },
+          total: LEADS_DA_VENDEDORA,
+        },
         chaveDedup: 'crm.esfriando:2026-10-17',
       }),
       expect.objectContaining({
@@ -114,7 +136,9 @@ describe('montarNotificacoesDoDia', () => {
   });
 
   it('sem leads sem responsável, os DONOs não recebem o resumo à parte', () => {
-    expect(montarNotificacoesDoDia([{ usuario_id: VENDEDORA, total: 1 }], [DONO], '2026-10-17')).toHaveLength(1);
+    expect(
+      montarNotificacoesDoDia([{ usuario_id: VENDEDORA, total: 1 }], [DONO], '2026-10-17'),
+    ).toHaveLength(1);
   });
 });
 

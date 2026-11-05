@@ -21,17 +21,17 @@ O módulo CRM do CRMFlow deve ganhar uma área de Configurações que permita a 
 
 A aba "Campos" da sidebar de nível 2 vira "Configurações", com nove subseções. Acesso de escrita: DONO (e MASTER). OPERADOR só altera o próprio override de layout (ver seção 1).
 
-| Subseção | O que configura | Quem edita |
-| --- | --- | --- |
-| Layout do lead | Identificador, subtítulo, destaques, seções do drawer | DONO (padrão do tenant); OPERADOR (override pessoal) |
-| Campos | Campos do sistema e personalizados, visibilidade por contexto, obrigatoriedade, condicionais, permissões | DONO |
-| Listas | Status, Origem, Motivos de perda, Tipos de atividade, Tags | DONO |
-| Duplicidade | Regras de correspondência e ação | DONO |
-| Distribuição | Regras de atribuição de responsável | DONO |
-| Inatividade | Dias até esfriar por status | DONO |
-| Pontuação | Critérios de score e faixas | DONO |
-| Enriquecimento | Consulta automática de CNPJ | DONO |
-| Privacidade (LGPD) | Base legal padrão, obrigatoriedade | DONO |
+| Subseção           | O que configura                                                                                          | Quem edita                                           |
+| ------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Layout do lead     | Identificador, subtítulo, destaques, seções do drawer                                                    | DONO (padrão do tenant); OPERADOR (override pessoal) |
+| Campos             | Campos do sistema e personalizados, visibilidade por contexto, obrigatoriedade, condicionais, permissões | DONO                                                 |
+| Listas             | Status, Origem, Motivos de perda, Tipos de atividade, Tags                                               | DONO                                                 |
+| Duplicidade        | Regras de correspondência e ação                                                                         | DONO                                                 |
+| Distribuição       | Regras de atribuição de responsável                                                                      | DONO                                                 |
+| Inatividade        | Dias até esfriar por status                                                                              | DONO                                                 |
+| Pontuação          | Critérios de score e faixas                                                                              | DONO                                                 |
+| Enriquecimento     | Consulta automática de CNPJ                                                                              | DONO                                                 |
+| Privacidade (LGPD) | Base legal padrão, obrigatoriedade                                                                       | DONO                                                 |
 
 ## 1. Layout do lead
 
@@ -41,13 +41,13 @@ O tenant escolhe qual campo identifica o lead (Nome, Empresa, CNPJ ou CPF) e qua
 
 ### Configurações
 
-| Configuração | Valores | Onde aparece |
-| --- | --- | --- |
-| Identificador principal | 1 campo: Nome, Empresa, CNPJ, CPF, E-mail ou campo personalizado de texto | Título do drawer, 1ª coluna da tabela, resultados de busca, cards do kanban |
-| Subtítulo | Até 2 campos, unidos por " · " | Abaixo do título no drawer (substitui "Dados do lead.") |
-| Campos em destaque | Até 4 campos | Chips no topo do drawer (ex.: Valor, Status, Responsável) |
-| Seções do drawer | Nome, ordem e campos de cada seção | Corpo do drawer |
-| Colunas padrão da tabela | Lista ordenada de campos | Tabela de leads ao abrir sem view salva |
+| Configuração             | Valores                                                                   | Onde aparece                                                                |
+| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Identificador principal  | 1 campo: Nome, Empresa, CNPJ, CPF, E-mail ou campo personalizado de texto | Título do drawer, 1ª coluna da tabela, resultados de busca, cards do kanban |
+| Subtítulo                | Até 2 campos, unidos por " · "                                            | Abaixo do título no drawer (substitui "Dados do lead.")                     |
+| Campos em destaque       | Até 4 campos                                                              | Chips no topo do drawer (ex.: Valor, Status, Responsável)                   |
+| Seções do drawer         | Nome, ordem e campos de cada seção                                        | Corpo do drawer                                                             |
+| Colunas padrão da tabela | Lista ordenada de campos                                                  | Tabela de leads ao abrir sem view salva                                     |
 
 ### Regras
 
@@ -72,12 +72,12 @@ Cada campo passa a ter visibilidade separada por contexto, ordem por arrastar, o
 
 O toggle "Visível" vira uma matriz de quatro colunas. O Pipedrive passou a permitir escolher quais campos personalizados aparecem no detalhe do lead; o Attio tem templates que definem os campos do formulário de criação.
 
-| Contexto | Efeito quando ligado |
-| --- | --- |
-| Formulário de criação | Aparece no drawer "Novo lead" |
-| Ficha | Aparece no drawer de detalhe (na seção escolhida no Layout) |
-| Tabela | Disponível no seletor de Colunas; coluna padrão se marcada no Layout |
-| Filtros | Aparece no painel de Filtros |
+| Contexto              | Efeito quando ligado                                                 |
+| --------------------- | -------------------------------------------------------------------- |
+| Formulário de criação | Aparece no drawer "Novo lead"                                        |
+| Ficha                 | Aparece no drawer de detalhe (na seção escolhida no Layout)          |
+| Tabela                | Disponível no seletor de Colunas; coluna padrão se marcada no Layout |
+| Filtros               | Aparece no painel de Filtros                                         |
 
 Desligar um contexto não apaga dados (mantém o texto atual da tela). A ordem passa a ser drag-and-drop na lista, com "Voltar ao padrão"; o input numérico some.
 
@@ -109,13 +109,13 @@ No CRMFlow, por campo e por papel: **Ver e editar**, **Só ver** ou **Oculto**. 
 
 Status, Origem, Motivos de perda, Tipos de atividade e Tags viram listas editáveis pelo DONO, cada uma com nome, cor, ordem e flag de ativo.
 
-| Lista | Padrões sugeridos | Referência |
-| --- | --- | --- |
-| Status | Novo, Em contato, Qualificado, Proposta, Ganho, Perdido | Pipedrive: labels padrão Quente, Morno, Frio + personalizadas |
-| Origem | Tráfego pago, Orgânico, Indicação, WhatsApp, Instagram, Importação, Outro | Flowlu: cadastro de fontes para medir eficácia |
-| Motivos de perda | Orçamento, Escolheu concorrente, Baixo interesse, Ciclo longo, Produto incompatível, Outro | SendPulse (padrões); RD Station (motivos por funil) |
-| Tipos de atividade | Ligação, WhatsApp, Reunião, E-mail, Tarefa, Visita | Pipedrive: tipos com ícone próprio |
-| Tags | Livre | Já existe; ganha cor e gestão central |
+| Lista              | Padrões sugeridos                                                                          | Referência                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Status             | Novo, Em contato, Qualificado, Proposta, Ganho, Perdido                                    | Pipedrive: labels padrão Quente, Morno, Frio + personalizadas |
+| Origem             | Tráfego pago, Orgânico, Indicação, WhatsApp, Instagram, Importação, Outro                  | Flowlu: cadastro de fontes para medir eficácia                |
+| Motivos de perda   | Orçamento, Escolheu concorrente, Baixo interesse, Ciclo longo, Produto incompatível, Outro | SendPulse (padrões); RD Station (motivos por funil)           |
+| Tipos de atividade | Ligação, WhatsApp, Reunião, E-mail, Tarefa, Visita                                         | Pipedrive: tipos com ícone próprio                            |
+| Tags               | Livre                                                                                      | Já existe; ganha cor e gestão central                         |
 
 ### Regras
 
@@ -130,13 +130,13 @@ O tenant define como um duplicado é detectado e o que acontece quando ele apare
 
 ### Regras de correspondência
 
-| Campo | Método | Normalização |
-| --- | --- | --- |
-| E-mail | Exato | Minúsculas, trim |
-| Telefone | Normalizado | Só dígitos; remove +55; trata com e sem o 9 após o DDD |
-| CNPJ | Exato | Só dígitos (ou alfanumérico) |
-| CPF | Exato | Só dígitos |
-| Nome + Empresa | Aproximado (fase 2) | pg\_trgm com limiar configurável |
+| Campo          | Método              | Normalização                                           |
+| -------------- | ------------------- | ------------------------------------------------------ |
+| E-mail         | Exato               | Minúsculas, trim                                       |
+| Telefone       | Normalizado         | Só dígitos; remove +55; trata com e sem o 9 após o DDD |
+| CNPJ           | Exato               | Só dígitos (ou alfanumérico)                           |
+| CPF            | Exato               | Só dígitos                                             |
+| Nome + Empresa | Aproximado (fase 2) | pg\_trgm com limiar configurável                       |
 
 O Salesforce documenta justamente o caso do telefone com e sem código do país; no Brasil o nono dígito é o caso mais comum.
 
@@ -179,13 +179,13 @@ Cada status ganha um limite de dias sem interação; passou do limite, o lead é
 
 ### Configuração
 
-| Status | Dias até esfriar (sugestão) |
-| --- | --- |
-| Novo | 1 |
-| Em contato | 3 |
-| Qualificado | 5 |
-| Proposta | 7 |
-| Ganho / Perdido | Desligado |
+| Status          | Dias até esfriar (sugestão) |
+| --------------- | --------------------------- |
+| Novo            | 1                           |
+| Em contato      | 3                           |
+| Qualificado     | 5                           |
+| Proposta        | 7                           |
+| Ganho / Perdido | Desligado                   |
 
 ### O que reseta o contador
 
@@ -237,12 +237,12 @@ Todo lead passa a registrar a base legal do tratamento de dados, com data e orig
 
 ### Campos do sistema
 
-| Campo | Valores |
-| --- | --- |
-| Base legal | Consentimento, Legítimo interesse, Execução de contrato, Obrigação legal, Outra |
-| Data da base legal | Data/hora |
-| Origem do registro | Formulário, importação, WhatsApp, manual, API |
-| Opt-out de marketing | Sim/não, com data |
+| Campo                | Valores                                                                         |
+| -------------------- | ------------------------------------------------------------------------------- |
+| Base legal           | Consentimento, Legítimo interesse, Execução de contrato, Obrigação legal, Outra |
+| Data da base legal   | Data/hora                                                                       |
+| Origem do registro   | Formulário, importação, WhatsApp, manual, API                                   |
+| Opt-out de marketing | Sim/não, com data                                                               |
 
 ### Configuração
 
@@ -258,14 +258,14 @@ Combina com o posicionamento anti-lock-in/portabilidade do CRMFlow: exportação
 
 Seis melhorias fora de Configurações, cada uma ligada a uma lacuna do diagnóstico.
 
-| Melhoria | Detalhe | Referência |
-| --- | --- | --- |
-| Arquivar | "Excluir" sai do destaque vermelho; entra "Arquivar" (some da lista ativa, filtro "Arquivados"). Excluídos ficam 30 dias na lixeira com restaurar | Pipedrive: arquivar e restaurar leads |
-| Mesclar | Ver seção 4 | Pipedrive |
-| Edição em massa | Checkbox na tabela; alterar Status, Responsável, Tags, Origem; depois campos personalizados | Pipedrive começou só pelos campos padrão |
-| Exportação com escolha de campos | Exportar abre seletor de campos e formato (.xlsx/.csv), respeitando a view atual | Reclamação de usuário do RD Station |
-| Nome e sobrenome | Campo Nome continua; adicionar Primeiro nome derivado (editável) para personalizar mensagens | Pedido de usuário do RD Station |
-| Timeline no drawer | Drawer ganha abas: Dados · Atividades · Histórico (mudanças de campo com autor e data) | Attio e HubSpot: ficha com abas |
+| Melhoria                         | Detalhe                                                                                                                                           | Referência                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Arquivar                         | "Excluir" sai do destaque vermelho; entra "Arquivar" (some da lista ativa, filtro "Arquivados"). Excluídos ficam 30 dias na lixeira com restaurar | Pipedrive: arquivar e restaurar leads    |
+| Mesclar                          | Ver seção 4                                                                                                                                       | Pipedrive                                |
+| Edição em massa                  | Checkbox na tabela; alterar Status, Responsável, Tags, Origem; depois campos personalizados                                                       | Pipedrive começou só pelos campos padrão |
+| Exportação com escolha de campos | Exportar abre seletor de campos e formato (.xlsx/.csv), respeitando a view atual                                                                  | Reclamação de usuário do RD Station      |
+| Nome e sobrenome                 | Campo Nome continua; adicionar Primeiro nome derivado (editável) para personalizar mensagens                                                      | Pedido de usuário do RD Station          |
+| Timeline no drawer               | Drawer ganha abas: Dados · Atividades · Histórico (mudanças de campo com autor e data)                                                            | Attio e HubSpot: ficha com abas          |
 
 Na importação, confirmar que o passo Mapear lista campos personalizados como destino, como o Pipedrive faz.
 
@@ -273,20 +273,20 @@ Na importação, confirmar que o passo Mapear lista campos personalizados como d
 
 Todas as tabelas abaixo carregam `tenant_id` e ficam sob as políticas de RLS existentes. Nomes são proposta; ajustar ao schema do MASTER\_DOCUMENT.
 
-| Tabela | Colunas principais | Observação |
-| --- | --- | --- |
-| `crm_layout_config` | tenant\_id (PK), identifier\_field\_id, subtitle\_field\_ids\[\], highlight\_field\_ids\[\], sections jsonb, default\_columns\[\] | 1 linha por tenant |
-| `crm_user_layout_override` | tenant\_id, user\_id, mesmo formato parcial em jsonb | Ausente = usa padrão do tenant |
-| `crm_field` | id, tenant\_id, key, label, type, is\_system, options jsonb, position, is\_active | Unifica campos do sistema e personalizados |
-| `crm_field_visibility` | field\_id, context (create\_form, detail, table, filter), visible | Contexto como linha, não coluna: novo contexto sem migração |
-| `crm_field_rule` | id, field\_id, kind (required, required\_from\_status, conditional), condition jsonb | Validado no backend e na importação |
-| `crm_field_permission` | field\_id, role, access (edit, view, hidden) | DONO/MASTER ignoram |
-| `crm_option_list` / `crm_option` | list kind; option: label, color, position, category, is\_active | Status, Origem, Motivo de perda, Tipo de atividade, Tag |
-| `crm_duplicate_rule` | id, fields jsonb, method, action (warn, block), is\_active |  |
-| `crm_assignment_rule` | id, position, conditions jsonb, target\_user\_id ou target\_group\_id, is\_active | Ponteiro round-robin em Redis |
-| `crm_stale_config` | status\_option\_id, days |  |
-| `crm_score_rule` / `crm_score_band` | regra: condition jsonb, points; faixa: min, max, label, color | Score materializado em `lead.score` |
-| `crm_cnpj_cache` | cnpj (PK), payload jsonb, fetched\_at | Global, sem tenant (dado público) |
+| Tabela                              | Colunas principais                                                                                                                | Observação                                                  |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `crm_layout_config`                 | tenant\_id (PK), identifier\_field\_id, subtitle\_field\_ids\[\], highlight\_field\_ids\[\], sections jsonb, default\_columns\[\] | 1 linha por tenant                                          |
+| `crm_user_layout_override`          | tenant\_id, user\_id, mesmo formato parcial em jsonb                                                                              | Ausente = usa padrão do tenant                              |
+| `crm_field`                         | id, tenant\_id, key, label, type, is\_system, options jsonb, position, is\_active                                                 | Unifica campos do sistema e personalizados                  |
+| `crm_field_visibility`              | field\_id, context (create\_form, detail, table, filter), visible                                                                 | Contexto como linha, não coluna: novo contexto sem migração |
+| `crm_field_rule`                    | id, field\_id, kind (required, required\_from\_status, conditional), condition jsonb                                              | Validado no backend e na importação                         |
+| `crm_field_permission`              | field\_id, role, access (edit, view, hidden)                                                                                      | DONO/MASTER ignoram                                         |
+| `crm_option_list` / `crm_option`    | list kind; option: label, color, position, category, is\_active                                                                   | Status, Origem, Motivo de perda, Tipo de atividade, Tag     |
+| `crm_duplicate_rule`                | id, fields jsonb, method, action (warn, block), is\_active                                                                        |                                                             |
+| `crm_assignment_rule`               | id, position, conditions jsonb, target\_user\_id ou target\_group\_id, is\_active                                                 | Ponteiro round-robin em Redis                               |
+| `crm_stale_config`                  | status\_option\_id, days                                                                                                          |                                                             |
+| `crm_score_rule` / `crm_score_band` | regra: condition jsonb, points; faixa: min, max, label, color                                                                     | Score materializado em `lead.score`                         |
+| `crm_cnpj_cache`                    | cnpj (PK), payload jsonb, fetched\_at                                                                                             | Global, sem tenant (dado público)                           |
 
 No `lead`: adicionar `archived_at`, `deleted_at`, `score`, `stale_since`, `assigned_by_rule_id`, `legal_basis`, `legal_basis_at`, `marketing_opt_out_at`. Valores de campos personalizados continuam no formato atual (EAV ou jsonb), com índice GIN se for jsonb para os filtros.
 
