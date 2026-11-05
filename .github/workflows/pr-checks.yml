@@ -75,19 +75,25 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validação de Fronteiras de Módulo (Lint)
-        run: npm run lint
+        run: pnpm lint
 
       - name: Verificar formatação
         run: pnpm format:check
 
       - name: Aplicar Migrations no Banco de Teste
-        run: npm run db:migrate
+        run: pnpm db:migrate:deploy
 
       - name: CI Gate (Bloqueador) - Cobertura de RLS
-        run: npm run test:rls-coverage
+        run: pnpm test:rls-coverage
 
       - name: CI Gate (Bloqueador) - Teste de Isolamento de Tenant
-        run: npm run test:tenant-isolation
+        run: pnpm test:tenant-isolation
+
+      - name: CI Gate (Bloqueador) - Cobertura de FK de Tenant
+        run: pnpm test:fk-coverage
 
       - name: Integração de quadros e equipes
         run: pnpm test:kanban:integration
+
+      - name: Testes
+        run: pnpm test

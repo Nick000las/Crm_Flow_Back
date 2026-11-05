@@ -44,19 +44,20 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 **Objetivo:** banco igual à main e CI confiável.
 
-- [ ] **0.1 Preservar (eu):** exportar o schema de 0030–0034 do banco atual (só estrutura, sem dados) para `docs/crm/referencia-schema-0030-0034.sql`.
-- [ ] **0.2 Banco novo (você):** branch do Neon vazia. O banco atual fica guardado, fora do `.env`. Conferir o role `app_tenant` e a senha dele; o `TENANT_DATABASE_URL` depende disso.
-- [ ] **0.3 Replay (eu):** `pnpm db:migrate:deploy` do zero, depois os scripts de tenant/master e `pnpm crm:reconcile`.
-- [ ] **0.4 Formatação:** rodar `pnpm format`. Commit único seu, sem nada junto. Antes de todo o resto, para não misturar diffs.
-- [ ] **0.5 CI:** incluir `pnpm test` e `test:fk-coverage` em `pr-checks.yml`; trocar `npm run` por `pnpm`; conferir se `db:migrate` serve no CI ou se o certo é `db:migrate:deploy`.
-- [ ] **0.6 Docs:** npm → pnpm no README e em `docs/crm` (20 ocorrências). Registrar o contador único em `docs/MASTER_DOCUMENT.md` §1.1.3 e corrigir §1.6.1, que ainda cita `crm_leads`.
-- [ ] **0.7** `crm-lead-read-model.js` fica como está, sem remover. A decisão de tirar o ramo duplo sai na feat_Forms (registrar no doc de compatibilidade).
+- [x] **0.1 Preservar (eu):** exportar o schema de 0030–0034 do banco atual (só estrutura, sem dados) para `docs/crm/referencia-schema-0030-0034.sql`.
+- [x] **0.2 Banco (decisão do dono, 04/11/2026):** sem branch nova no Neon. O mesmo banco de dev foi resetado (schemas `modulo_*` removidos e `prisma migrate reset`), com perda de todos os dados de dev. O role `app_tenant` foi mantido.
+- [x] **0.3 Replay:** as 33 migrations aplicadas do zero.
+- [ ] **0.3b Dados de dev (você):** `pnpm create:master` e `pnpm create:tenant`, depois `pnpm crm:reconcile`.
+- [x] **0.4 Formatação:** rodar `pnpm format`. Commit único seu, sem nada junto. Antes de todo o resto, para não misturar diffs.
+- [x] **0.5 CI:** `pnpm test` e `test:fk-coverage` em `pr-checks.yml`; `npm run` trocado por `pnpm`; `db:migrate` (`migrate dev`) trocado por `db:migrate:deploy`. Só valida de fato no primeiro PR.
+- [x] **0.6 Docs:** a contagem de 20 ocorrências estava errada (somava `pnpm`); restou 1 em documento histórico, que não se atualiza. Contador único registrado em `docs/MASTER_DOCUMENT.md` §1.1.3 e `crm_leads` removido do §1.6.1.
+- [x] **0.7** `crm-lead-read-model.js` fica como está, sem remover. A decisão de tirar o ramo duplo sai na feat_Forms (registrar no doc de compatibilidade).
 
 **Aceite**
 
-- [ ] `_prisma_migrations` e `prisma/migrations` têm exatamente as mesmas 33 entradas, e `modulo_crm.crm_deal` não existe.
-- [ ] Criar e editar lead funcionam no banco novo.
-- [ ] Todos os gates verdes, inclusive `format:check`.
+- [x] `_prisma_migrations` e `prisma/migrations` têm exatamente as mesmas 33 entradas, e `modulo_crm.crm_deal` não existe.
+- [x] Criar e editar lead funcionam no banco resetado (`campos.db.test.js`, 10/10).
+- [x] Gates verdes, inclusive `format:check`. Ressalvas: `pnpm test:kanban:integration` não roda no Windows (prefixo de variável no script), validado com o comando equivalente; os 3 testes de tempo real exigem `KANBAN_TEST_REDIS_URL` e ficaram de fora.
 
 **Handoff ao front:** nenhum contrato muda. Avisar que o banco foi trocado.
 

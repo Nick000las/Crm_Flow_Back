@@ -1,8 +1,14 @@
 # Leitura de leads após a migração de oportunidades
 
-O banco conectado já possui as migrations 0030–0034, enquanto os arquivos
-dessas migrations não constam nas branches disponíveis do repositório.
-As consultas antigas de leads e listas dependiam de tabelas e colunas removidas.
+**Situação em 04/11/2026:** o banco de dev foi resetado e voltou a seguir só as
+migrations do repositório, então hoje a leitura usa o modelo anterior. O ramo de
+oportunidades continua no código e coberto por testes; sai na feat_Forms
+refeita, quando a leitura voltar a ter um modelo só. O schema de referência está
+em [`referencia-schema-0030-0034.sql`](./referencia-schema-0030-0034.sql).
+
+O banco antigo possuía as migrations 0030–0034, enquanto os arquivos dessas
+migrations não constam nas branches disponíveis do repositório. As consultas
+antigas de leads e listas dependiam de tabelas e colunas removidas.
 
 `adapters/crm-lead-read-model.js` concentra a compatibilidade da leitura. A
 detecção consulta os catálogos do PostgreSQL na transação tenant, considerando
