@@ -264,11 +264,11 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F3. Service único de oportunidade**
 
-- [ ] `oportunidades.service.js`: criar, editar, mudar status, ganhar, perder, reabrir, arquivar e lixeira. Ficha, importação, edição em massa e o `mover` do M3 passam todos por ele.
-- [ ] Reaproveitar `errosDasRegras`: obrigatoriedade por status, motivo de perda e opção ativa. Campo faltando vira `CAMPOS_OBRIGATORIOS`.
-- [ ] Na mesma transação: oportunidade, ciclo de vida, oportunidade principal, histórico na timeline da pessoa e `crm_event`. Mudar status continua contando como interação (`ultima_interacao_em`), que é o relógio do M9.
-- [ ] Atendimento automático ao ganhar, sem duplicar (`uq_crm_deal_origem_quadro`), e `source_reopened_at` quando a venda de origem reabre.
-- [ ] Publicar por `crm-outbox.repository.js`, usado só dentro de transação.
+- [x] `oportunidades.service.js`: criar, editar, mudar status, arquivar e lixeira. Ganhar, perder e reabrir são `mudarStatusDaOportunidade`: a categoria da opção define o efeito. Ficha, importação e edição em massa entram nele na F4, e o `mover` no M3.
+- [x] Reaproveitar as regras do M8: obrigatoriedade por status, motivo de perda e opção ativa, com a categoria da opção do pipeline certo (`validarRegras`). Campo faltando vira `CAMPOS_OBRIGATORIOS`.
+- [x] Na mesma transação: oportunidade, ciclo de vida, oportunidade principal, histórico na timeline da pessoa e `crm_event`. Mudar status continua contando como interação (`ultima_interacao_em`), que é o relógio do M9.
+- [x] Atendimento automático ao ganhar, sem duplicar (`uq_crm_deal_origem_quadro`), e `source_reopened_at` quando a venda de origem reabre. Até a D6 existir, cada venda ganha cria o próprio card de atendimento, mesmo com outro aberto.
+- [x] Publicar por `crm-outbox.repository.js`, usado só dentro de transação.
 
 **F4. Fluxos do CRM sobre a oportunidade**
 

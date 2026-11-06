@@ -55,6 +55,26 @@ export function buscarOpcoesDoTenant(tenantId) {
 }
 
 /**
+ * Os status de um pipeline (ativos e inativos), na ordem configurada.
+ *
+ * @param {string} tenantId
+ * @param {string} pipelineId
+ * @returns {Promise<OpcaoLista[]>}
+ */
+export function buscarStatusDoPipeline(tenantId, pipelineId) {
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT ${RETORNO_OPCAO_SQL}
+      FROM modulo_crm.crm_option
+      WHERE tenant_id = ${tenantId}::uuid AND kind = 'status'
+        AND pipeline_id = ${pipelineId}::uuid
+      ORDER BY position, created_at, id
+    `,
+  );
+}
+
+/**
  * O tenant já tem algum lead? Decide o padrão semeado: tenant com lead
  * recebe as keys antigas (que os leads já usam); sem lead, as sugeridas.
  *

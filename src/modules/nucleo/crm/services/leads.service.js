@@ -26,6 +26,8 @@ import {
 } from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
+import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
+export { leadParaApi, regrasAplicaveis };
 import { agendarEnriquecimento } from './cnpj.service.js';
 import {
   garantirScoreNaoEditado,
@@ -288,17 +290,6 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
 }
 
 /**
- * Regras ativas do M8 — vazio com a flag `crm.regras` desligada.
- *
- * @param {string} tenantId
- * @param {import('./field-schema.service.js').SchemaCampos} schema
- */
-export async function regrasAplicaveis(tenantId, schema) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.REGRAS))) return [];
-  return (schema.regras ?? []).filter((regra) => regra.ativo);
-}
-
-/**
  * Erros das regras sobre um lead no formato da API (criação, edição
  * mesclada, linha de import).
  *
@@ -316,23 +307,6 @@ export function errosDasRegras(schema, regras, lead) {
     categoriaDoStatus: categoriaDoStatus(listas, lead.status),
     labelDoStatus,
   });
-}
-
-/**
- * Linha do lead (colunas, `custom_fields` por id) → formato da API, só com
- * os campos do schema — base da edição "atual + payload".
- *
- * @param {Record<string, any>} linha
- * @param {import('./field-schema.service.js').SchemaCampos} schema
- */
-export function leadParaApi(linha, { campos, definicoes }) {
-  const lead = Object.fromEntries(
-    campos
-      .filter((campo) => campo.coluna)
-      .map((campo) => [campo.chave, linha[campo.coluna] ?? null]),
-  );
-  lead.customFields = customFieldsParaApi(definicoes, linha.custom_fields ?? {});
-  return lead;
 }
 
 /**
