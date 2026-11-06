@@ -14,7 +14,8 @@ vi.mock('../adapters/notifications.repository.js', () => ({
   carregarEmailAutorizado: vi.fn(),
   concluirEmail: vi.fn(),
 }));
-const config = { KANBAN_EMAIL_TIMEZONE: 'America/Sao_Paulo' };
+const config = {};
+const TENANT = { id: 'tenant', fuso_horario: 'Asia/Tokyo' };
 const logger = { warn: vi.fn() };
 const item = {
   id: 'notification',
@@ -25,9 +26,7 @@ const item = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(listarEmpresasParaEmail)
-    .mockResolvedValueOnce([{ id: 'tenant' }])
-    .mockResolvedValue([]);
+  vi.mocked(listarEmpresasParaEmail).mockResolvedValueOnce([TENANT]).mockResolvedValue([]);
   vi.mocked(prepararEmails).mockResolvedValue([item]);
   vi.mocked(carregarEmailAutorizado).mockResolvedValue({
     email: 'test@example.invalid',
@@ -37,6 +36,25 @@ beforeEach(() => {
   vi.mocked(sendKanbanNotification).mockResolvedValue(undefined);
 });
 describe('e-mails do Kanban', () => {
+  it('prepara a fila no fuso de cada tenant', async () => {
+    await processarEmails(config, logger);
+    expect(prepararEmails).toHaveBeenCalledWith('tenant', 'Asia/Tokyo', expect.any(String));
+  });
+
+  it('falha ao preparar um tenant não impede os seguintes', async () => {
+    vi.mocked(listarEmpresasParaEmail).mockReset();
+    vi.mocked(listarEmpresasParaEmail)
+      .mockResolvedValueOnce([{ id: 'quebrado', fuso_horario: 'Lua/Base' }, TENANT])
+      .mockResolvedValue([]);
+    vi.mocked(prepararEmails).mockRejectedValueOnce(new Error('time zone not recognized'));
+    await processarEmails(config, logger);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { tenantId: 'quebrado' },
+      expect.stringContaining('preparar'),
+    );
+    expect(sendKanbanNotification).toHaveBeenCalledTimes(1);
+  });
+
   it('revalida destinatário antes de enviar e confirma a entrega', async () => {
     await processarEmails(config, logger);
     expect(carregarEmailAutorizado).toHaveBeenCalledWith('tenant', item);

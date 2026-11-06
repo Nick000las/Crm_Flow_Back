@@ -8,7 +8,7 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 **Decisões do dono (4/11/2026):**
 
-- **Escopo:** executar agora M0, M1, M2 e M6. M3, M4 e M5 ficam com checklist, bloqueados até a feat_Forms refeita chegar.
+- **Escopo:** M0, M1, M2 e M6 executados. Correção de 05/11/2026: a feat_Forms foi descartada e os formulários serão feitos do zero depois da sincronização. M3, M4 e M5 dependem do marco novo M2.5 (Fundação comercial).
 - **Vínculo e LGPD no M6:** leitura mais varredura. O nome some na hora; um job diário limpa os vínculos órfãos; o outbox substitui o job depois.
 - **`crm_leads`:** é só teste. O tipo sai no M1, sem migrar nada.
 
@@ -47,17 +47,20 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 - [x] **0.1 Preservar (eu):** exportar o schema de 0030–0034 do banco atual (só estrutura, sem dados) para `docs/crm/referencia-schema-0030-0034.sql`.
 - [x] **0.2 Banco (decisão do dono, 04/11/2026):** sem branch nova no Neon. O mesmo banco de dev foi resetado (schemas `modulo_*` removidos e `prisma migrate reset`), com perda de todos os dados de dev. O role `app_tenant` foi mantido.
 - [x] **0.3 Replay:** as 33 migrations aplicadas do zero.
-- [ ] **0.3b Dados de dev (você):** `pnpm create:master` e `pnpm create:tenant`, depois `pnpm crm:reconcile`.
+- [ ] **0.3b Dados de dev (você):** `pnpm create:master` e `pnpm create:tenant`, depois `pnpm crm:reconcile`. Em 05/11/2026 só existem o tenant `Plataforma (interno)` e 1 usuário: falta criar um tenant de trabalho e rodar o reconcile nele.
 - [x] **0.4 Formatação:** rodar `pnpm format`. Commit único seu, sem nada junto. Antes de todo o resto, para não misturar diffs.
 - [x] **0.5 CI:** `pnpm test` e `test:fk-coverage` em `pr-checks.yml`; `npm run` trocado por `pnpm`; `db:migrate` (`migrate dev`) trocado por `db:migrate:deploy`. Só valida de fato no primeiro PR.
 - [x] **0.6 Docs:** a contagem de 20 ocorrências estava errada (somava `pnpm`); restou 1 em documento histórico, que não se atualiza. Contador único registrado em `docs/MASTER_DOCUMENT.md` §1.1.3 e `crm_leads` removido do §1.6.1.
-- [x] **0.7** `crm-lead-read-model.js` fica como está, sem remover. A decisão de tirar o ramo duplo sai na feat_Forms (registrar no doc de compatibilidade).
+- [x] **0.7** `crm-lead-read-model.js` fica como está, sem remover. O ramo duplo sai no M2.5, etapa F5 (registrado no doc de compatibilidade).
 
 **Aceite**
 
 - [x] `_prisma_migrations` e `prisma/migrations` têm exatamente as mesmas 33 entradas, e `modulo_crm.crm_deal` não existe.
 - [x] Criar e editar lead funcionam no banco resetado (`campos.db.test.js`, 10/10).
-- [x] Gates verdes, inclusive `format:check`. Ressalvas: `pnpm test:kanban:integration` não roda no Windows (prefixo de variável no script), validado com o comando equivalente; os 3 testes de tempo real exigem `KANBAN_TEST_REDIS_URL` e ficaram de fora.
+- [x] Gates verdes no ambiente local, inclusive `format:check`. Ressalva: `pnpm test:kanban:integration` não roda no Windows (prefixo de variável no script); validado com o comando equivalente, com Redis local.
+- [ ] CI verde: **não validado**. A branch ainda não tem upstream, então o `pr-checks.yml` novo nunca rodou. Marcar no primeiro PR.
+
+**Validação (05/11/2026):** 33 migrations iguais na pasta e em `_prisma_migrations`; `crm_deal`, `crm_pipeline` e `crm_event` não existem; `leads` tem `status` e `valor`; `campos.db.test.js` 10/10.
 
 **Handoff ao front:** nenhum contrato muda. Avisar que o banco foi trocado.
 
@@ -67,22 +70,29 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 **Antes de começar:** passar pelo desenvolvedor do Kanban (seu ponto de controle).
 
-- [ ] **1.1 Testes primeiro:** teste de integração que prova o problema atual, com dois usuários em quadros diferentes.
-- [ ] **1.2 Hooks repetidos:** tirar `authenticateHook` e `verificarModulo` de `kanban-universal/index.js` e a checagem de `tenant_modules` em `executar()`. `app.js` já cobre as rotas; conferir os sockets, que têm autenticação própria.
-- [ ] **1.3 Leitura sem lock:** constante única `ACOES_DE_LEITURA` (hoje a lista está repetida no service e no repository).
-- [ ] **1.4 Lock por quadro:** extrair `carregarEscopo(tx, tenantId, action, id)`. Ela resolve `id → boardId` com consulta direcionada (quadro, coluna, card, comentário) e, na escrita, trava com `pg_advisory_xact_lock(hashtextextended(tenantId || ':' || boardId, 0))`. Só então carrega colunas e cards **daquele** quadro. `board.create`, `members` e `email.*` não carregam quadro.
-- [ ] **1.5 `board.get` consistente:** colunas e cards sem lock são leituras separadas. Trazer os dois numa consulta só ou documentar e testar a concorrência com reordenação.
-- [ ] **1.6 Papéis:** usar `ROLES` e `ERROR_CODES` só nas linhas que este marco tocar.
-- [ ] **1.7 Fuso:** `listarEmpresasParaEmail` devolve `t.fuso_horario`, passado a `prepararEmails`. Remover `KANBAN_EMAIL_TIMEZONE` de `env.js`, `.env.example` e docs. Falha em um tenant não para os outros.
-- [ ] **1.8 Flags:** declarar `featureFlags` no módulo (`kanban_universal.quadros_entidade`, `kanban_universal.vinculo_entidade`), com a constante `KANBAN_FEATURES`.
-- [ ] **1.9 Tipos:** `boardType` deixa de ser texto livre; catálogo com `projetos` e `postagens_agencia`. `crm_leads` sai. Colocar um `CHECK` em banco só se o desenvolvedor do Kanban concordar, porque o catálogo mudará no M2.
+- [x] **1.1 Testes primeiro:** teste de integração que prova o problema atual, com dois usuários em quadros diferentes.
+- [x] **1.2 Hooks repetidos:** tirar `authenticateHook` e `verificarModulo` de `kanban-universal/index.js` e a checagem de `tenant_modules` em `executar()`. `app.js` já cobre as rotas; conferir os sockets, que têm autenticação própria.
+- [x] **1.3 Leitura sem lock:** constante única `ACOES_DE_LEITURA` (hoje a lista está repetida no service e no repository).
+- [x] **1.4 Lock por quadro:** `resolverQuadro` descobre o quadro por consulta direcionada e `carregarQuadro` traz só ele, depois do lock (`pg_advisory_xact_lock(hashtextextended(boardId, 0))`; o uuid do quadro já é único). `board.create`, `members` e `email.*` não carregam quadro.
+- [x] **1.5 `board.get` consistente:** leitura de colunas e depois de cards, documentada em `carregarQuadro` e testada junto com movimentos simultâneos.
+- [x] **1.6 Papéis:** usar `ROLES` e `ERROR_CODES` só nas linhas que este marco tocar.
+- [x] **1.7 Fuso:** `listarEmpresasParaEmail` devolve `t.fuso_horario`, passado a `prepararEmails`. Remover `KANBAN_EMAIL_TIMEZONE` de `env.js`, `.env.example` e docs. Falha em um tenant não para os outros.
+- [x] **1.8 Flags:** declarar `featureFlags` no módulo (`kanban_universal.quadros_entidade`, `kanban_universal.vinculo_entidade`), com a constante `KANBAN_FEATURES`.
+- [x] **1.9 Tipos:** `boardType` validado por `TIPOS_QUADRO` (`projetos`, `postagens_agencia`); `crm_leads` saiu. Sem `CHECK` no banco, porque o catálogo muda no M2 e a revisão do desenvolvedor do Kanban foi dispensada pelo dono.
 
 **Aceite**
 
-- [ ] Dois usuários do mesmo tenant editando quadros diferentes não entram em fila (teste com dois locks concorrentes).
-- [ ] Duas escritas no mesmo quadro continuam em série e a ordem dos cards fica íntegra.
-- [ ] Lembrete em fuso distante cai no dia local certo perto da virada (dois tenants, duas datas).
-- [ ] `test:kanban:integration` verde.
+- [x] Dois usuários do mesmo tenant editando quadros diferentes não entram em fila (teste com dois locks concorrentes).
+- [x] Duas escritas no mesmo quadro continuam em série e a ordem dos cards fica íntegra.
+- [x] Lembrete em fuso distante cai no dia local certo perto da virada (dois tenants, duas datas).
+- [x] `test:kanban:integration` verde: 32/32 com `KANBAN_TEST_REDIS_URL`, incluindo os 3 de tempo real.
+
+**Como ficou (05/11/2026):**
+
+- A revisão do desenvolvedor do Kanban foi dispensada pelo dono.
+- Toda escrita em quadro passa por `resolverQuadro`, lock do quadro, `exigirParticipacao` e `carregarQuadro`, nessa ordem. A autorização vem depois do lock para uma revogação em andamento valer para a escrita.
+- A checagem de módulo saiu de `executar()`: vale o `exigirModuloAtivo` do `app.js`, com teste de integração. Ele tem cache de até 30 s, invalidado na troca de módulos.
+- Risco que continua: a transação interativa do Prisma expira em 5 s, então uma fila longa de escritas no mesmo quadro pode falhar. O escopo por quadro reduz o problema, mas não o elimina.
 
 **Handoff ao front:** tirar `crm_leads` de `board-types.js`; `POST /kanban/boards` recusa tipo fora do catálogo.
 
@@ -90,16 +100,16 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 ## M2. Contrato de provedor no core
 
-**Antes de começar:** passar pelo desenvolvedor do Kanban.
+**Antes de começar:** revisão do desenvolvedor do Kanban dispensada pelo dono.
 
 **Adaptação principal: dois contratos pequenos em vez de um grande.**
 
 ```js
 // Module.quadros: conteúdo de um quadro vindo de outro módulo
-[{ boardType, listarQuadros(ctx), listarColunas(ctx, quadroRef),
+[{ boardType, entidadeTipo, listarQuadros(ctx), listarColunas(ctx, quadroRef),
    listarCards(ctx, quadroRef, { colunaRef, filtros, cursor, limite }),
    resumoColuna(ctx, quadroRef, { colunaRef, filtros }),
-   mover(ctx, { entidadeId, colunaDestino, expectedUpdatedAt }),
+   mover(ctx, { quadroRef, entidadeId, colunaDestino, expectedUpdatedAt }),
    criar(ctx, { quadroRef, colunaRef, dados }), acoesPermitidas(ctx, entidadeId) }]
 
 // Module.entidades: referência leve a um registro de outro módulo (M3 e M6)
@@ -109,20 +119,39 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 `resolverVinculos` devolve o id atual porque um lead mesclado (M7 do CRM) não pode perder o vínculo.
 
-- [ ] **2.1** `src/core/types/module.js`: documentar e validar `quadros` e `entidades` em `assertModule` (falha no boot).
-- [ ] **2.2** `#core/quadros/registro.js`: `provedorDoQuadro(boardType)`, `provedorDaEntidade(tipo)`, `tiposDeQuadro()`, sobre `modulosRegistrados()`. Tipo repetido falha no boot.
-- [ ] **2.3** `ERROR_CODES.CAMPOS_OBRIGATORIOS`: 400 com `fields`, no mesmo formato dos erros de regra do M8 do CRM.
-- [ ] **2.4 Motor separado:** `services/quadro-entidade.service.js`, sem passar por `executar()`, com rotas próprias `/kanban/quadros/:boardType/:quadroRef/...`. `quadroRef` não é uuid, e as rotas de `boards` seguem iguais.
-- [ ] **2.5** `GET /kanban/boards` passa a juntar quadros nativos e dos provedores, com `modo: 'nativo' | 'entidade'`. Flag desligada ou módulo não contratado: lista igual à de hoje. Erro em provedor não derruba os quadros nativos.
-- [ ] **2.6** Sem linha em `boards`, sem coluna editável e sem excluir card. Só o que `acoesPermitidas` devolver.
-- [ ] **2.7** `testing/provedor-falso.js`, usado só nos testes.
+- [x] **2.1** `src/core/types/module.js`: documentar e validar `quadros` e `entidades` em `assertModule` (falha no boot).
+- [x] **2.2** `#core/quadros/registro.js`: `provedorDoQuadro(boardType)`, `provedorDaEntidade(tipo)`, `provedoresDeQuadro()` (no lugar do `tiposDeQuadro()` previsto, porque o motor precisa do provedor, não só do tipo), sobre `modulosRegistrados()`. Tipo repetido falha no boot (`assertProvedoresValidos`).
+- [x] **2.3** `ERROR_CODES.CAMPOS_OBRIGATORIOS`: 400 com `fields`, no mesmo formato dos erros de regra do M8 do CRM.
+- [x] **2.4 Motor separado:** `services/quadro-entidade.service.js`, sem passar por `executar()`, com rotas próprias `/kanban/quadros/:boardType/:quadroRef/...`. `quadroRef` não é uuid, e as rotas de `boards` seguem iguais.
+- [x] **2.5** `GET /kanban/boards` passa a juntar quadros nativos e dos provedores, com `modo: 'nativo' | 'entidade'`. Flag desligada: lista igual à de hoje. Flag ligada e módulo dono não contratado: os mesmos quadros, só com o campo novo `modo`. Erro em provedor não derruba os quadros nativos.
+- [x] **2.6** Sem linha em `boards`, sem coluna editável e sem excluir card. Só o que `acoesPermitidas` devolver.
+- [x] **2.7** `testing/provedor-falso.js`, usado só nos testes.
 
 **Aceite**
 
-- [ ] Provedor falso: listar, paginar, mover, mover com `CAMPOS_OBRIGATORIOS` e criar.
-- [ ] Tenant sem CRM ou sem flag: respostas iguais às de hoje, sem migration.
-- [ ] Módulo com contrato mal formado quebra no boot.
-- [ ] Nenhum import entre módulos (ESLint de fronteiras).
+- [x] Provedor falso: listar, paginar, mover, mover com `CAMPOS_OBRIGATORIOS` e criar.
+- [x] Tenant sem CRM ou sem flag: mesmos quadros, sem migration. Sem flag a resposta é idêntica; com a flag, cada quadro ganha só o campo `modo`.
+- [x] Módulo com contrato mal formado quebra no boot.
+- [x] Nenhum import entre módulos (ESLint de fronteiras).
+
+**Como ficou (05/11/2026):**
+
+- Dois ajustes no contrato: `mover` recebe `quadroRef`, para o provedor recusar outro quadro, e o quadro declara `entidadeTipo`, para o motor descrever os cards em lote pelo provedor de entidade.
+- Rotas, todas atrás de `kanban_universal.quadros_entidade`: `GET .../colunas`, `POST .../resumo`, `POST .../cards/busca`, `POST .../cards`, `GET .../cards/:entidadeId/acoes` e `PATCH .../cards/:entidadeId/mover`, com o prefixo `/kanban/quadros/:boardType/:quadroRef`. Busca e resumo são POST porque os filtros não cabem na query.
+- Sem provedor ou com o módulo dono não contratado, a resposta é 404: para esse tenant o quadro não existe.
+- O motor não publica evento de tempo real em quadro de entidade. Isso entra no M5.
+- Nenhum provedor real existe ainda: o CRM entra no M6 (`entidades`) e no M3 (`quadros`).
+
+**Validação de M0 a M2 (05/11/2026, todos os gates de novo):**
+
+| Gate                                                             | Resultado                                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `lint`, `format:check`                                           | limpos                                                                     |
+| `test`                                                           | 786 passando, 38 ignorados (rodam nas duas linhas abaixo)                  |
+| `*.db.test.js` do CRM com `CRM_DB_TESTS=1`                       | 28/28                                                                      |
+| Integração do Kanban com Redis local                             | 32/32                                                                      |
+| `test:rls-coverage`, `test:fk-coverage`, `test:tenant-isolation` | 2, 1 e 2 passando                                                          |
+| Sobras no banco                                                  | só o tenant `Plataforma (interno)`; nenhum quadro, logo nenhum `crm_leads` |
 
 **Handoff ao front:** contrato das rotas novas, `modo` e o formato de `CAMPOS_OBRIGATORIOS`. Sem tela nova ainda: não existe provedor real.
 
@@ -132,35 +161,154 @@ O merge juntou dois módulos que não conversam. O CRM é dono dos leads, e o Ka
 
 Depende só do M2. Atrás de `kanban_universal.vinculo_entidade`. Executado **depois** do M2, não em paralelo, porque usa o registro de entidades.
 
-- [ ] **6.1 Migration 0035:** `cards` ganha `entidade_tipo` e `entidade_id` nulos, `CHECK` de ambos juntos e índice parcial `(tenant_id, entidade_tipo, entidade_id)`. Sem FK entre schemas. Conferir o trigger `kanban_card_activity`, que precisa registrar a mudança sem dado pessoal.
-- [ ] **6.2 CRM:** `Module.entidades` com `tipo: 'pessoa'`. `descrever` usa `identificadorVisivel` e `obterSchemaDoPapel`; sem permissão ou anonimizado devolve `{ id, restrito: true }`. Filtrar sempre por tenant.
-- [ ] **6.3 Kanban:** ação `card.link` (vincular e desvincular), só em quadro nativo, e `vinculo` resolvido no `card.get` e no `board.get` em lote (sem N+1).
-- [ ] **6.4 Aba Projetos:** `GET /kanban/vinculos?entidadeTipo=pessoa&entidadeId=`. O CRM não importa o Kanban: quem chama é a tela.
-- [ ] **6.5 Varredura:** `src/workers/kanban.worker.js` e a fila `kanban-manutencao`, job diário com `resolverVinculos`, no padrão de `crm.worker.js`: repontar id mesclado e limpar órfão ou anonimizado. Script `pnpm worker:kanban`. Precisa estar no deploy; o M7 reaproveita esse worker para os e-mails.
+- [x] **6.1 Migration 0035:** `cards` ganha `entidade_tipo` e `entidade_id` nulos, `CHECK` de ambos juntos e índice parcial `(tenant_id, entidade_tipo, entidade_id)`. Sem FK entre schemas. O trigger `kanban_card_activity` ignora essas colunas, então `card.link` grava a própria atividade, sem o id da pessoa.
+- [x] **6.2 CRM:** `Module.entidades` com `tipo: 'pessoa'`. `descrever` usa `identificadorVisivel` e `obterSchemaDoPapel`; anonimizado, na lixeira ou inexistente fica fora da resposta, que é a regra do contrato do M2 para "restrito" (no lugar do `{ id, restrito: true }` previsto). Filtrar sempre por tenant.
+- [x] **6.3 Kanban:** ação `card.link` (vincular e desvincular), só em quadro nativo, e `vinculo` resolvido no `card.get` e no `board.get` em lote (sem N+1).
+- [x] **6.4 Aba Projetos:** `GET /kanban/vinculos?entidadeTipo=pessoa&entidadeId=`. O CRM não importa o Kanban: quem chama é a tela.
+- [x] **6.5 Varredura:** `src/workers/kanban.worker.js` e a fila `kanban-manutencao`, job diário com `resolverVinculos`, no padrão de `crm.worker.js`: repontar id mesclado e limpar órfão ou anonimizado. Script `pnpm worker:kanban`. Precisa estar no deploy; o M7 reaproveita esse worker para os e-mails.
 
-**A confirmar com você no início do M6:** a aba mostra só os cards dos quadros que o usuário pode ver? Recomendação: sim, e a aba some se ele não vir nenhum.
+**Decisão do dono (05/11/2026):** a aba mostra só os cards dos quadros que o usuário pode ver, e some se ele não vir nenhum.
 
 **Aceite**
 
-- [ ] O card mostra o nome atualizado quando o CRM muda.
-- [ ] Anonimizar: o nome some na hora; depois do job, o vínculo some de todos os cards, e os cards ficam.
-- [ ] Usuário sem acesso ao registro vê só "Registro restrito".
-- [ ] Lead mesclado: o vínculo passa para o principal.
-- [ ] Nenhuma tabela do Kanban guarda dado pessoal do CRM.
+- [x] O card mostra o nome atualizado quando o CRM muda.
+- [x] Anonimizar: o nome some na hora; depois do job, o vínculo some de todos os cards, e os cards ficam.
+- [x] Usuário sem acesso ao registro vê só "Registro restrito". O CRM não restringe por linha, então os casos são: anonimizado, lixeira, CRM desligado no tenant e erro do provedor. Identificador oculto para o papel cai no nome, que não aceita restrição.
+- [x] Lead mesclado: o vínculo passa para o principal, inclusive em cadeia (A → B → C).
+- [x] Nenhuma tabela do Kanban guarda dado pessoal do CRM: só tipo e uuid. `activities` não guarda nem o id.
+
+**Como ficou (05/11/2026):**
+
+- A flag desligada não muda nenhuma resposta: `present()` esconde as colunas novas e o campo `vinculo` sai antes de responder.
+- Mesclado responde pelo principal já na leitura, e o provedor informa `idAtual` para o link da ficha não dar 404. Até a varredura da noite, a aba do principal ainda não lista os cards herdados.
+- `pnpm worker:kanban` precisa registrar os módulos, então `worker` passou a poder importar `api` no ESLint, só para `#api/modules.js`.
+- A varredura roda às 2h, antes da purga da lixeira (3h), e alcança tenants cancelados, porque limpar referência a dado pessoal não depende de contrato.
+- Risco que continua: `compose.yaml` e CI não sobem workers. Sem o `worker:kanban` no deploy, o nome some na leitura, mas a referência fica.
+- Falha encontrada no M6 e corrigida em 05/11/2026: `anonimizarLead` parava no primeiro nível de mesclagem. Em A → B → C, anonimizar C deixava A com os dados na lixeira até a purga. Agora percorre a cadeia inteira, com teste em `lgpd.db.test.js`.
 
 **Handoff ao front:** seletor de pessoa no card, exibição do vínculo e aba Projetos.
 
 ---
 
-## Marcos bloqueados (não começar sem a feat_Forms refeita)
+## M2.5. Fundação comercial
 
-**Critério de entrada:** oportunidades, `crm_pipeline` e o outbox `crm_event` na main, com migrations novas (números depois dos usados aqui), e `crm-lead-read-model.js` reduzido a um modelo só.
+**Por que existe:** a branch feat_Forms foi descartada (decisão do dono, 05/11/2026). Os formulários serão feitos do zero **depois** da sincronização, então a base comercial que M3, M4 e M5 usam nasce aqui. O provedor falso do M2 já provou o contrato; um mock novo não provaria nenhum aceite do M3, que são regras sobre dado real.
+
+**Objetivo:** cada pessoa ter N oportunidades em pipelines configuráveis, com uma regra só para mudar status, e a leitura voltar a ter um modelo só. A API de leads continua compatível durante a transição.
+
+**Base:** `docs/crm/referencia-schema-0030-0034.sql` é referência, não cópia. As migrations são novas, a partir da 0036; os números 0030–0034 não são reaproveitados.
+
+**Entra:**
+
+| Tabela ou coluna                                                     | Do schema exportado                                                                                                |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `crm_pipeline`                                                       | igual, inclusive `auto_create_*`                                                                                   |
+| `crm_deal`                                                           | sem `version` (o projeto usa `expectedUpdatedAt`) e sem `won_at_estimated` (só servia à migração de dados antigos) |
+| `crm_event`                                                          | igual: append-only, só o controle de processamento muda                                                            |
+| `crm_option.pipeline_id`                                             | status passa a pertencer a um pipeline                                                                             |
+| `leads.principal_deal_id`, `lifecycle_stage`, `lifecycle_changed_at` | iguais                                                                                                             |
+
+**Fica de fora:**
+
+| Item                                                                         | Motivo                                                           | Quando                       |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------- |
+| Formulários, anamnese e link público                                         | plano próprio, do zero                                           | depois do M5                 |
+| Segunda venda (D6: oferecer juntar ao card de pós-venda ou criar outro)      | regra de exceção; o M3 não depende dela                          | depois do M5                 |
+| `crm_field_pipeline` (campo por pipeline)                                    | nenhum aceite usa                                                | com os formulários           |
+| `crm_lifecycle_config` (rótulos do ciclo de vida)                            | os rótulos padrão bastam                                         | quando houver pedido         |
+| Contadores `open_deals_count`, `won_deals_count`, `open_service_deals_count` | dá para calcular na leitura; contador duplicado exige manutenção | só se o M4 medir necessidade |
+| `custom_fields` na oportunidade                                              | campos personalizados seguem no lead                             | com os formulários           |
+| Consumir o outbox                                                            | aqui ele só é gravado                                            | M5                           |
+| Bot, mensagens e créditos                                                    | fora do escopo                                                   | outro plano                  |
+
+**A decidir com o dono antes da F1** (nada abaixo começa sem isso):
+
+| #   | Pergunta                                                  | Recomendação                                                                                                       |
+| --- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| F-1 | Todo lead novo nasce com oportunidade em Vendas?          | Sim. Hoje todo lead aparece no funil; sem oportunidade, ele sumiria do quadro.                                     |
+| F-2 | Qual é a oportunidade principal de uma pessoa?            | A aberta mais recente em pipeline `sales`; sem aberta, a última ganha; senão, a mais recente.                      |
+| F-3 | Ciclo de vida                                             | Derivado: com oportunidade aberta, `oportunidade`; com alguma ganha, `cliente`, que tem prioridade; senão, `lead`. |
+| F-4 | Card de atendimento automático vem ligado em tenant novo? | Sim, com o dono podendo desligar.                                                                                  |
+
+### Etapas
+
+Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga algo.
+
+**F0. Mapa e rede de proteção**
+
+- [ ] Listar quem lê e quem grava cada campo comercial. Ponto de partida: 14 arquivos com `funil_estagio`, 6 com campos comerciais e os fluxos de `status`.
+- [ ] Testes de caracterização de `/crm/leads` (criar, editar, buscar, filtrar, exportar, importar), rodando **antes** da mudança. Eles são o contrato da transição.
+
+**F1. Schema aditivo**
+
+- [ ] Migration 0036: `crm_pipeline`, com RLS e FK composta por tenant.
+- [ ] Migration 0037: `crm_deal`, `crm_event` e colunas novas de `leads` e `crm_option`.
+- [ ] Nada lê as tabelas novas ainda: `usaOportunidades` prioriza o modelo atual enquanto `funil_estagios` e `leads.status` existirem.
+- [ ] `test:rls-coverage` e `test:fk-coverage` cobrem as tabelas novas.
+
+**F2. Seed por tenant**
+
+- [ ] `reconciliarTenant`: pipelines Vendas (padrão) e Atendimento, de forma idempotente.
+- [ ] Status de Vendas nascem dos estágios atuais; Atendimento ganha uma lista própria inicial.
+- [ ] Limite de 5 pipelines por tenant (D5), validado no service.
+- [ ] `pnpm crm:reconcile` duas vezes não duplica nada.
+
+**F3. Service único de oportunidade**
+
+- [ ] `oportunidades.service.js`: criar, editar, mudar status, ganhar, perder, reabrir, arquivar e lixeira. Ficha, importação, edição em massa e o `mover` do M3 passam todos por ele.
+- [ ] Reaproveitar `errosDasRegras`: obrigatoriedade por status, motivo de perda e opção ativa. Campo faltando vira `CAMPOS_OBRIGATORIOS`.
+- [ ] Na mesma transação: oportunidade, ciclo de vida, oportunidade principal, histórico na timeline da pessoa e `crm_event`.
+- [ ] Atendimento automático ao ganhar, sem duplicar (`uq_crm_deal_origem_quadro`), e `source_reopened_at` quando a venda de origem reabre.
+- [ ] Publicar por `crm-outbox.repository.js`, usado só dentro de transação.
+
+**F4. Fluxos do CRM sobre a oportunidade**
+
+- [ ] Primeiro passo: leitura e escrita trocam de modelo juntas. Enquanto `leads.status` existir, `usaOportunidades` continua escolhendo o modelo atual, então gravar na oportunidade sem trocar a leitura esconderia a mudança.
+- [ ] Criar e editar lead: campos comerciais vão para a oportunidade principal, e a resposta não muda de formato.
+- [ ] Filtros, views salvas, busca, totais e exportação.
+- [ ] Importação: lead novo com oportunidade; regra de duplicados igual à de hoje.
+- [ ] Edição em massa e distribuição: mudar responsável alcança a oportunidade.
+- [ ] Inatividade (M9) e score (M14): relógio e regras leem o status da oportunidade.
+- [ ] **Mesclar:** oportunidades do secundário passam para o principal, e a principal é recalculada.
+- [ ] **Anonimizar:** `title` e `lost_reason` da oportunidade são limpos em toda a cadeia de mesclagem, e `crm_event` não pode guardar dado pessoal (payload só com ids).
+- [ ] **Lixeira e purga:** oportunidade acompanha a pessoa.
+
+**F5. Um modelo só**
+
+- [ ] Remover `usaOportunidades`, o ramo legado de `fonteLeads`, `funil-estagios.repository.js` e `CRM_SCHEMA_INCOMPATIBLE`.
+- [ ] Migration final: apaga `funil_estagios` e as colunas comerciais de `leads`. Irreversível, por isso vem por último e só depois de F0 a F4 validadas.
+- [ ] Atualizar `compatibilidade-leitura-oportunidades.md` e `MASTER_DOCUMENT.md`.
+
+**F6. API de pipelines e oportunidades**
+
+- [ ] Configurações (só gestão): listar, criar, editar, ativar e desativar pipeline; status por pipeline; automação do atendimento. Sem apagar pipeline com oportunidade.
+- [ ] Ficha: `GET` e `POST /crm/leads/:id/oportunidades`, `PUT /crm/oportunidades/:id` e `PATCH /crm/oportunidades/:id/status`, com `expectedUpdatedAt`.
+- [ ] Permissão por campo aplicada, como em `/crm/leads`.
+
+**Aceite**
+
+- [ ] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status.
+- [ ] Os testes de caracterização da F0 continuam verdes: a API de leads não mudou de formato.
+- [ ] Venda ganha cria o card de atendimento com a automação ligada, não cria com ela desligada, e repetir o ganho não duplica.
+- [ ] Toda mudança de status grava `crm_event` e histórico na mesma transação; falhar em uma desfaz a outra.
+- [ ] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal em `crm_deal` nem em `crm_event`.
+- [ ] Tenant com 5 pipelines não cria o sexto.
+- [ ] `funil_estagios` não existe e nenhum código o cita.
+- [ ] Todos os gates verdes, sem teste ignorado.
+
+**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5.
+
+---
+
+## Marcos seguintes (dependem do M2.5)
+
+**Critério de entrada:** aceite do M2.5 completo, com `crm-lead-read-model.js` reduzido a um modelo só.
 
 ### M3. Provedor `crm_oportunidades` (flag `crm.quadro_comercial`)
 
 Passos adaptados ao código:
 
-- [ ] Criar um service único de mudança de status da oportunidade, chamado pela ficha e pelo `mover`. Traduzir os erros de `errosDasRegras` para `CAMPOS_OBRIGATORIOS`.
+- [ ] O `mover` chama o service único de oportunidade do M2.5 (F3), sem regra própria.
 - [ ] Permissão: `obterSchemaDoPapel` em `listarCards` e `descrever`; a soma sai `null` sem acesso a Valor.
 - [ ] `expectedUpdatedAt` também na edição do CRM.
 - [ ] Visibilidade por pipeline (D4) como condição central em `lead-filter.service.js`, para valer em busca, export e totais.
@@ -188,16 +336,23 @@ Aceite: os 3 itens do documento.
 
 Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o refactor de camadas tira as ações de `executar()`.
 
+### Depois do M5
+
+- Formulários do zero, com plano próprio.
+- Segunda venda (D6): oferecer juntar ao card de pós-venda existente ou criar outro. Por automação ou importação, não cria card novo e deixa o aviso "nova venda: juntar ou separar?" no card existente.
+
 ---
 
 ## Ordem e paradas
 
-1. M0 (você cria o banco; eu preparo o resto; commit de formatação isolado).
-2. Revisão do desenvolvedor do Kanban → M1.
-3. Revisão do desenvolvedor do Kanban → M2.
-4. M6.
-5. Bloqueio: feat_Forms refeita, com plano próprio.
-6. M3 → M4 → M5 → M7.
+1. M0 (feito; falta o CI).
+2. M1 (feito).
+3. M2 (feito).
+4. M6 (feito).
+5. M2.5 (próximo; depende das decisões F-1 a F-4).
+6. M3 → M4 → M5.
+7. Formulários do zero e segunda venda (D6).
+8. M7.
 
 ## Riscos
 
@@ -205,6 +360,8 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 - **Concorrência no M1:** trocar lock de tenant por quadro muda garantias. Testes concorrentes vêm antes da mudança.
 - **Quadros nativos regredirem no M2:** motor separado, sem tocar em `executar()`.
 - **Worker novo no M6:** só funciona se entrar no deploy; o nome some na leitura mesmo sem ele.
+- **Tamanho do M2.5:** é o maior marco e toca fluxos sensíveis. Mitigado por etapas com parada, testes de caracterização antes da mudança e apagar só na F5.
+- **Troca de modelo:** `usaOportunidades` só muda de ramo quando `funil_estagios` e `leads.status` somem. Na F4, leitura e escrita precisam trocar juntas.
 
 ## Verificação
 

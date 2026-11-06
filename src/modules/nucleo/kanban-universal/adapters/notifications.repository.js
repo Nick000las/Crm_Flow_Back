@@ -8,7 +8,7 @@ const RETRY_SECONDS = 300;
 // Só a descoberta de tenants usa o client de plataforma. Conteúdo e fila sempre usam RLS.
 export function listarEmpresasParaEmail(after) {
   return getAdminClient().$queryRaw`
-    SELECT tm.tenant_id AS id FROM public.tenant_modules tm
+    SELECT tm.tenant_id AS id, t.fuso_horario FROM public.tenant_modules tm
     JOIN public.tenants t ON t.id = tm.tenant_id
     WHERE tm.module_key = 'kanban_universal' AND tm.disabled_at IS NULL
       AND (${after}::uuid IS NULL OR tm.tenant_id > ${after}::uuid)
@@ -19,7 +19,7 @@ export function listarEmpresasParaEmail(after) {
 
 export function prepararEmails(tenantId, timezone, leaseId) {
   return getTenantClient(tenantId, async (tx) => {
-    // Um lembrete por card, responsável e data de prazo. A data é calendário no fuso configurado.
+    // Um lembrete por card, responsável e data de prazo. A data é calendário no fuso do tenant.
     await tx.$executeRaw`
       INSERT INTO modulo_kanban_universal.email_outbox(tenant_id,board_id,card_id,usuario_id,kind,dedupe_key)
       SELECT c.tenant_id,c.board_id,c.id,c.responsavel_id,'due',

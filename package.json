@@ -16,6 +16,7 @@
     "dev": "prisma generate && nodemon",
     "start": "node src/api/server.js",
     "worker:crm": "node src/workers/crm.worker.js",
+    "worker:kanban": "node src/workers/kanban.worker.js",
     "lint": "eslint .",
     "check": "pnpm lint && pnpm test",
     "test": "vitest run",

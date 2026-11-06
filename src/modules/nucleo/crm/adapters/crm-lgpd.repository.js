@@ -59,8 +59,8 @@ export function buscarSituacaoLgpd(tenantId, leadId) {
 }
 
 /**
- * Anonimiza o lead e os que foram mesclados nele (a mesma pessoa, na
- * lixeira), numa transação:
+ * Anonimiza o lead e toda a cadeia dos que foram mesclados nele (A → B → C:
+ * a mesma pessoa, na lixeira), numa transação:
  *
  * - lead: nome vira `ANONIMIZACAO.NOME`, as colunas pessoais ficam nulas e
  *   `custom_fields` guarda só os personalizados de `mantidos` (ids);
@@ -87,10 +87,17 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
 
   return getTenantClient(tenantId, async (tx) => {
     const linhas = await tx.$queryRaw`
-      SELECT id::text FROM modulo_crm.leads
-      WHERE tenant_id = ${tenantId}::uuid AND anonimizado_em IS NULL
-        AND (id = ${leadId}::uuid OR mesclado_em_id = ${leadId}::uuid)
-      FOR UPDATE
+      WITH RECURSIVE mesma_pessoa AS (
+        SELECT id FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid AND id = ${leadId}::uuid
+        UNION ALL
+        SELECT l.id FROM modulo_crm.leads l
+        JOIN mesma_pessoa p ON l.mesclado_em_id = p.id
+        WHERE l.tenant_id = ${tenantId}::uuid
+      )
+      SELECT l.id::text FROM modulo_crm.leads l
+      JOIN mesma_pessoa p ON p.id = l.id
+      WHERE l.tenant_id = ${tenantId}::uuid AND l.anonimizado_em IS NULL
+      FOR UPDATE OF l
     `;
     const ids = linhas.map((linha) => linha.id);
     if (!ids.includes(leadId)) return null;

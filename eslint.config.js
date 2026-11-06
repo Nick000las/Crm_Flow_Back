@@ -108,7 +108,7 @@ export default [
               ],
             },
             { from: 'api', allow: ['core', 'shared', 'module'] },
-            { from: 'worker', allow: ['core', 'shared', 'module'] },
+            { from: 'worker', allow: ['core', 'shared', 'module', 'api'] },
           ],
         },
       ],

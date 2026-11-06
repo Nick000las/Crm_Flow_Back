@@ -3,6 +3,9 @@ import { ROLES } from '#shared/constants/index.js';
 /** `Module.key` do CRM (`tenant_modules.module_key`). */
 export const MODULO_CRM = 'crm';
 
+/** `tipo` da pessoa em `Module.entidades`: a referência usada por outros módulos. */
+export const ENTIDADE_PESSOA = 'pessoa';
+
 /**
  * Papéis que podem mexer na configuração do CRM (campos customizados,
  * visibilidade da Camada 2) e em import/export. OPERADOR fica com o CRUD de

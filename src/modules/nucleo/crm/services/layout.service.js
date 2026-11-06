@@ -142,14 +142,13 @@ export async function removerMeu(tenantId, usuarioId, acesso = {}) {
 }
 
 /**
- * Campo identificador do padrão do tenant, pra busca (M4.3): `null` quando
- * é Nome ou E-mail (a busca já cobre) ou quando o campo não é mais válido.
- * Em cache — a busca roda em toda listagem.
+ * Campo identificador do padrão do tenant: `null` quando não foi escolhido
+ * ou não é mais válido. Em cache — a busca roda em toda listagem.
  *
  * @param {string} tenantId
  * @returns {Promise<{ chave: string, tipo: string, camada: number, coluna?: string, id: string | null } | null>}
  */
-export async function identificadorDaBusca(tenantId) {
+export async function identificadorDoLayout(tenantId) {
   const ref = await lerComCache(chaveCache(tenantId), TTL_CACHE_SEGUNDOS, async () => {
     const salvo = await buscarLayoutPadrao(tenantId);
     return salvo?.identificador ?? null;
@@ -158,7 +157,7 @@ export async function identificadorDaBusca(tenantId) {
 
   const { campos } = await obterSchemaCampos(tenantId);
   const campo = campos.find((item) => item.id === ref);
-  if (!campo || campo.chave === 'nome' || campo.chave === 'email') return null;
+  if (!campo) return null;
   return {
     chave: campo.chave,
     tipo: campo.tipo,
@@ -166,6 +165,17 @@ export async function identificadorDaBusca(tenantId) {
     coluna: campo.coluna,
     id: campo.id,
   };
+}
+
+/**
+ * Identificador para a busca (M4.3): `null` também quando é Nome ou E-mail,
+ * que a busca já cobre.
+ *
+ * @param {string} tenantId
+ */
+export async function identificadorDaBusca(tenantId) {
+  const campo = await identificadorDoLayout(tenantId);
+  return campo && campo.chave !== 'nome' && campo.chave !== 'email' ? campo : null;
 }
 
 // ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ const ORDEM_APELIDO = 60;
 const ORDEM_SALARIO = 61;
 const SALARIO = 5000;
 const DOIS_LEADS = 2; // o lead e o mesclado nele
+const TRES_LEADS = 3; // a cadeia A → B → C
 /** No Neon, a conexão fria e a latência passam fácil dos 5 s padrão. */
 const TIMEOUT_MS = 60_000;
 
@@ -148,6 +149,33 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       donoId,
     );
     expect((await buscarLeadPorId(tenantId, comPadrao))?.legal_basis).toBe('consentimento');
+  });
+
+  it('anonimizar alcança a cadeia inteira de mesclagens (A → B → C)', async () => {
+    const criar = async (nome) =>
+      (await registrarNovoLead(tenantId, { nome, email: `${randomUUID()}@titular.test` }, donoId))
+        .id;
+    const [antiga, meio, atual] = [
+      await criar('Cadeia Antiga'),
+      await criar('Cadeia Meio'),
+      await criar('Cadeia Atual'),
+    ];
+    await mesclarLeads(tenantId, { principalId: meio, secundarioId: antiga }, donoId);
+    await mesclarLeads(tenantId, { principalId: atual, secundarioId: meio }, donoId);
+
+    const resumo = await anonimizarLeadDoTitular(tenantId, atual, donoId);
+
+    expect(resumo.leads).toBe(TRES_LEADS);
+    const linhas = await prisma.$queryRaw`
+      SELECT nome, email, anonimizado_em FROM modulo_crm.leads
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${[antiga, meio, atual]}::uuid[])
+    `;
+    expect(linhas).toHaveLength(TRES_LEADS);
+    for (const linha of linhas) {
+      expect(linha.nome).not.toContain('Cadeia');
+      expect(linha.email).toBeNull();
+      expect(linha.anonimizado_em).not.toBeNull();
+    }
   });
 
   it('anonimizar: some a PII do lead, do mesclado, das atividades e do histórico; fica o rastro', async () => {

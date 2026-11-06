@@ -2,8 +2,8 @@
 
 **Situação em 04/11/2026:** o banco de dev foi resetado e voltou a seguir só as
 migrations do repositório, então hoje a leitura usa o modelo anterior. O ramo de
-oportunidades continua no código e coberto por testes; sai na feat_Forms
-refeita, quando a leitura voltar a ter um modelo só. O schema de referência está
+oportunidades continua no código e coberto por testes; sai no M2.5, etapa F5
+(`plano-execucao-crm-kanban.md`), quando a leitura voltar a ter um modelo só. O schema de referência está
 em [`referencia-schema-0030-0034.sql`](./referencia-schema-0030-0034.sql).
 
 O banco antigo possuía as migrations 0030–0034, enquanto os arquivos dessas

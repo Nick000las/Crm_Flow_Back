@@ -237,6 +237,30 @@ export const crmModule = {
 };
 ```
 
+### Publicar conteúdo em outro módulo
+
+Módulos não se importam, mas um módulo pode publicar conteúdo no motor do
+Kanban por dois campos opcionais de `Module`:
+
+- `quadros`: um quadro cujo conteúdo vem do módulo (`ProvedorDeQuadro`);
+- `entidades`: um registro que outro módulo pode referenciar sem copiar dado
+  (`ProvedorDeEntidade`).
+
+Os contratos estão em `src/core/types/module.js` e o registro em
+`src/core/quadros/registro.js`. `assertModule` confere cada provedor ao subir,
+e `assertProvedoresValidos` recusa tipo repetido e quadro sem provedor da sua
+entidade. O exemplo de referência é
+`src/modules/nucleo/kanban-universal/testing/provedor-falso.js`.
+
+Regras de `ProvedorDeEntidade`:
+
+- `descrever` responde só pelo que o usuário pode ver. Id ausente aparece como
+  "Registro restrito", sem nenhum dado;
+- `idAtual` informa que o registro passou para outro (mesclagem). A tela já
+  mostra e abre o atual, antes de a varredura trocar o id gravado;
+- `resolverVinculos` roda sem usuário, no `pnpm worker:kanban`: id → id atual,
+  ou `null` para remover o vínculo. Id que não voltar fica como está.
+
 ## 8. Testes esperados
 
 No mínimo, todo `service` tem teste unitário mockando o próprio `adapter`

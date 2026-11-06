@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+const CARD_INEXISTENTE = 'missing';
 const LOCK_AND_TWO_UPDATES = 3;
 const LOCK_UPDATES_AND_ACTIVITY = 4;
 import { executar as execute } from './kanban.repository.js';
@@ -18,10 +19,10 @@ describe('integridade de movimentação', () => {
     ];
     tx = {
       $executeRaw: vi.fn(),
-      $queryRaw: vi.fn(async (sql) => {
+      $queryRaw: vi.fn(async (sql, ...values) => {
         const query = sql.join('?');
-        if (query.includes('tenant_modules')) {
-          return [{ id: 'enabled' }];
+        if (query.includes('UNION ALL')) {
+          return values.includes(CARD_INEXISTENTE) ? [] : [{ board_id: 'board' }];
         }
         if (query.includes('.boards')) {
           return [{ id: 'board' }];
@@ -64,9 +65,9 @@ describe('integridade de movimentação', () => {
   });
   it('rejeita card invisível ou inexistente sem alterar dados', async () => {
     await expect(
-      executar('tenant', 'card.move', 'missing', { novaColunaId: 'target', novaOrdem: 0 }),
+      executar('tenant', 'card.move', CARD_INEXISTENTE, { novaColunaId: 'target', novaOrdem: 0 }),
     ).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // Apenas lock, nenhuma alteração.
+    expect(tx.$executeRaw).not.toHaveBeenCalled(); // Nem lock: não há quadro a proteger.
   });
   it('rejeita coluna de outro quadro', async () => {
     await expect(
@@ -93,11 +94,14 @@ describe('integridade de movimentação', () => {
       statusCode: HTTP_STATUS.CONFLICT,
     });
   });
-  it('bloqueia tenant sem módulo', async () => {
-    tx.$queryRaw.mockResolvedValue([]);
-    await expect(executar('tenant', 'card.get', 'card')).rejects.toMatchObject({
-      statusCode: HTTP_STATUS.FORBIDDEN,
-    });
+  it('leitura não pega lock', async () => {
+    await executar('tenant', 'card.get', 'card');
     expect(tx.$executeRaw).not.toHaveBeenCalled();
+  });
+  it('a escrita trava o quadro, não o tenant', async () => {
+    await executar('tenant', 'card.delete', 'card');
+    const [sql, chave] = tx.$executeRaw.mock.calls[0];
+    expect(sql.join('?')).toContain('pg_advisory_xact_lock');
+    expect(chave).toBe('board');
   });
 });

@@ -50,6 +50,24 @@ export function erroDeValidacao(campo, mensagem, mensagemDoCampo = mensagem) {
   });
 }
 
+/**
+ * 400 `CAMPOS_OBRIGATORIOS`: a ação depende de campos que o usuário precisa
+ * preencher. Provedor de quadro usa ao recusar um movimento, e a tela abre o
+ * formulário com `fields`.
+ *
+ * @param {Record<string, string>} mensagens  campo → texto
+ */
+export function erroCamposObrigatorios(mensagens) {
+  return new AppError({
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+    code: ERROR_CODES.CAMPOS_OBRIGATORIOS,
+    message: 'Preencha os campos obrigatórios para continuar.',
+    fields: Object.fromEntries(
+      Object.entries(mensagens).map(([campo, mensagem]) => [campo, [mensagem]]),
+    ),
+  });
+}
+
 /** 404 `RESOURCE_NOT_FOUND`. @param {string} mensagem */
 export function erroNaoEncontrado(mensagem) {
   return new AppError({

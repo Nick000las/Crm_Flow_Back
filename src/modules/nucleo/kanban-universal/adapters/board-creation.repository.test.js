@@ -17,9 +17,6 @@ describe('criação de quadro com modelo', () => {
     tx = {
       $queryRaw: vi.fn(async (sql) => {
         const query = sql.join('?');
-        if (query.includes('tenant_modules')) {
-          return [{ id: 'enabled' }];
-        }
         if (query.includes('INSERT INTO')) {
           return [{ id: 'board', nome: 'Projeto' }];
         }

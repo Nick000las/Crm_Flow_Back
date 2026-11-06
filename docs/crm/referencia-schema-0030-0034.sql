@@ -1,6 +1,6 @@
 -- REFERÊNCIA, NÃO EXECUTAR. Schema `modulo_crm` do banco de dev antigo, extraído do catálogo do
 -- Postgres em 2026-11-04, só estrutura e sem dados. Inclui o efeito das migrations abaixo, cujos
--- arquivos não existem em nenhuma ref do Git. É a base para recriá-las na feat_Forms, com números novos.
+-- arquivos não existem em nenhuma ref do Git. É a base do M2.5 (Fundação comercial), com números novos.
 --   0030_crm_entidade_outbox
 --   0031_crm_quadros
 --   0032_crm_oportunidades
