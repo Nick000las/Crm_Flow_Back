@@ -1,12 +1,14 @@
+import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
+import { fonteLeads } from './crm-lead-read-model.js';
 
 const FIRST_RESULT_INDEX = 0;
 
 /**
  * ADAPTER: pontuação de leads (M14, migration 0027) — regras, faixas, o
  * progresso do recálculo e a gravação do `leads.lead_score`. A expressão do
- * score (`Prisma.Sql` sobre `l` = leads) vem pronta do service: é a mesma
- * tradução de condição do filtro.
+ * score (`Prisma.Sql` sobre `l` = a leitura do lead) vem pronta do service: é a
+ * mesma tradução de condição do filtro.
  *
  * @typedef {{
  *   id: string, nome: string, posicao: number, ativo: boolean, pontos: number,
@@ -78,6 +80,20 @@ export function salvarRegrasEFaixas(tenantId, regras, faixas) {
 }
 
 /**
+ * A expressão olha `l` = a leitura do lead, para regra sobre status ou valor
+ * enxergar a oportunidade principal. Espera `alvo` = a linha sendo gravada.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {import('@prisma/client').Prisma.Sql} expressao
+ */
+async function scoreDaLeitura(tx, expressao) {
+  return Prisma.sql`(
+    SELECT ${expressao} FROM ${await fonteLeads(tx)} l
+    WHERE l.tenant_id = alvo.tenant_id AND l.id = alvo.id
+  )`;
+}
+
+/**
  * Score de leads específicos (depois de salvar um lead). Não gera evento
  * no histórico: o score não é edição de ninguém.
  *
@@ -90,10 +106,10 @@ export async function gravarScores(tenantId, expressao, leadIds) {
   if (leadIds.length === 0) return new Map();
   const linhas = await getTenantClient(
     tenantId,
-    (tx) => tx.$queryRaw`
-      UPDATE modulo_crm.leads l SET lead_score = (${expressao})
-      WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ANY(${leadIds}::uuid[])
-      RETURNING l.id::text, l.lead_score AS score
+    async (tx) => tx.$queryRaw`
+      UPDATE modulo_crm.leads alvo SET lead_score = ${await scoreDaLeitura(tx, expressao)}
+      WHERE alvo.tenant_id = ${tenantId}::uuid AND alvo.id = ANY(${leadIds}::uuid[])
+      RETURNING alvo.id::text, alvo.lead_score AS score
     `,
   );
   return new Map(linhas.map((linha) => [linha.id, linha.score]));
@@ -112,16 +128,16 @@ export async function gravarScores(tenantId, expressao, leadIds) {
 export async function gravarScoresEmLote(tenantId, expressao, depoisDe, limite) {
   const linhas = await getTenantClient(
     tenantId,
-    (tx) => tx.$queryRaw`
+    async (tx) => tx.$queryRaw`
       WITH lote AS (
         SELECT id FROM modulo_crm.leads
         WHERE tenant_id = ${tenantId}::uuid AND (${depoisDe}::uuid IS NULL OR id > ${depoisDe}::uuid)
         ORDER BY id
         LIMIT ${limite}
       )
-      UPDATE modulo_crm.leads l SET lead_score = (${expressao})
-      FROM lote WHERE l.id = lote.id
-      RETURNING l.id::text
+      UPDATE modulo_crm.leads alvo SET lead_score = ${await scoreDaLeitura(tx, expressao)}
+      FROM lote WHERE alvo.id = lote.id
+      RETURNING alvo.id::text
     `,
   );
   return linhas.map((linha) => linha.id).sort();

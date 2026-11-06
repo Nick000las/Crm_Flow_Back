@@ -16,7 +16,7 @@ import {
   enfileirarImportacao,
   encerrarFilaImportacao,
 } from '../adapters/import-queue.repository.js';
-import { buscarLeadPorId, criarLead, atualizarLead } from '../adapters/leads.repository.js';
+import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   ACOES_DUPLICIDADE,
@@ -58,6 +58,7 @@ import {
   distribuir,
   notificarAtribuicoesDoImport,
 } from './distribuicao.service.js';
+import { atualizarLeadComOportunidade, criarLeadComOportunidade } from './oportunidades.service.js';
 import { lerPlanilha } from './planilha.service.js';
 import {
   comPrimeiroNomeNaCriacao,
@@ -462,7 +463,7 @@ async function importarLinha(
         dados,
         precisaDoLeadAtual(dados) ? await buscarLeadPorId(tenantId, existente.id) : null,
       );
-      await atualizarLead(tenantId, existente.id, comPrimeiroNome, {
+      await atualizarLeadComOportunidade(tenantId, existente.id, comPrimeiroNome, {
         ...historico,
         montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
       });
@@ -480,7 +481,7 @@ async function importarLinha(
     dados.usuarioResponsavelId === undefined && distribuirLinha
       ? await distribuirLinha(dados.tags)
       : null;
-  const criado = await criarLead(
+  const criado = await criarLeadComOportunidade(
     tenantId,
     {
       // M15: origem "importação" e a data da base legal (a do lote já veio na linha).

@@ -466,13 +466,13 @@ describe('processarImportacao — estratégias de duplicata', () => {
     expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
 
-  it('criar: cria mesmo com duplicado que só avisa, com estágio padrão e evento "criado"', async () => {
+  it('criar: cria mesmo com duplicado que só avisa, com oportunidade e evento "criado"', async () => {
     jobCom('criar');
     encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
 
     await processarImportacao(TENANT, JOB);
 
-    expect(criarLead.mock.calls[0][1].funilEstagioId).toBe(ESTAGIO_NOVO);
+    expect(criarLead.mock.calls[0][3]).toEqual(expect.any(Function));
     // M10: sem a coluna, o primeiro nome sai do nome.
     expect(criarLead.mock.calls[0][1].primeiroNome).toBe('Ana');
     expect(criarLead.mock.calls[0][2]).toEqual({ autorId: USUARIO });

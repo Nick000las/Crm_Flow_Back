@@ -33,7 +33,6 @@ it('modelo atual resolve campos comerciais pela oportunidade principal e etapa d
   expect(source.sql).toContain('negocio.id = contato.principal_deal_id');
   expect(source.sql).toContain('negocio.tenant_id = contato.tenant_id');
   expect(source.sql).toContain('negocio.lead_id = contato.id');
-  expect(source.sql).toContain('negocio.deleted_at IS NULL');
   expect(source.sql).toContain('etapa.pipeline_id = negocio.pipeline_id');
   expect(source.sql).toContain('negocio.amount AS valor');
   expect(source.sql).not.toContain('funil_estagios');
@@ -55,11 +54,11 @@ it('schema incompleto informa indisponibilidade sem fabricar dados', async () =>
   });
 });
 
-it('tabela de funil remanescente não força o modelo antigo quando status já saiu do lead', async () => {
+it('com crm_deal no schema, a leitura é pela oportunidade, mesmo com as colunas antigas', async () => {
   capabilities = {
     oportunidades: true,
     funil_legado: true,
-    status_legado: false,
+    status_legado: true,
     principal_deal: true,
   };
   expect((await fonteLeads(tx)).sql).toContain('contato.principal_deal_id');
@@ -77,7 +76,7 @@ it('busca e total usam a mesma projeção, tenant e filtros com paginação est�
     expect(query.sql).toContain('l.deleted_at IS NULL');
     expect(query.values).toContain(TENANT);
   }
-  expect(queries.at(-1).sql).toContain('ORDER BY l.estagio_ordem, l.created_at DESC, l.id');
+  expect(queries.at(-1).sql).toContain('ORDER BY l.created_at DESC, l.id');
 });
 
 it('detalhe usa o mesmo modelo e continua limitado por tenant e id', async () => {
@@ -97,8 +96,6 @@ it('usos de status e motivo contam todas as oportunidades, inclusive as não pri
   }
 });
 
-it('inatividade distingue status de pipelines diferentes; sem oportunidade, vale o padrão', () => {
-  const { sql } = colunaEsfriandoDesde(new Date());
-  expect(sql).toContain("to_jsonb(l)->>'pipeline_id'");
-  expect(sql).toContain('p.is_default');
+it('inatividade distingue status de pipelines diferentes', () => {
+  expect(colunaEsfriandoDesde(new Date()).sql).toContain('o.pipeline_id = l.pipeline_id');
 });

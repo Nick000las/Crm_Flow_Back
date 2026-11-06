@@ -118,6 +118,7 @@ export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas) {
   const label =
     mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
   validarCategoria(kind, mudancas.category, { obrigatoria: false });
+  await garantirCategoriaLivre(tenantId, kind, atual, mudancas.category);
 
   const depois = { ...atual, ...(mudancas.category && { category: mudancas.category }) };
   if (mudancas.ativo !== undefined) depois.ativo = mudancas.ativo;
@@ -387,6 +388,26 @@ function validarCategoria(kind, category, { obrigatoria }) {
   }
   if (obrigatoria && category === undefined) {
     throw erroDeValidacao('category', 'Informe a categoria do status (aberto, ganho ou perdido)');
+  }
+}
+
+/**
+ * A oportunidade guarda a categoria e as datas de ganho e perda: mudar a
+ * categoria de um status em uso deixaria os registros incoerentes.
+ *
+ * @param {string} tenantId
+ * @param {string} kind
+ * @param {OpcaoLista} atual
+ * @param {string | undefined} category
+ */
+async function garantirCategoriaLivre(tenantId, kind, atual, category) {
+  if (kind !== TIPOS_LISTA.STATUS || !category || category === atual.category) return;
+  const usos = (await contarUsos(tenantId, kind)).get(atual.key) ?? 0;
+  if (usos > 0) {
+    throw erroDeConflito(
+      'category',
+      `"${atual.label}" está em ${usos} oportunidade(s) — mova-as antes de mudar a categoria`,
+    );
   }
 }
 

@@ -82,12 +82,6 @@ export const CAMPO_RESPONSAVEL_NO_DIFF = 'usuarioResponsavelId';
  */
 export const PROPRIEDADES_NO_HISTORICO = Object.freeze([
   { campo: 'valor', coluna: 'valor', ref: 'lead.valor' },
-  {
-    campo: 'funilEstagioId',
-    coluna: 'funil_estagio_id',
-    ref: 'lead.estagio',
-    colunaNome: 'estagio_nome',
-  },
   { campo: 'usuarioResponsavelId', coluna: 'usuario_responsavel_id', ref: 'lead.responsavel' },
 ]);
 

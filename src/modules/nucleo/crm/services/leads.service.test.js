@@ -220,6 +220,7 @@ describe('registrarNovoLead', () => {
       'tenant-1',
       expect.objectContaining({ customFields: { [ID_PRIORIDADE]: 'alta' } }),
       { autorId: null }, // evento "criado" do histórico (M6)
+      expect.any(Function), // a oportunidade que nasce com o lead
     );
   });
 });
@@ -394,7 +395,10 @@ describe('responsável pelo lead', () => {
       'lead-1',
       { usuarioResponsavelId: 'usuario-2' },
       expect.objectContaining({ autorId: null, montarDiff: expect.any(Function) }),
-      { inatividade: null },
+      expect.objectContaining({
+        inatividade: null,
+        oportunidade: expect.objectContaining({ exigeOportunidade: false }),
+      }),
     );
   });
 });

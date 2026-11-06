@@ -235,6 +235,13 @@ Depende só do M2. Atrás de `kanban_universal.vinculo_entidade`. Executado **de
 - Lead sem status nasce no primeiro status aberto de Vendas. É a única mudança visível na API: hoje ele nasce com `status: null`, e `crm_deal.status` é obrigatório.
 - `funil_estagio_id` e `estagio_nome` passam a devolver a opção de status.
 
+**Decididas pelo dono em 05/11/2026, durante a F4:**
+
+- **Mesclar:** as oportunidades dos dois continuam existindo e o lead mostra a principal (F-2). A escolha de status, valor e motivo deixa de valer e sai da tela de mesclar.
+- **Data de conversão:** só em oportunidade ganha; fora disso, 400 no campo. Na importação, a linha vai para o relatório de erros.
+- **`status: null`:** 400. Toda oportunidade tem status.
+- **Categoria de status em uso:** 409, pedindo para mover as oportunidades antes.
+
 ### Etapas
 
 Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga algo.
@@ -272,19 +279,22 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F4. Fluxos do CRM sobre a oportunidade**
 
-- [ ] Primeiro passo: leitura e escrita trocam de modelo juntas. Enquanto `leads.status` existir, `usaOportunidades` continua escolhendo o modelo atual, então gravar na oportunidade sem trocar a leitura esconderia a mudança.
-- [ ] Criar e editar lead: campos comerciais vão para a oportunidade principal, e a resposta não muda de formato.
-- [ ] Filtros, views salvas, busca, totais e exportação.
-- [ ] Importação: lead novo com oportunidade; regra de duplicados igual à de hoje.
-- [ ] Edição em massa e distribuição: mudar responsável alcança a oportunidade.
-- [ ] Inatividade (M9) e score (M14): relógio e regras leem o status da oportunidade.
-- [ ] **Mesclar:** oportunidades do secundário passam para o principal, e a principal é recalculada.
-- [ ] **Anonimizar:** `title` da oportunidade é limpo em toda a cadeia de mesclagem, e `crm_event` não pode guardar dado pessoal (payload só com ids). `status`, valor e motivo de perda ficam, como hoje.
-- [ ] **Lixeira e purga:** oportunidade acompanha a pessoa.
+- [x] Primeiro passo: leitura e escrita trocaram de modelo juntas. `usaOportunidades` agora prefere as oportunidades, e nada mais grava nas colunas comerciais de `leads`, que ficam vazias até a F5.
+- [x] Criar e editar lead: campos comerciais vão para a oportunidade principal, na mesma transação do lead, e a resposta não muda de formato. Um PUT continua sendo um evento só na timeline. O dono da principal acompanha o responsável; a oportunidade de atendimento mantém o dela.
+- [x] Filtros, views salvas, busca, totais e exportação: todos leem por `fonteLeads`. A lista segue por data de criação, como hoje: `estagio_ordem` saiu do `ORDER BY` porque agruparia a tabela por status.
+- [x] Importação: lead novo com oportunidade; regra de duplicados igual à de hoje.
+- [x] Edição em massa e distribuição: mudar responsável alcança a oportunidade. A distribuição só atribui ao criar, e a oportunidade já nasce com esse dono.
+- [x] Inatividade (M9) e score (M14): relógio e regras leem o status da oportunidade. O score é recalculado também nas mudanças feitas pelo service único.
+- [x] **Mesclar:** oportunidades do secundário passam para o principal, inclusive as da lixeira, e a principal é recalculada nos dois lados.
+- [x] **Anonimizar:** `title` da oportunidade é limpo em toda a cadeia de mesclagem, o título também some do histórico, e `crm_event` não guarda dado pessoal (payload só com ids). `status`, valor e motivo de perda ficam, como hoje.
+- [x] **Lixeira e purga:** oportunidade acompanha a pessoa com o mesmo carimbo de `deleted_at`, então restaurar traz só as que foram junto. A purga apaga em cascata. Arquivar o lead não mexe nas oportunidades: o quadro do M3 precisa esconder cards de lead arquivado.
+- [x] Backfill não foi necessário: o banco de dev tem 0 leads, e não existe produção. Se isso mudar antes da F5, é preciso migrar os dados antes de apagar as colunas.
 
 **F5. Um modelo só**
 
 - [ ] Remover `usaOportunidades`, o ramo legado de `fonteLeads`, `funil-estagios.repository.js` e `CRM_SCHEMA_INCOMPATIBLE`.
+- [ ] Coluna "Estágio do funil" da planilha: hoje casa com `funil_estagios`, que é vazio. Passa a casar com o nome da opção de status (`funilEstagioId`), e `estagioPadraoId` sai.
+- [ ] `fonteLeads` volta a usar `contato.*`, sem a lista `COLUNAS_DO_CONTATO`.
 - [ ] Migration final: apaga `funil_estagios` e as colunas comerciais de `leads`. Irreversível, por isso vem por último e só depois de F0 a F4 validadas.
 - [ ] Atualizar `compatibilidade-leitura-oportunidades.md` e `MASTER_DOCUMENT.md`.
 
@@ -305,7 +315,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 - [ ] `funil_estagios` não existe e nenhum código o cita.
 - [ ] Todos os gates verdes, sem teste ignorado.
 
-**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5.
+**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5. Mudanças de comportamento da F4: lead sem status nasce no primeiro aberto; `funil_estagio_id` deixa de ser nulo; `status: null` é 400; `dataConversao` fora de venda ganha é 400, e reabrir uma venda exige não reenviar a data; `valor` negativo é 400; `probabilidadeFechamento` é inteiro de 0 a 100; a escolha de status, valor e motivo sai da tela de mesclar; mudar a categoria de status em uso é 409; ganhar preenche `data_conversao`, e sair de Perdido limpa `motivo_perda`.
 
 ---
 
@@ -370,7 +380,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 - **Quadros nativos regredirem no M2:** motor separado, sem tocar em `executar()`.
 - **Worker novo no M6:** só funciona se entrar no deploy; o nome some na leitura mesmo sem ele.
 - **Tamanho do M2.5:** é o maior marco e toca fluxos sensíveis. Mitigado por etapas com parada, testes de caracterização antes da mudança e apagar só na F5.
-- **Troca de modelo:** `usaOportunidades` só muda de ramo quando `funil_estagios` e `leads.status` somem. Na F4, leitura e escrita precisam trocar juntas.
+- **Troca de modelo:** feita na F4, com leitura e escrita juntas. Até a F5, as colunas comerciais de `leads` existem, mas ficam vazias: nenhum código deve lê-las.
 
 ## Verificação
 

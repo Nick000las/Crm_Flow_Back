@@ -15,8 +15,8 @@ const RETORNO_PIPELINE_SQL = Prisma.raw(
 );
 
 /**
- * O pipeline padrão (Vendas), como subconsulta. Até a oportunidade existir
- * (F4), o `status` do lead é sempre um status deste pipeline.
+ * O pipeline padrão (Vendas), como subconsulta: onde nasce a oportunidade de
+ * todo lead novo, e de onde saem as opções de status de `/crm/leads`.
  *
  * @param {string} tenantId
  * @returns {Prisma.Sql}

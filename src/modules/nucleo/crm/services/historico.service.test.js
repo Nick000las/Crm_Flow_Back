@@ -78,17 +78,14 @@ describe('diffDoLead', () => {
     ]);
   });
 
-  it('estágio guarda o id e o nome do momento', () => {
-    const depois = { ...LEAD, funil_estagio_id: 'estagio-2', estagio_nome: 'Proposta' };
-    expect(diffDoLead(LEAD, depois)).toEqual([
-      {
-        campo: 'funilEstagioId',
-        antes: 'estagio-1',
-        depois: 'estagio-2',
-        antesNome: 'Contato',
-        depoisNome: 'Proposta',
-      },
-    ]);
+  it('o estágio é a opção de status: a troca aparece só como status', () => {
+    const depois = {
+      ...LEAD,
+      status: 'proposta',
+      funil_estagio_id: 'estagio-2',
+      estagio_nome: 'Proposta',
+    };
+    expect(diffDoLead(LEAD, depois).map((entrada) => entrada.campo)).toEqual(['status']);
   });
 
   it('personalizado pelo id do campo, incluindo valor limpo', () => {
@@ -259,7 +256,7 @@ describe('timeline (M16): funções puras', () => {
         { id: ID_EXCLUIDO, chave: 'oculto' },
       ],
     });
-    expect(visiveis.chaves).toEqual(['status', 'valor', 'funilEstagioId', 'usuarioResponsavelId']);
+    expect(visiveis.chaves).toEqual(['status', 'valor', 'usuarioResponsavelId']);
     expect(visiveis.campoIds).toEqual([ID_SEGMENTO]);
   });
 });

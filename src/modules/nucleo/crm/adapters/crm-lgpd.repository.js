@@ -65,6 +65,7 @@ export function buscarSituacaoLgpd(tenantId, leadId) {
  * - lead: nome vira `ANONIMIZACAO.NOME`, as colunas pessoais ficam nulas e
  *   `custom_fields` guarda só os personalizados de `mantidos` (ids);
  * - atividades: título genérico, sem notas (tipo e datas ficam);
+ * - oportunidades: sem título; status, valor e motivo de perda ficam;
  * - histórico: antes/depois dos campos pessoais vira `null` e o `detalhes`
  *   perde o que identifica (nome do mesclado, CNPJ) — o trigger append-only
  *   só deixa com `app.lgpd_anonimizando` ligado nesta transação;
@@ -120,6 +121,11 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
       UPDATE modulo_crm.crm_activity
       SET titulo = ${TITULO_ATIVIDADE}, notas = NULL, updated_at = now()
       WHERE tenant_id = ${tenantId}::uuid AND lead_id = ANY(${ids}::uuid[])
+    `;
+
+    await tx.$executeRaw`
+      UPDATE modulo_crm.crm_deal SET title = NULL
+      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ANY(${ids}::uuid[]) AND title IS NOT NULL
     `;
 
     // Entrada do diff: `{ campo, campoId?, antes, depois }` — personalizado

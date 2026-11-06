@@ -84,6 +84,7 @@ export const ANONIMIZACAO = Object.freeze({
     'cnpj',
     'endereco',
     'cep',
+    'tituloOportunidade',
   ]),
   /** Personalizados que ficam (não identificam a pessoa); os outros tipos são apagados. */
   TIPOS_PERSONALIZADO_MANTIDOS: Object.freeze([

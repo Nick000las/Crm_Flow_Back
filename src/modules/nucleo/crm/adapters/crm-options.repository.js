@@ -36,7 +36,8 @@ function colunaDoLead(kind) {
 
 /**
  * Todas as opções do tenant (ativas e inativas), na ordem configurada. Status:
- * só os do pipeline padrão, que é o que o `status` do lead aceita até a F4.
+ * só os do pipeline padrão, a lista que `/crm/leads` oferece. Os dos outros
+ * pipelines vêm de `buscarStatusDoPipeline`.
  *
  * @param {string} tenantId
  * @returns {Promise<OpcaoLista[]>}
@@ -62,16 +63,23 @@ export function buscarOpcoesDoTenant(tenantId) {
  * @returns {Promise<OpcaoLista[]>}
  */
 export function buscarStatusDoPipeline(tenantId, pipelineId) {
-  return getTenantClient(
-    tenantId,
-    (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_OPCAO_SQL}
-      FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid AND kind = 'status'
-        AND pipeline_id = ${pipelineId}::uuid
-      ORDER BY position, created_at, id
-    `,
-  );
+  return getTenantClient(tenantId, (tx) => statusDoPipeline(tx, tenantId, pipelineId));
+}
+
+/**
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {string} tenantId
+ * @param {string} pipelineId
+ * @returns {Promise<OpcaoLista[]>}
+ */
+export function statusDoPipeline(tx, tenantId, pipelineId) {
+  return tx.$queryRaw`
+    SELECT ${RETORNO_OPCAO_SQL}
+    FROM modulo_crm.crm_option
+    WHERE tenant_id = ${tenantId}::uuid AND kind = 'status'
+      AND pipeline_id = ${pipelineId}::uuid
+    ORDER BY position, created_at, id
+  `;
 }
 
 /**

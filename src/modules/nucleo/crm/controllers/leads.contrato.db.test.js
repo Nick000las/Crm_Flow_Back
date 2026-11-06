@@ -17,9 +17,10 @@ import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
  * Contrato de `/crm/leads` para a transição do M2.5 (F0): o que a API entrega
- * hoje, pela rota, sem olhar a tabela. Quando os campos comerciais passarem
- * para a oportunidade, estes testes continuam iguais: se um deles precisar
- * mudar, o contrato com o front mudou, e isso é decisão, não ajuste de teste.
+ * hoje, pela rota, sem olhar a tabela. Os campos comerciais moram na oportunidade
+ * e estes testes continuam valendo: se um deles precisar mudar, o contrato com o
+ * front mudou, e isso é decisão, não ajuste de teste. Os dois que mudaram estão
+ * marcados com a decisão.
  *
  * GRAVA no banco de `DATABASE_URL` (tenant SMOKE, apagado no fim): só roda
  * com `CRM_DB_TESTS=1`, num banco de dev.
@@ -33,6 +34,7 @@ const VALOR_ALTO = 900;
 const VALOR_BAIXO = 100;
 const VALOR_EDITADO = 250.5;
 const PROBABILIDADE = 70;
+const DUAS_OPORTUNIDADES = 2;
 
 /** Campos opcionais que dependem de o tenant ligá-los; com isso, entram no contrato. */
 const CAMPOS_OPCIONAIS = Object.freeze({
@@ -166,12 +168,18 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(String(lead.data_prevista_fechamento)).toContain(dataPrevista);
   });
 
-  it('lead sem dado comercial nasce com tudo nulo, inclusive o status', async () => {
+  // Decisão do dono (05/11/2026): toda oportunidade tem status, então o lead sem
+  // status nasce no primeiro aberto de Vendas, e o estágio é a opção de status.
+  it('lead sem dado comercial nasce no primeiro status aberto, sem valor', async () => {
+    const primeiroAberto = listas.status.find(
+      (opcao) => opcao.ativo && opcao.category === 'aberto',
+    );
     const lead = await ler(await criar({ nome: 'Contrato Mínimo' }));
-    expect(lead.status).toBeNull();
+    expect(lead.status).toBe(primeiroAberto.key);
+    expect(lead.funil_estagio_id).toBe(primeiroAberto.id);
+    expect(lead.estagio_nome).toBe(primeiroAberto.label);
     expect(lead.valor).toBeNull();
     expect(lead.motivo_perda).toBeNull();
-    expect(lead.funil_estagio_id).toBeNull();
   });
 
   it('status fora da lista do tenant é 400 no campo status', async () => {
@@ -308,8 +316,14 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(Number(lead.valor)).toBe(VALOR_ALTO);
   });
 
-  it('mesclar: o principal fica com os dados comerciais escolhidos', async () => {
-    const principal = await criar({ nome: 'Mescla Principal', status: statusAberto });
+  // Decisão do dono (05/11/2026): as oportunidades dos dois continuam existindo,
+  // o lead mostra a principal pela regra F-2 e a escolha comercial não se aplica.
+  it('mesclar: as duas oportunidades ficam e o lead mostra a principal', async () => {
+    const principal = await criar({
+      nome: 'Mescla Principal',
+      status: statusAberto,
+      valor: VALOR_BAIXO,
+    });
     const secundario = await criar({
       nome: 'Mescla Secundário',
       status: statusFechado,
@@ -324,8 +338,13 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
 
     expect(resposta.status, resposta.corpo).toBe(HTTP_STATUS.OK);
     const lead = await ler(principal);
-    expect(lead.status).toBe(statusFechado);
-    expect(Number(lead.valor)).toBe(VALOR_ALTO);
+    expect(lead.status).toBe(statusAberto);
+    expect(Number(lead.valor)).toBe(VALOR_BAIXO);
+    const [{ total }] = await prisma.$queryRaw`
+      SELECT count(*)::int AS total FROM modulo_crm.crm_deal
+      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${principal}::uuid
+    `;
+    expect(total).toBe(DUAS_OPORTUNIDADES);
   });
 
   it('anonimizar: dados comerciais não identificam e ficam para os relatórios', async () => {

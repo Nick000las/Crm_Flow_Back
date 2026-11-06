@@ -83,7 +83,7 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
       { nome: 'Lead timeline', email: 'tl@smoke.test' },
       donoId,
     ));
-    await atualizarLeadExistente(tenantId, leadId, { status: 'ganho' }, donoId);
+    await atualizarLeadExistente(tenantId, leadId, { status: 'perdido' }, donoId);
     await atualizarLeadExistente(tenantId, leadId, { usuarioResponsavelId: vendedorId }, donoId);
     // Inativo depois: o histórico antigo ainda mostra o nome.
     await prisma.usuario.update({ where: { id: vendedorId }, data: { ativo: false } });
