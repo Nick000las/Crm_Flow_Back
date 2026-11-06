@@ -1,10 +1,10 @@
 # Leitura de leads após a migração de oportunidades
 
-**Situação em 04/11/2026:** o banco de dev foi resetado e voltou a seguir só as
-migrations do repositório, então hoje a leitura usa o modelo anterior. O ramo de
-oportunidades continua no código e coberto por testes; sai no M2.5, etapa F5
-(`plano-execucao-crm-kanban.md`), quando a leitura voltar a ter um modelo só. O schema de referência está
-em [`referencia-schema-0030-0034.sql`](./referencia-schema-0030-0034.sql).
+**Situação em 05/11/2026 (M2.5, F4):** a leitura e a escrita de `/crm/leads` usam
+as oportunidades. As colunas comerciais de `leads` e `funil_estagios` ainda
+existem, mas ficam vazias, e saem na etapa F5 (`plano-execucao-crm-kanban.md`),
+junto com o ramo legado de `fonteLeads`. O schema de referência está em
+[`referencia-schema-0030-0034.sql`](./referencia-schema-0030-0034.sql).
 
 O banco antigo possuía as migrations 0030–0034, enquanto os arquivos dessas
 migrations não constam nas branches disponíveis do repositório. As consultas
@@ -31,15 +31,15 @@ principal (`leads.principal_deal_id`):
 | `data_prevista_fechamento`          | `crm_deal.expected_close_date`                             |
 | `motivo_perda`                      | `crm_deal.lost_reason`                                     |
 
-Sem oportunidade principal ativa, esses valores são nulos. A leitura não escolhe
-uma oportunidade arbitrária nem soma valores de negócios diferentes.
+Sem oportunidade principal, esses valores são nulos. A leitura não escolhe uma
+oportunidade arbitrária nem soma valores de negócios diferentes. Lead na lixeira
+continua mostrando a principal, que foi para a lixeira junto com ele.
 Os joins exigem o mesmo tenant, o vínculo ao contato e o mesmo pipeline para
-resolver o status. Contagem, paginação e filtros usam a mesma fonte; o ID
-desempata a ordenação para estabilizar páginas.
+resolver o status. Contagem, paginação e filtros usam a mesma fonte; a lista
+segue a data de criação, e o ID desempata para estabilizar páginas.
 
 A inatividade considera o pipeline ao resolver o status, pois a mesma key pode
-existir em quadros distintos. No modelo antigo, a ausência de `pipeline_id`
-continua válida.
+existir em quadros distintos.
 
 ## Listas configuráveis
 
@@ -50,10 +50,9 @@ referenciada. Origem, tags e tipos de atividade mantêm suas fontes próprias.
 ## Limites e validação
 
 Esta compatibilidade atende à busca, leitura do detalhe, exportação que usa a
-busca e contagem de usos das listas. Ela não reconstrói as migrations ausentes
-nem implementa os fluxos de escrita das oportunidades. Esses fluxos precisam
-do contrato de domínio correspondente; campos comerciais não voltam a ser
-colunas do contato.
+busca, inatividade, score e contagem de usos das listas. A escrita passa pelo
+service único de oportunidade; campos comerciais não voltam a ser colunas do
+contato.
 
 Schema sem os requisitos de nenhum modelo responde `503 CRM_SCHEMA_INCOMPATIBLE`,
 com mensagem pública, e o frontend não repete essa falha. Testes dos adapters

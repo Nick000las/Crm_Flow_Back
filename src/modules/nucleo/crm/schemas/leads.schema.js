@@ -112,9 +112,8 @@ export const criarLeadBodySchema = z
       })
       .trim()
       .min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH, 'Informe o nome do lead'),
-    // Opcional: estágios do funil ficam em aberto até a integração com o
-    // Kanban (nenhum tenant tem estágio hoje), então o lead pode nascer
-    // sem estágio — `funil_estagio_id` é nullable no banco.
+    // Opcional: é o id da opção de status, como a leitura devolve. Sem ele e
+    // sem `status`, o lead nasce no primeiro status aberto do pipeline padrão.
     funilEstagioId: z
       .string({ invalid_type_error: 'Informe um estágio de funil válido' })
       .uuid('Informe um estágio de funil válido')
@@ -140,7 +139,7 @@ export const criarLeadBodySchema = z
   });
 
 // Tudo opcional — edição é parcial. Campo omitido mantém o valor; `null`
-// limpa (exceto `nome`/`funilEstagioId`, que nunca ficam vazios); em
+// limpa (exceto `nome`, `status` e `funilEstagioId`, que nunca ficam vazios); em
 // `customFields`, `{ chave: null }` remove a chave. Regras que dependem do
 // lead atual ("sobra e-mail ou telefone", campo obrigatório não pode ser
 // limpo) ficam no service.

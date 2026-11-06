@@ -5,8 +5,7 @@ import { usaOportunidades } from './crm-lead-read-model.js';
 
 /**
  * Regras do banco das migrations 0036 e 0037 (M2.5, F1), direto no Postgres,
- * pelo role `app_tenant` quando a regra depende de RLS. Nenhum service usa
- * estas tabelas ainda: é o que garante a etapa ser só aditiva.
+ * pelo role `app_tenant` quando a regra depende de RLS.
  *
  * GRAVA no banco de `DATABASE_URL` (tenants SMOKE, apagados no fim): só roda
  * com `CRM_DB_TESTS=1`, num banco de dev.
@@ -93,8 +92,8 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
     expect(sobras).toBe(0);
   });
 
-  it('a leitura de leads continua no modelo atual', async () => {
-    await expect(getTenantClient(tenantId, usaOportunidades)).resolves.toBe(false);
+  it('a leitura de leads usa as oportunidades', async () => {
+    await expect(getTenantClient(tenantId, usaOportunidades)).resolves.toBe(true);
   });
 
   it('lead novo nasce como "lead", sem oportunidade principal', async () => {

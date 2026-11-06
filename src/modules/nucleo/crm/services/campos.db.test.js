@@ -218,8 +218,11 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
       { nome: 'Lead C', email: 'c@smoke.test', status: 'proposta', tags: ['Feira 2026'] },
       usuarioId,
     );
-    const [gravado] =
-      await prisma.$queryRaw`SELECT status, tags FROM modulo_crm.leads WHERE id = ${leadId}::uuid`;
+    const [gravado] = await prisma.$queryRaw`
+        SELECT d.status, l.tags FROM modulo_crm.leads l
+        JOIN modulo_crm.crm_deal d ON d.id = l.principal_deal_id
+        WHERE l.id = ${leadId}::uuid
+      `;
     expect(gravado).toEqual({ status: 'proposta', tags: ['feira_2026'] });
 
     const listas = await listarListas(tenantId);

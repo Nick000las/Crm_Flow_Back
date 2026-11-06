@@ -64,21 +64,26 @@ describe('montarMesclagem (pura)', () => {
       email: 'ana@x.com',
       telefone: '11987654321', // principal vazio
       empresa: 'Acme',
-      status: 'novo',
-      valor: VALOR_PRINCIPAL, // Decimal → número
-      funilEstagioId: 'estagio-1',
       usuarioResponsavelId: 'u-1',
     });
+  });
+
+  it('comercial não é escolhido: as oportunidades dos dois continuam existindo', () => {
+    const dados = montarMesclagem(PRINCIPAL, SECUNDARIO, {
+      status: 'secundario',
+      valor: 'secundario',
+    });
+    for (const chave of ['status', 'valor', 'funilEstagioId', 'motivoPerda']) {
+      expect(dados).not.toHaveProperty(chave);
+    }
   });
 
   it('escolha campo a campo, inclusive personalizado (pelo id)', () => {
     const dados = montarMesclagem(PRINCIPAL, SECUNDARIO, {
       nome: 'secundario',
-      status: 'secundario',
-      valor: 'secundario',
       'id-segmento': 'secundario',
     });
-    expect(dados).toMatchObject({ nome: 'Ana Souza', status: 'ganho', valor: VALOR_SECUNDARIO });
+    expect(dados).toMatchObject({ nome: 'Ana Souza' });
     expect(dados.customFields).toEqual({ 'id-segmento': 'industria', 'id-nota': NOTA });
   });
 

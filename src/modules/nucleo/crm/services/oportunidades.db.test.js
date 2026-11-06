@@ -47,8 +47,19 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
   let vendas;
   let atendimento;
 
-  const novaPessoa = async (nome = 'Pessoa') =>
-    (await registrarNovoLead(tenantId, { nome, email: `${randomUUID()}@smoke.test` }, donoId)).id;
+  /** Pessoa sem oportunidade: estes testes montam cada uma à mão. */
+  const novaPessoa = async (nome = 'Pessoa') => {
+    const { id } = await registrarNovoLead(
+      tenantId,
+      { nome, email: `${randomUUID()}@smoke.test` },
+      donoId,
+    );
+    await prisma.$executeRaw`DELETE FROM modulo_crm.crm_deal WHERE lead_id = ${id}::uuid`;
+    await prisma.$executeRaw`
+      UPDATE modulo_crm.leads SET lifecycle_stage = 'lead' WHERE id = ${id}::uuid
+    `;
+    return id;
+  };
 
   /** @param {string} id */
   const lerPessoa = async (id) => {

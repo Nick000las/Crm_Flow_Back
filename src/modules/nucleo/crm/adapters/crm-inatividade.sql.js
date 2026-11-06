@@ -13,13 +13,13 @@ import { Prisma } from '@prisma/client';
  *   a contagem até a data dela; vencida e não concluída, conta dali.
  * - Lead arquivado ou na lixeira nunca está esfriando.
  *
- * Espera `l` = `modulo_crm.leads` (ou uma linha com as mesmas colunas).
+ * Espera `l` = a leitura do lead (`fonteLeads`): o status vem da oportunidade
+ * principal, com o `pipeline_id` dela.
  */
 
 /**
  * Quando o lead esfria (passado ou futuro); NULL se o status não esfria. A mesma
- * key pode existir em vários pipelines: sem oportunidade na linha, o status do
- * lead é o do pipeline padrão.
+ * key pode existir em vários pipelines.
  */
 const ESFRIA_EM = Prisma.sql`(
   SELECT GREATEST(
@@ -31,11 +31,7 @@ const ESFRIA_EM = Prisma.sql`(
   ) + make_interval(days => o.stale_days)
   FROM modulo_crm.crm_option o
   WHERE o.tenant_id = l.tenant_id AND o.kind = 'status' AND o.key = l.status
-    AND o.pipeline_id::text = COALESCE(
-      to_jsonb(l)->>'pipeline_id',
-      (SELECT p.id::text FROM modulo_crm.crm_pipeline p
-       WHERE p.tenant_id = l.tenant_id AND p.is_default)
-    )
+    AND o.pipeline_id = l.pipeline_id
 )`;
 
 const LEAD_NA_LISTA = Prisma.sql`l.archived_at IS NULL AND l.deleted_at IS NULL`;

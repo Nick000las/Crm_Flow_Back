@@ -1,6 +1,6 @@
 import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { mesclarLeads as mesclarLeadsRepository } from '../adapters/leads.repository.js';
-import { CAMPOS_SISTEMA, PROPRIEDADES_NO_HISTORICO } from '../constants.js';
+import { CAMPOS_COMERCIAIS, CAMPOS_SISTEMA, PROPRIEDADES_NO_HISTORICO } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { diffDoLead } from './historico.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
@@ -10,18 +10,22 @@ import { valorAusente } from './tipos-campo.service.js';
 
 /**
  * SERVICE: mesclagem de dois leads (M7). O principal fica; o secundário
- * vai pra lixeira (sem restaurar) e as atividades e o histórico dele
- * passam pro principal — tudo numa transação (`leads.repository.js`).
+ * vai pra lixeira (sem restaurar) e as atividades, o histórico e as
+ * oportunidades dele passam pro principal — tudo numa transação
+ * (`leads.repository.js`).
  *
  * Valor de cada campo: o que o usuário escolheu (`principal` ou
  * `secundario`); sem escolha, o do principal — ou o do secundário, se o
  * do principal estiver vazio. Tags: união. Última interação: a mais recente.
  *
+ * Status, valor e os demais campos comerciais não têm escolha: as oportunidades
+ * dos dois continuam existindo, e o lead mostra a principal (decisão F-2).
+ *
  * @typedef {'principal' | 'secundario'} Lado
  */
 
-/** Calculados à parte (união / mais recente), sem escolha do usuário. */
-const CHAVES_AUTOMATICAS = new Set(['tags', 'ultimaInteracaoEm']);
+/** Calculados à parte (união / mais recente) ou da oportunidade, sem escolha do usuário. */
+const CHAVES_AUTOMATICAS = new Set(['tags', 'ultimaInteracaoEm', ...CAMPOS_COMERCIAIS]);
 
 /** NUMERIC vem como Decimal do driver; o UPDATE recebe número. */
 function paraEscrita(valor) {
@@ -60,6 +64,7 @@ export function montarMesclagem(principal, secundario, escolhas = {}) {
     );
   }
   for (const { campo, coluna } of PROPRIEDADES_NO_HISTORICO) {
+    if (CHAVES_AUTOMATICAS.has(campo)) continue;
     dados[campo] = paraEscrita(escolher(principal[coluna], secundario[coluna], escolhas[campo]));
   }
 

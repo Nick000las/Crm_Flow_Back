@@ -1,16 +1,30 @@
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
-import { CAMADA_1_CAMPOS, CAMADA_2_CAMPOS, TIPOS_EVENTO_LEAD } from '../constants.js';
+import {
+  CAMADA_1_CAMPOS,
+  CAMADA_2_CAMPOS,
+  CAMPOS_COMERCIAIS,
+  TIPOS_EVENTO_LEAD,
+} from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
 import { fonteLeads } from './crm-lead-read-model.js';
+import {
+  criarOportunidadeDoLead,
+  excluirOportunidadesDoLead,
+  gravarComercialDoLead,
+  moverOportunidades,
+  restaurarOportunidadesDoLead,
+} from './crm-oportunidades.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
+const DOIS_LEADS = 2;
 
 /**
  * Colunas devolvidas por toda leitura de lead (lista, detalhe, busca
  * filtrada) — uma lista só, pra uma coluna nova não ficar faltando em uma
- * das três. Espera `l` = leads e `f` = funil_estagios (LEFT JOIN).
+ * das três. Espera `l` = `fonteLeads`, que traz o comercial da oportunidade
+ * principal.
  */
 const COLUNAS_BASE = Prisma.sql`
   l.id, l.nome, l.primeiro_nome, l.telefone, l.email, l.valor, l.funil_estagio_id,
@@ -32,27 +46,43 @@ const COLUNAS_BASE = Prisma.sql`
  *
  * @param {Date | null} [inatividade]
  */
-function colunasLeitura(inatividade = null, estagioNaFonte = false) {
-  const estagio = estagioNaFonte ? Prisma.sql`l.estagio_nome` : Prisma.sql`f.nome AS estagio_nome`;
-  return Prisma.sql`${COLUNAS_BASE}, ${estagio}, ${colunaEsfriandoDesde(inatividade)}`;
+function colunasLeitura(inatividade = null) {
+  return Prisma.sql`${COLUNAS_BASE}, l.estagio_nome, ${colunaEsfriandoDesde(inatividade)}`;
 }
-
-const COLUNAS_LEITURA = colunasLeitura();
 
 /**
  * Chaves editáveis por `atualizarLead` → coluna real. Única fonte de nome
  * de coluna que o SET dinâmico aceita interpolar (`Prisma.raw`) — nunca
- * uma chave vinda do cliente, mesma regra do filtro.
+ * uma chave vinda do cliente, mesma regra do filtro. Comercial não entra: mora
+ * na oportunidade (`CAMPOS_COMERCIAIS`).
  */
 const COLUNAS_EDITAVEIS = Object.freeze({
-  ...CAMADA_1_CAMPOS,
-  ...CAMADA_2_CAMPOS,
-  funilEstagioId: 'funil_estagio_id',
-  valor: 'valor',
+  ...Object.fromEntries(
+    Object.entries({ ...CAMADA_1_CAMPOS, ...CAMADA_2_CAMPOS }).filter(
+      ([chave]) => !CAMPOS_COMERCIAIS.includes(chave),
+    ),
+  ),
   usuarioResponsavelId: 'usuario_responsavel_id',
 });
 
-const COLUNAS_UUID = new Set(['funilEstagioId', 'usuarioResponsavelId']);
+const COLUNAS_UUID = new Set(['usuarioResponsavelId']);
+
+/**
+ * Um lead pela leitura, de dentro de uma transação: enxerga o que ela já gravou.
+ *
+ * @param {import('@prisma/client').Prisma.TransactionClient} tx
+ * @param {string} tenantId
+ * @param {string} leadId
+ * @param {Date | null} [inatividade]
+ */
+async function lerLead(tx, tenantId, leadId, inatividade = null) {
+  const [lead] = await tx.$queryRaw`
+    SELECT ${colunasLeitura(inatividade)}
+    FROM ${await fonteLeads(tx)} l
+    WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid
+  `;
+  return lead;
+}
 
 /**
  * ADAPTER: único lugar deste módulo que chama getTenantClient.
@@ -75,7 +105,7 @@ const COLUNAS_UUID = new Set(['funilEstagioId', 'usuarioResponsavelId']);
 export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
   return getTenantClient(tenantId, async (tx) =>
     tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade, true)}
+      SELECT ${colunasLeitura(inatividade)}
       FROM ${await fonteLeads(tx)} l
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
@@ -107,10 +137,10 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade, true)}
+      SELECT ${colunasLeitura(inatividade)}
       FROM ${fonte} l
       WHERE ${where}
-      ORDER BY l.estagio_ordem, l.created_at DESC, l.id
+      ORDER BY l.created_at DESC, l.id
       LIMIT ${limite} OFFSET ${offset}
     `;
     return { itens, total: contagem.total };
@@ -121,33 +151,33 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
  * `email`/`telefone` já chegam validados pelo service ("pelo menos um dos
  * dois") — `chk_leads_email_ou_telefone` no banco é a rede de segurança
  * final. Camada 1/2 vão como `null` quando ausentes (nunca `undefined` —
- * Prisma não aceita `undefined` num `$queryRaw`).
+ * Prisma não aceita `undefined` num `$queryRaw`). O lead nasce sempre com uma
+ * oportunidade, na mesma transação (decisão F-1).
  *
  * @param {string} tenantId
  * @param {CriarLeadInput & { atribuidoPorRegraId?: string | null }} dados  `atribuidoPorRegraId`: a regra
  *   da distribuição automática que escolheu o responsável (M12)
  * @param {{ autorId?: string | null, detalhes?: Record<string, unknown> }} [historico] sem ele (import), sem
  *   evento; `detalhes` vai no evento `criado` (ex.: como o responsável foi distribuído)
+ * @param {import('./crm-oportunidades.repository.js').ComercialDoLead['nova']} novaOportunidade
  * @returns {Promise<{ id: string }>}
  */
-export function criarLead(tenantId, dados, historico) {
+export function criarLead(tenantId, dados, historico, novaOportunidade) {
   const customFieldsJson = JSON.stringify(dados.customFields ?? {});
   return getTenantClient(tenantId, async (tx) => {
     const criado = await tx.$queryRaw`
       INSERT INTO modulo_crm.leads (
-        tenant_id, nome, primeiro_nome, telefone, funil_estagio_id, custom_fields, valor, usuario_responsavel_id, assigned_by_rule_id,
-        email, fonte_lead, status, tags, ultima_interacao_em,
+        tenant_id, nome, primeiro_nome, telefone, custom_fields, usuario_responsavel_id, assigned_by_rule_id,
+        email, fonte_lead, tags, ultima_interacao_em,
         empresa, cargo, cpf, cnpj, cidade, uf, cep, endereco,
-        campanha_utm, data_conversao, probabilidade_fechamento,
-        data_prevista_fechamento, motivo_perda, lead_score, proximo_followup,
+        campanha_utm, lead_score, proximo_followup,
         legal_basis, legal_basis_at, origem_registro, marketing_opt_out_at
       )
       VALUES (
-        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${dados.funilEstagioId ?? null}::uuid, ${customFieldsJson}::jsonb, ${dados.valor ?? null}, ${dados.usuarioResponsavelId ?? null}::uuid, ${dados.atribuidoPorRegraId ?? null}::uuid,
-        ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.status ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
+        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${customFieldsJson}::jsonb, ${dados.usuarioResponsavelId ?? null}::uuid, ${dados.atribuidoPorRegraId ?? null}::uuid,
+        ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
         ${dados.empresa ?? null}, ${dados.cargo ?? null}, ${dados.cpf ?? null}, ${dados.cnpj ?? null}, ${dados.cidade ?? null}, ${dados.uf ?? null}, ${dados.cep ?? null}, ${dados.endereco ?? null},
-        ${dados.campanhaUtm ?? null}, ${dados.dataConversao ?? null}, ${dados.probabilidadeFechamento ?? null},
-        ${dados.dataPrevistaFechamento ?? null}, ${dados.motivoPerda ?? null}, ${dados.leadScore ?? null}, ${dados.proximoFollowup ?? null},
+        ${dados.campanhaUtm ?? null}, ${dados.leadScore ?? null}, ${dados.proximoFollowup ?? null},
         ${dados.baseLegal ?? null}, ${dados.baseLegalEm ?? null}, ${dados.origemRegistro ?? null}, ${dados.optOutMarketingEm ?? null}
       )
       RETURNING id
@@ -159,6 +189,13 @@ export function criarLead(tenantId, dados, historico) {
         detalhes: historico.detalhes,
       });
     }
+    await criarOportunidadeDoLead(
+      tx,
+      tenantId,
+      { id: criado.id, usuario_responsavel_id: dados.usuarioResponsavelId ?? null },
+      novaOportunidade,
+      historico?.autorId ?? null,
+    );
     return criado;
   });
 }
@@ -171,9 +208,10 @@ export function criarLead(tenantId, dados, historico) {
  * telefone, obrigatórios) já foram checadas no service. Lead na lixeira
  * não é editável: sem linha, o service responde 404.
  *
- * Com `historico`, o lead de antes é lido travado (`FOR UPDATE`) e o diff
- * (calculado por `historico.montarDiff`, função pura do service) vira um
- * evento `atualizado` — só se algo mudou de fato.
+ * O lead fica travado (`FOR UPDATE`). Com `historico`, o diff de antes e depois
+ * (calculado por `historico.montarDiff`, função pura do service) vira um evento
+ * `atualizado`, só se algo mudou de fato. `oportunidade` leva o comercial para
+ * a oportunidade principal na mesma transação.
  *
  * @param {string} tenantId
  * @param {string} leadId
@@ -184,41 +222,51 @@ export function criarLead(tenantId, dados, historico) {
  *   tipo?: string,
  *   detalhes?: Record<string, unknown>,
  * }} [historico]  `tipo` padrão `atualizado` (o enriquecimento por CNPJ grava `enriquecido`)
- * @param {{ inatividade?: Date | null }} [opcoes] ver `colunasLeitura` (só a linha devolvida)
+ * @param {{
+ *   inatividade?: Date | null,
+ *   oportunidade?: import('./crm-oportunidades.repository.js').ComercialDoLead,
+ * }} [opcoes] `inatividade`: ver `colunasLeitura` (só a linha devolvida)
  * @returns {Promise<Lead | undefined>}
  */
-export function atualizarLead(tenantId, leadId, dados, historico, { inatividade = null } = {}) {
+export function atualizarLead(
+  tenantId,
+  leadId,
+  dados,
+  historico,
+  { inatividade = null, oportunidade } = {},
+) {
   const atribuicoes = montarAtribuicoes(dados);
   return getTenantClient(tenantId, async (tx) => {
-    let antes;
-    if (historico) {
-      [antes] = await tx.$queryRaw`
-        SELECT ${COLUNAS_LEITURA}
-        FROM modulo_crm.leads l
-        LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
-        WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
-          AND l.anonimizado_em IS NULL
-        FOR UPDATE OF l
-      `;
-      if (!antes) return undefined;
-    }
-
-    // CTE pra devolver as mesmas colunas da leitura, `estagio_nome` incluso
-    // (referência `lead.estagio` do layout, M4).
-    const [depois] = await tx.$queryRaw`
-      WITH l AS (
-        UPDATE modulo_crm.leads
-        SET ${Prisma.join(atribuicoes, ', ')}
-        WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
-          AND anonimizado_em IS NULL
-        RETURNING *
-      )
-      SELECT ${colunasLeitura(inatividade)}
-      FROM l
-      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+    const [travado] = await tx.$queryRaw`
+      SELECT id::text, principal_deal_id::text FROM modulo_crm.leads
+      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+        AND anonimizado_em IS NULL
+      FOR UPDATE
     `;
+    if (!travado) return undefined;
+    const antes = historico ? await lerLead(tx, tenantId, leadId) : undefined;
 
-    if (historico && depois) {
+    const [{ usuario_responsavel_id: responsavel }] = await tx.$queryRaw`
+      UPDATE modulo_crm.leads
+      SET ${Prisma.join(atribuicoes, ', ')}
+      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
+      RETURNING usuario_responsavel_id::text
+    `;
+    if (oportunidade) {
+      await gravarComercialDoLead(
+        tx,
+        tenantId,
+        { ...travado, usuario_responsavel_id: responsavel },
+        oportunidade,
+        {
+          autorId: historico?.autorId ?? null,
+          contaInteracao: dados.ultimaInteracaoEm === undefined,
+        },
+      );
+    }
+    const depois = await lerLead(tx, tenantId, leadId, inatividade);
+
+    if (historico) {
       const diff = historico.montarDiff(antes, depois);
       if (diff.length > 0) {
         await inserirEvento(tx, tenantId, leadId, {
@@ -261,15 +309,6 @@ export function montarAtribuicoes(dados) {
     );
   }
 
-  // Mudar o status conta como interação (D1, M6): no SET, `status` ainda é
-  // o valor de antes. Editar outro campo não conta. Quem manda
-  // `ultimaInteracaoEm` explícito decide sozinho.
-  if (dados.status !== undefined && dados.ultimaInteracaoEm === undefined) {
-    atribuicoes.push(
-      Prisma.sql`ultima_interacao_em = CASE WHEN status IS DISTINCT FROM ${dados.status} THEN now() ELSE ultima_interacao_em END`,
-    );
-  }
-
   // Base legal (M15): a data acompanha a troca (some quando a base é limpa),
   // a não ser que venha explícita (mesclagem copia as duas do lado escolhido).
   if (dados.baseLegal !== undefined && dados.baseLegalEm === undefined) {
@@ -304,6 +343,8 @@ export function moverParaLixeira(tenantId, leadId, historico) {
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
       RETURNING id, deleted_at
     `;
+    if (excluido)
+      await excluirOportunidadesDoLead(tx, tenantId, leadId, historico?.autorId ?? null);
     if (excluido && historico) {
       await inserirEvento(tx, tenantId, leadId, {
         tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
@@ -362,12 +403,17 @@ export function definirArquivamento(tenantId, leadId, arquivar, historico) {
 export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const [restaurado] = await tx.$queryRaw`
-      UPDATE modulo_crm.leads
+      WITH alvo AS (
+        SELECT id, deleted_at FROM modulo_crm.leads
+        WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
+          AND deleted_at IS NOT NULL AND deleted_at >= ${excluidoDesde}
+          AND mesclado_em_id IS NULL
+        FOR UPDATE
+      )
+      UPDATE modulo_crm.leads l
       SET deleted_at = NULL
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
-        AND deleted_at IS NOT NULL AND deleted_at >= ${excluidoDesde}
-        AND mesclado_em_id IS NULL
-      RETURNING id
+      FROM alvo WHERE l.id = alvo.id
+      RETURNING l.id, alvo.deleted_at::text AS excluido_em
     `;
     if (!restaurado) {
       // Descartado numa mesclagem (M7): os dados e o histórico já estão no outro lead.
@@ -378,13 +424,20 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
       `;
       return mesclado ? { mescladoEmId: mesclado.mesclado_em_id } : undefined;
     }
+    await restaurarOportunidadesDoLead(
+      tx,
+      tenantId,
+      leadId,
+      restaurado.excluido_em,
+      historico?.autorId ?? null,
+    );
     if (historico) {
       await inserirEvento(tx, tenantId, leadId, {
         tipo: TIPOS_EVENTO_LEAD.RESTAURADO,
         autorId: historico.autorId,
       });
     }
-    return restaurado;
+    return { id: restaurado.id };
   });
 }
 
@@ -395,9 +448,12 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
  *    travarem uma à outra) — os dois fora da lixeira, senão `undefined`;
  * 2. `montar(principal, secundario)` (função pura do service) dá os dados
  *    finais do principal;
- * 3. atividades e eventos do secundário passam pro principal;
+ * 3. atividades, eventos e oportunidades do secundário passam pro principal;
  * 4. UPDATE do principal + evento `mesclado` (diff + id do descartado);
  * 5. secundário pra lixeira com `mesclado_em_id` + evento `excluido`.
+ *
+ * As oportunidades dos dois continuam existindo; o lead mostra a principal,
+ * recalculada (decisão F-2).
  *
  * @param {string} tenantId
  * @param {{ principalId: string, secundarioId: string }} ids
@@ -415,17 +471,15 @@ export function mesclarLeads(
 ) {
   return getTenantClient(tenantId, async (tx) => {
     const travados = await tx.$queryRaw`
-      SELECT ${COLUNAS_LEITURA}
-      FROM modulo_crm.leads l
-      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
-      WHERE l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
-        AND l.id IN (${principalId}::uuid, ${secundarioId}::uuid)
-      ORDER BY l.id
-      FOR UPDATE OF l
+      SELECT id FROM modulo_crm.leads
+      WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+        AND id IN (${principalId}::uuid, ${secundarioId}::uuid)
+      ORDER BY id
+      FOR UPDATE
     `;
-    const principal = travados.find((lead) => lead.id === principalId);
-    const secundario = travados.find((lead) => lead.id === secundarioId);
-    if (!principal || !secundario) return undefined;
+    if (travados.length !== DOIS_LEADS) return undefined;
+    const principal = await lerLead(tx, tenantId, principalId);
+    const secundario = await lerLead(tx, tenantId, secundarioId);
 
     const dados = montar(principal, secundario);
 
@@ -438,17 +492,13 @@ export function mesclarLeads(
       WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${secundarioId}::uuid
     `;
 
-    const [depois] = await tx.$queryRaw`
-      WITH l AS (
-        UPDATE modulo_crm.leads
-        SET ${Prisma.join(montarAtribuicoes(dados), ', ')}
-        WHERE id = ${principalId}::uuid AND tenant_id = ${tenantId}::uuid
-        RETURNING *
-      )
-      SELECT ${COLUNAS_LEITURA}
-      FROM l
-      LEFT JOIN modulo_crm.funil_estagios f ON l.funil_estagio_id = f.id
+    await tx.$executeRaw`
+      UPDATE modulo_crm.leads
+      SET ${Prisma.join(montarAtribuicoes(dados), ', ')}
+      WHERE id = ${principalId}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+    await moverOportunidades(tx, tenantId, { principalId, secundarioId }, autorId);
+    const depois = await lerLead(tx, tenantId, principalId);
     await inserirEvento(tx, tenantId, principalId, {
       tipo: TIPOS_EVENTO_LEAD.MESCLADO,
       autorId,

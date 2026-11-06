@@ -12,19 +12,32 @@ import {
   criarOportunidade as criarOportunidadeRepository,
 } from '../adapters/crm-oportunidades.repository.js';
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
+import { atualizarLead, criarLead } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
-import { CATEGORIAS_STATUS, TIPOS_EVENTO_LEAD } from '../constants.js';
+import { TIPOS_EVENTO_LEAD } from '../constants.js';
 import { EVENTOS_OPORTUNIDADE } from '../constants/oportunidades.js';
 import { leadAnonimizadoNaoEditavel } from './lgpd.service.js';
-import { diffDaOportunidade, planejarStatus } from './oportunidade-transicao.service.js';
+import {
+  diffDaOportunidade,
+  novaOportunidadeDoLead,
+  opcaoDoStatus,
+  planejarEdicaoDoLead,
+  planejarStatus,
+  primeiroStatusAberto,
+  separarComerciais,
+  validarComerciais,
+} from './oportunidade-transicao.service.js';
 import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
 import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 import { validarRegras } from './regras-campos.service.js';
+import { recalcularScoreDosLeads } from './score.service.js';
 
 /**
  * SERVICE: a única porta para mudar uma oportunidade (M2.5, F3). Ficha,
  * importação, edição em massa e o `mover` do quadro passam por aqui, com as
  * mesmas regras. Ganhar, perder e reabrir são `mudarStatusDaOportunidade`.
+ * `/crm/leads` entra por `criarLeadComOportunidade` e
+ * `atualizarLeadComOportunidade`: lead e oportunidade na mesma transação.
  *
  * Regras e pessoa são conferidas com as linhas travadas, dentro da transação.
  *
@@ -83,19 +96,46 @@ export function formatarOportunidade(linha) {
 }
 
 /**
- * Opção de destino. Inativa só vale se a oportunidade já estiver nela.
+ * Cria o lead com a oportunidade dele (decisão F-1). Os campos comerciais vão
+ * para ela; a resposta de `/crm/leads` continua igual.
  *
- * @param {OpcaoDeStatus[]} opcoes
- * @param {string} status
- * @param {string} [statusAtual]
- * @returns {OpcaoDeStatus}
+ * @param {string} tenantId
+ * @param {Record<string, any>} dados
+ * @param {Parameters<typeof criarLead>[2]} historico
  */
-function opcaoDoStatus(opcoes, status, statusAtual) {
-  const opcao = opcoes.find((item) => item.key === status);
-  if (!opcao || (!opcao.ativo && status !== statusAtual)) {
-    throw erroDeValidacao('status', `"${status}" não é uma opção de Status deste pipeline`);
-  }
-  return opcao;
+export async function criarLeadComOportunidade(tenantId, dados, historico) {
+  const { comerciais, contato } = separarComerciais(dados);
+  validarComerciais(comerciais);
+  return criarLead(tenantId, contato, historico, (opcoes) =>
+    novaOportunidadeDoLead(opcoes, comerciais),
+  );
+}
+
+/**
+ * Edita o lead e, na mesma transação, a oportunidade principal: comercial e
+ * responsável. Só a principal: atendimento tem dono próprio (`auto_create_owner_rule`).
+ *
+ * @param {string} tenantId
+ * @param {string} leadId
+ * @param {Record<string, any>} dados
+ * @param {Parameters<typeof atualizarLead>[3]} historico
+ * @param {{ inatividade?: Date | null }} [opcoes]
+ */
+export async function atualizarLeadComOportunidade(tenantId, leadId, dados, historico, opcoes) {
+  const { comerciais, contato } = separarComerciais(dados);
+  validarComerciais(comerciais);
+  const exigeOportunidade = Object.keys(comerciais).length > 0;
+  const { usuarioResponsavelId } = contato;
+  const oportunidade =
+    exigeOportunidade || usuarioResponsavelId !== undefined
+      ? {
+          exigeOportunidade,
+          nova: (status) => novaOportunidadeDoLead(status, comerciais),
+          planejar: (deal, status) =>
+            planejarEdicaoDoLead(deal, status, { ...comerciais, usuarioResponsavelId }, new Date()),
+        }
+      : undefined;
+  return atualizarLead(tenantId, leadId, contato, historico, { ...opcoes, oportunidade });
 }
 
 /**
@@ -171,10 +211,7 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
   });
   await validarResponsavel(tenantId, dados.responsavelId);
 
-  const primeiroAberto = opcoes.find(
-    (opcao) => opcao.ativo && opcao.category === CATEGORIAS_STATUS.ABERTO,
-  );
-  const opcao = opcaoDoStatus(opcoes, dados.status ?? primeiroAberto?.key);
+  const opcao = opcaoDoStatus(opcoes, dados.status ?? primeiroStatusAberto(opcoes)?.key);
   const regras = await regrasAplicaveis(tenantId, schema);
 
   const criada = await criarOportunidadeRepository(
@@ -205,6 +242,7 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
     { autorId: usuarioId ?? null },
   );
   if (!criada) throw erroNaoEncontrado('Lead não encontrado');
+  await recalcularScoreDosLeads(tenantId, [leadId]);
   return formatarOportunidade(criada);
 }
 
@@ -262,6 +300,7 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
     { autorId: usuarioId ?? null },
   );
   if (!depois) throw naoEncontrada();
+  await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
   return { ...formatarOportunidade(depois), conflito };
 }
 
@@ -323,12 +362,14 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
     { autorId: usuarioId ?? null },
   );
   if (!depois) throw naoEncontrada();
+  await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
   return formatarOportunidade(depois);
 }
 
 /**
  * Arquivar e lixeira não têm regra de negócio: o card sai do quadro e volta se
- * restaurado (P9). Não existe excluir de vez por aqui.
+ * restaurado (P9). Não existe excluir de vez por aqui. Lead na lixeira levou as
+ * oportunidades com ele: elas só voltam quando ele voltar.
  *
  * @param {string} tenantId
  * @param {string} id
@@ -340,6 +381,7 @@ async function mudarSituacao(tenantId, id, planejar, usuarioId) {
     tenantId,
     id,
     (deal, lead) => {
+      if (lead.deleted_at) throw naoEncontrada();
       garantirPessoaEditavel(lead);
       return planejar(deal);
     },

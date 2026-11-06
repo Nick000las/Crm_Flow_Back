@@ -1,12 +1,7 @@
 import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
-import {
-  buscarLeadsComFiltro,
-  buscarLeadPorId,
-  criarLead as criarLeadRepository,
-  atualizarLead as atualizarLeadRepository,
-} from '../adapters/leads.repository.js';
+import { buscarLeadsComFiltro, buscarLeadPorId } from '../adapters/leads.repository.js';
 import {
   buscarUsuarioAtivoDoTenant,
   listarUsuariosAtivosDoTenant,
@@ -26,6 +21,7 @@ import {
 } from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
+import { atualizarLeadComOportunidade, criarLeadComOportunidade } from './oportunidades.service.js';
 import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 export { leadParaApi, regrasAplicaveis };
 import { agendarEnriquecimento } from './cnpj.service.js';
@@ -183,7 +179,7 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   const atribuicao = contextoDistribuicao
     ? await distribuir(tenantId, contextoDistribuicao, comListas)
     : null;
-  const criado = await criarLeadRepository(
+  const criado = await criarLeadComOportunidade(
     tenantId,
     {
       ...comCustomFieldsArmazenaveis(comListas, definicoes),
@@ -262,7 +258,7 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
 
   await gravarTagsNovas(tenantId, tagsNovas);
   const ignorar = input.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
-  const leadAtualizado = await atualizarLeadRepository(
+  const leadAtualizado = await atualizarLeadComOportunidade(
     tenantId,
     leadId,
     comCustomFieldsArmazenaveis(comListas, definicoes),
