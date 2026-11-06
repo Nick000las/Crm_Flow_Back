@@ -1,5 +1,6 @@
 import { PASSOS_CAMPOS } from './campos-reconcile.service.js';
 import { PASSOS_LISTAS } from './listas-reconcile.service.js';
+import { PASSOS_PIPELINES } from './pipelines.service.js';
 import { invalidarSchemaCampos, reconciliarRegras } from './field-schema.service.js';
 
 /**
@@ -28,7 +29,12 @@ const PASSOS_REGRAS = Object.freeze([
 ]);
 
 /** @type {readonly PassoReconciliacao[]} */
-export const PASSOS = Object.freeze([...PASSOS_CAMPOS, ...PASSOS_LISTAS, ...PASSOS_REGRAS]);
+export const PASSOS = Object.freeze([
+  ...PASSOS_CAMPOS,
+  ...PASSOS_PIPELINES,
+  ...PASSOS_LISTAS,
+  ...PASSOS_REGRAS,
+]);
 
 /**
  * Executa os passos em ordem e para no primeiro que falhar (um passo pode

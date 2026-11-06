@@ -60,7 +60,7 @@ describe('contarUsos', () => {
 describe('inserirOpcoes', () => {
   it('um INSERT só, idempotente pela key; lista vazia não consulta', async () => {
     await inserirOpcoes(TENANT, TIPOS_LISTA.FONTE_LEAD, [{ key: 'a', label: 'A', position: 0 }]);
-    expect(chamadas[0].sql).toContain('ON CONFLICT (tenant_id, kind, key) DO NOTHING');
+    expect(chamadas[0].sql).toContain('ON CONFLICT (tenant_id, kind, pipeline_id, key) DO NOTHING');
     expect(chamadas[0].values).toContainEqual(['a']);
 
     chamadas = [];

@@ -58,6 +58,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
   let app;
   let statusAberto;
   let statusFechado;
+  let listas;
 
   beforeAll(async () => {
     await prisma.tenant.create({
@@ -106,12 +107,10 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       },
     });
 
-    const opcoes = await prisma.$queryRaw`
-      SELECT key, category FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid AND kind = 'status' ORDER BY position
-    `;
-    statusAberto = opcoes.find((opcao) => opcao.category === 'aberto').key;
-    statusFechado = opcoes.find((opcao) => opcao.category === 'perdido').key;
+    // Pela API, como o front: é a lista que `status` aceita neste contrato.
+    listas = json(await chamar('GET', '/crm/configuracoes/listas')).data;
+    statusAberto = listas.status.find((opcao) => opcao.category === 'aberto').key;
+    statusFechado = listas.status.find((opcao) => opcao.category === 'perdido').key;
   });
 
   afterAll(async () => {
@@ -203,20 +202,17 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
 
   it('mudar status com motivo: os dois aparecem no lead', async () => {
     const id = await criar({ nome: 'Contrato Perda', status: statusAberto });
-    const motivos = await prisma.$queryRaw`
-      SELECT key FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid AND kind = 'motivo_perda' ORDER BY position LIMIT 1
-    `;
+    const [motivo] = listas.motivo_perda;
 
     const editado = await chamar('PUT', `/crm/leads/${id}`, {
       status: statusFechado,
-      motivoPerda: motivos[0].key,
+      motivoPerda: motivo.key,
     });
 
     expect(editado.status, editado.corpo).toBe(HTTP_STATUS.OK);
     expect(await ler(id)).toMatchObject({
       status: statusFechado,
-      motivo_perda: motivos[0].key,
+      motivo_perda: motivo.key,
     });
   });
 

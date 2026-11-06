@@ -1,5 +1,6 @@
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { condicaoEsfriando } from './crm-inatividade.sql.js';
+import { pipelinePadraoSql } from './crm-pipelines.repository.js';
 
 /**
  * ADAPTER: lead esfriando (M9) — os dias por status (`crm_option.stale_days`)
@@ -25,6 +26,7 @@ export function buscarDiasPorStatus(tenantId) {
       SELECT id, key, label, color, category, is_active AS ativo, stale_days AS dias
       FROM modulo_crm.crm_option
       WHERE tenant_id = ${tenantId}::uuid AND kind = 'status'
+        AND pipeline_id = ${pipelinePadraoSql(tenantId)}
       ORDER BY position, created_at, id
     `,
   );
@@ -51,6 +53,7 @@ export function definirDiasPorStatus(tenantId, diasPorKey) {
         ${entradas.map(([, dias]) => dias)}::int[]
       ) AS v(key, dias)
       WHERE o.tenant_id = ${tenantId}::uuid AND o.kind = 'status' AND o.key = v.key
+        AND o.pipeline_id = ${pipelinePadraoSql(tenantId)}
         AND o.stale_days IS DISTINCT FROM v.dias
     `,
   );
