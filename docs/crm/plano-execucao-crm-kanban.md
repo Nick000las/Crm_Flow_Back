@@ -230,6 +230,11 @@ Depende só do M2. Atrás de `kanban_universal.vinculo_entidade`. Executado **de
 | F-3 | Ciclo de vida                                             | Derivado: com oportunidade aberta, `oportunidade`; com alguma ganha, `cliente`, que tem prioridade; senão, `lead`. |
 | F-4 | Card de atendimento automático vem ligado em tenant novo? | Sim, com o dono podendo desligar.                                                                                  |
 
+**Decididas pelo dono em 05/11/2026, depois da F0:**
+
+- Lead sem status nasce no primeiro status aberto de Vendas. É a única mudança visível na API: hoje ele nasce com `status: null`, e `crm_deal.status` é obrigatório.
+- `funil_estagio_id` e `estagio_nome` passam a devolver a opção de status.
+
 ### Etapas
 
 Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga algo.
@@ -242,14 +247,16 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F1. Schema aditivo**
 
-- [ ] Migration 0036: `crm_pipeline`, com RLS e FK composta por tenant.
-- [ ] Migration 0037: `crm_deal`, `crm_event` e colunas novas de `leads` e `crm_option`.
-- [ ] Nada lê as tabelas novas ainda: `usaOportunidades` prioriza o modelo atual enquanto `funil_estagios` e `leads.status` existirem.
-- [ ] `test:rls-coverage` e `test:fk-coverage` cobrem as tabelas novas.
+- [x] Migration 0036: `crm_pipeline`, com RLS e FK composta por tenant.
+- [x] Migration 0037: `crm_deal`, `crm_event` e colunas novas de `leads` e `crm_option`. Acrescentou `archived_at` em `crm_deal` (P9) e `UNIQUE (tenant_id, id)` em `leads`, que faltava para a FK por tenant.
+- [x] Nada lê as tabelas novas ainda: `usaOportunidades` prioriza o modelo atual enquanto `funil_estagios` e `leads.status` existirem.
+- [x] `test:rls-coverage` e `test:fk-coverage` cobrem as tabelas novas. Regras do banco testadas em `crm-oportunidades.schema.db.test.js`.
+- [x] `crm_option` ganhou só a coluna `pipeline_id`. A regra "todo status tem pipeline" e a nova unicidade ficam para a F2, junto com o seed.
 
 **F2. Seed por tenant**
 
 - [ ] `reconciliarTenant`: pipelines Vendas (padrão) e Atendimento, de forma idempotente.
+- [ ] `crm_option`: backfill de `pipeline_id` nos status, `chk_crm_option_pipeline`, unicidade `(tenant_id, kind, pipeline_id, key)` e ajuste do `ON CONFLICT` de `inserirOpcoes`.
 - [ ] Status de Vendas: as opções de `crm_option` que já existem passam a pertencer ao pipeline. `funil_estagios` está vazio e não entra no seed (achado da F0). Atendimento ganha uma lista própria inicial.
 - [ ] Limite de 5 pipelines por tenant (D5), validado no service.
 - [ ] `pnpm crm:reconcile` duas vezes não duplica nada.
