@@ -1,7 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { COLUNA_DA_LISTA, TIPOS_LISTA } from '../constants.js';
-import { usaOportunidades } from './crm-lead-read-model.js';
 import { pipelinePadraoSql } from './crm-pipelines.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
@@ -232,7 +231,8 @@ export function excluirOpcao(tenantId, opcaoId) {
 
 /**
  * Quantos leads usam cada key de uma lista (`tags`: cada lead conta uma
- * vez por tag); no tipo de atividade, quantas atividades (M6). Lead da
+ * vez por tag); no tipo de atividade, quantas atividades (M6); em status e
+ * motivo de perda, quantas oportunidades, inclusive as não principais. Lead da
  * lixeira conta: pode ser restaurado.
  *
  * @param {string} tenantId
@@ -241,24 +241,16 @@ export function excluirOpcao(tenantId, opcaoId) {
  */
 export async function contarUsos(tenantId, kind) {
   if (kind === TIPOS_LISTA.STATUS || kind === TIPOS_LISTA.MOTIVO_PERDA) {
-    const usos = await getTenantClient(tenantId, async (tx) => {
-      if (await usaOportunidades(tx)) {
-        const coluna =
-          kind === TIPOS_LISTA.STATUS ? Prisma.sql`d.status` : Prisma.sql`d.lost_reason`;
-        return tx.$queryRaw`
-          SELECT ${coluna} AS key, count(*)::int AS usos
-          FROM modulo_crm.crm_deal d
-          WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL
-          GROUP BY 1
-        `;
-      }
-      return tx.$queryRaw`
-        SELECT ${colunaDoLead(kind)} AS key, count(*)::int AS usos
-        FROM modulo_crm.leads l
-        WHERE l.tenant_id = ${tenantId}::uuid AND ${colunaDoLead(kind)} IS NOT NULL
+    const coluna = kind === TIPOS_LISTA.STATUS ? Prisma.sql`d.status` : Prisma.sql`d.lost_reason`;
+    const usos = await getTenantClient(
+      tenantId,
+      (tx) => tx.$queryRaw`
+        SELECT ${coluna} AS key, count(*)::int AS usos
+        FROM modulo_crm.crm_deal d
+        WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL
         GROUP BY 1
-      `;
-    });
+      `,
+    );
     return new Map(usos.map((linha) => [linha.key, linha.usos]));
   }
   if (kind === TIPOS_LISTA.TIPO_ATIVIDADE) {

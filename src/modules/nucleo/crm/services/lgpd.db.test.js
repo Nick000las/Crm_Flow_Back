@@ -216,7 +216,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
     expect(resumo).toMatchObject({ leadId: eva, leads: DOIS_LEADS, atividades: 1 });
 
     const leads = await prisma.$queryRaw`
-      SELECT id::text, nome, email, telefone, empresa, cargo, custom_fields, anonimizado_em, status, legal_basis
+      SELECT id::text, nome, email, telefone, empresa, cargo, custom_fields, anonimizado_em, legal_basis
       FROM modulo_crm.leads WHERE id IN (${eva}::uuid, ${copia}::uuid)
     `;
     expect(leads).toHaveLength(DOIS_LEADS);

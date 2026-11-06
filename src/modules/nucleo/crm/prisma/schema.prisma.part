@@ -1,22 +1,10 @@
 CREATE SCHEMA IF NOT EXISTS modulo_crm;
 
-CREATE TABLE modulo_crm.funil_estagios (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  nome VARCHAR NOT NULL,
-  "order" INTEGER NOT NULL DEFAULT 0,
-  system_stage VARCHAR,
-  limite_vacuo_horas INTEGER,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE modulo_crm.leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   nome VARCHAR NOT NULL,
   telefone VARCHAR,
-  valor NUMERIC,
-  funil_estagio_id UUID REFERENCES modulo_crm.funil_estagios(id),
   usuario_responsavel_id UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -24,7 +12,6 @@ CREATE TABLE modulo_crm.leads (
   -- Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa.
   email VARCHAR,
   fonte_lead VARCHAR,       -- key de crm_option (kind fonte_lead), M3
-  status VARCHAR,           -- key de crm_option (kind status), M3
   tags VARCHAR[],
   ultima_interacao_em TIMESTAMP,
   primeiro_nome VARCHAR,     -- derivado do nome e editável, M10
@@ -40,10 +27,6 @@ CREATE TABLE modulo_crm.leads (
   cep VARCHAR,
   endereco VARCHAR,
   campanha_utm VARCHAR,
-  data_conversao TIMESTAMP,
-  probabilidade_fechamento NUMERIC,
-  data_prevista_fechamento TIMESTAMP,
-  motivo_perda VARCHAR,     -- key de crm_option (kind motivo_perda), M3
   lead_score NUMERIC,
   proximo_followup TIMESTAMP,
 
@@ -65,16 +48,11 @@ CREATE TABLE modulo_crm.leads (
   CONSTRAINT chk_leads_email_ou_telefone CHECK (email IS NOT NULL OR telefone IS NOT NULL)
 );
 
-ALTER TABLE modulo_crm.funil_estagios ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON modulo_crm.funil_estagios
-  USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
-
 ALTER TABLE modulo_crm.leads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON modulo_crm.leads
   USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
 
 CREATE INDEX idx_leads_tenant_id ON modulo_crm.leads(tenant_id);
-CREATE INDEX idx_leads_tenant_estagio ON modulo_crm.leads(tenant_id, funil_estagio_id);
 CREATE INDEX idx_leads_arquivados ON modulo_crm.leads(tenant_id, archived_at)
   WHERE archived_at IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_leads_lixeira ON modulo_crm.leads(tenant_id, deleted_at) WHERE deleted_at IS NOT NULL;
@@ -82,7 +60,6 @@ CREATE INDEX idx_leads_dedup_email ON modulo_crm.leads(tenant_id, dedup_email) W
 CREATE INDEX idx_leads_dedup_telefone ON modulo_crm.leads(tenant_id, dedup_telefone) WHERE deleted_at IS NULL;
 CREATE INDEX idx_leads_dedup_cnpj ON modulo_crm.leads(tenant_id, dedup_cnpj text_pattern_ops) WHERE deleted_at IS NULL;
 CREATE INDEX idx_leads_dedup_cpf ON modulo_crm.leads(tenant_id, dedup_cpf text_pattern_ops) WHERE deleted_at IS NULL;
-CREATE INDEX idx_funil_estagios_tenant_order ON modulo_crm.funil_estagios(tenant_id, "order");
 
 -- Campos customizados: a configuração mora em `crm_field` (bloco da
 -- migration 0012, abaixo). As tabelas antigas tenant_lead_field_definitions
@@ -116,7 +93,6 @@ CREATE TABLE modulo_crm.import_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  status VARCHAR NOT NULL DEFAULT 'pendente'
     CHECK (status IN ('pendente','processando','concluido','falhou')),
   estrategia_duplicata VARCHAR NOT NULL
     CHECK (estrategia_duplicata IN ('pular','atualizar','criar')),

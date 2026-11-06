@@ -358,12 +358,4 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(lead.status).toBe(statusAberto);
     expect(Number(lead.valor)).toBe(VALOR_ALTO);
   });
-
-  it('funil legado: nenhum tenant recebe estágio ao ser reconciliado', async () => {
-    const [{ total }] = await prisma.$queryRaw`
-      SELECT count(*)::int AS total FROM modulo_crm.funil_estagios
-      WHERE tenant_id = ${tenantId}::uuid
-    `;
-    expect(total).toBe(0);
-  });
 });

@@ -5,7 +5,6 @@
  * apenas com base nestes códigos e no status HTTP.
  */
 export const ERROR_CODES = Object.freeze({
-  CRM_SCHEMA_INCOMPATIBLE: 'CRM_SCHEMA_INCOMPATIBLE',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   // Regra de domínio exige campos para concluir a ação (ex.: mover um card).
   CAMPOS_OBRIGATORIOS: 'CAMPOS_OBRIGATORIOS',

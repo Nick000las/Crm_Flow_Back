@@ -292,11 +292,11 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F5. Um modelo só**
 
-- [ ] Remover `usaOportunidades`, o ramo legado de `fonteLeads`, `funil-estagios.repository.js` e `CRM_SCHEMA_INCOMPATIBLE`.
-- [ ] Coluna "Estágio do funil" da planilha: hoje casa com `funil_estagios`, que é vazio. Passa a casar com o nome da opção de status (`funilEstagioId`), e `estagioPadraoId` sai.
-- [ ] `fonteLeads` volta a usar `contato.*`, sem a lista `COLUNAS_DO_CONTATO`.
-- [ ] Migration final: apaga `funil_estagios` e as colunas comerciais de `leads`. Irreversível, por isso vem por último e só depois de F0 a F4 validadas.
-- [ ] Atualizar `compatibilidade-leitura-oportunidades.md` e `MASTER_DOCUMENT.md`.
+- [x] Removidos `usaOportunidades`, o ramo legado da leitura, `funil-estagios.repository.js` e `CRM_SCHEMA_INCOMPATIBLE`. `fonteLeads` virou a constante `FONTE_LEADS`, sem consulta ao catálogo a cada leitura.
+- [x] Coluna "Estágio do funil" da planilha: casa com o nome dos status ativos do pipeline padrão, e `estagioPadraoId` saiu. Sem a coluna, o lead nasce no primeiro status aberto.
+- [x] `FONTE_LEADS` voltou a usar `contato.*`, sem a lista `COLUNAS_DO_CONTATO`.
+- [x] Migration 0039: apaga `funil_estagios` e as colunas comerciais de `leads`. Irreversível. Falha, sem apagar, se houver dado comercial nas colunas ou linha no funil.
+- [x] Atualizados `compatibilidade-leitura-oportunidades.md`, `mapa-campos-comerciais.md` e `MASTER_DOCUMENT.md`. `schema.prisma.part` acompanha o banco.
 
 **F6. API de pipelines e oportunidades**
 
@@ -315,7 +315,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 - [ ] `funil_estagios` não existe e nenhum código o cita.
 - [ ] Todos os gates verdes, sem teste ignorado.
 
-**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5. Mudanças de comportamento da F4: lead sem status nasce no primeiro aberto; `funil_estagio_id` deixa de ser nulo; `status: null` é 400; `dataConversao` fora de venda ganha é 400, e reabrir uma venda exige não reenviar a data; `valor` negativo é 400; `probabilidadeFechamento` é inteiro de 0 a 100; a escolha de status, valor e motivo sai da tela de mesclar; mudar a categoria de status em uso é 409; ganhar preenche `data_conversao`, e sair de Perdido limpa `motivo_perda`.
+**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5. Mudanças de comportamento da F4: lead sem status nasce no primeiro aberto; `funil_estagio_id` deixa de ser nulo; `status: null` é 400; `dataConversao` fora de venda ganha é 400, e reabrir uma venda exige não reenviar a data; `valor` negativo é 400; `probabilidadeFechamento` é inteiro de 0 a 100; a escolha de status, valor e motivo sai da tela de mesclar; mudar a categoria de status em uso é 409; ganhar preenche `data_conversao`, e sair de Perdido limpa `motivo_perda`. Na F5: o código de erro `CRM_SCHEMA_INCOMPATIBLE` não existe mais, e a coluna "Estágio do funil" da planilha aceita o nome de um status ativo.
 
 ---
 
@@ -380,7 +380,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 - **Quadros nativos regredirem no M2:** motor separado, sem tocar em `executar()`.
 - **Worker novo no M6:** só funciona se entrar no deploy; o nome some na leitura mesmo sem ele.
 - **Tamanho do M2.5:** é o maior marco e toca fluxos sensíveis. Mitigado por etapas com parada, testes de caracterização antes da mudança e apagar só na F5.
-- **Troca de modelo:** feita na F4, com leitura e escrita juntas. Até a F5, as colunas comerciais de `leads` existem, mas ficam vazias: nenhum código deve lê-las.
+- **Troca de modelo:** concluída na F5. As colunas comerciais de `leads` e `funil_estagios` não existem mais; a API mantém os nomes `valor`, `status`, `funil_estagio_id` e os demais, vindos da oportunidade principal.
 
 ## Verificação
 

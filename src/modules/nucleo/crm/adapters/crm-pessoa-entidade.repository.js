@@ -1,5 +1,5 @@
 import { getTenantClient } from '#core/db/tenantClient.js';
-import { fonteLeads } from './crm-lead-read-model.js';
+import { FONTE_LEADS } from './crm-lead-read-model.js';
 
 /**
  * ADAPTER: leitura do lead como entidade referenciada por outro módulo (M6).
@@ -47,7 +47,7 @@ export function buscarPessoasPorIds(tenantId, ids) {
   return getTenantClient(
     tenantId,
     async (tx) => tx.$queryRaw`
-      SELECT l.* FROM ${await fonteLeads(tx)} l
+      SELECT l.* FROM ${FONTE_LEADS} l
       WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ANY(${ids}::uuid[])
     `,
   );

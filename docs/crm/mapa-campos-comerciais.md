@@ -1,6 +1,6 @@
 # Mapa dos campos comerciais do lead
 
-Levantado em 05/11/2026 para o M2.5, etapa F0 (`plano-execucao-crm-kanban.md`). Mostra quem lia e quem gravava `status`, `valor` e os demais campos que passaram para a oportunidade na F4. O contrato da API está fixado em `src/modules/nucleo/crm/controllers/leads.contrato.db.test.js`.
+Levantado em 05/11/2026 para o M2.5, etapa F0 (`plano-execucao-crm-kanban.md`). Mostra quem lia e quem gravava `status`, `valor` e os demais campos que passaram para a oportunidade na F4. As colunas e `funil_estagios` foram apagadas na F5. O contrato da API está fixado em `src/modules/nucleo/crm/controllers/leads.contrato.db.test.js`.
 
 ## Campos que mudam de lugar
 
@@ -29,11 +29,11 @@ Levantado em 05/11/2026 para o M2.5, etapa F0 (`plano-execucao-crm-kanban.md`). 
 
 | Leitura                | Onde                                                      | Atenção                                            |
 | ---------------------- | --------------------------------------------------------- | -------------------------------------------------- |
-| Lista, detalhe e busca | `fonteLeads`, `colunasLeitura`                            | oportunidade principal                             |
+| Lista, detalhe e busca | `FONTE_LEADS`, `colunasLeitura`                           | oportunidade principal                             |
 | Filtros e views        | `lead-filter.service.js`                                  | `valorMin`, `valorMax`, `funilEstagioId`           |
 | Exportação             | `export.service.js`                                       | `funilEstagio` sai de `estagio_nome`               |
-| Inatividade            | `crm-inatividade.sql.js`, `crm-inatividade.repository.js` | lê `fonteLeads`, com o `pipeline_id` dela          |
-| Score                  | `crm-score.repository.js`                                 | a expressão roda sobre `fonteLeads`                |
+| Inatividade            | `crm-inatividade.sql.js`, `crm-inatividade.repository.js` | lê `FONTE_LEADS`, com o `pipeline_id` dela         |
+| Score                  | `crm-score.repository.js`                                 | a expressão roda sobre `FONTE_LEADS`               |
 | Duplicados             | `crm-duplicates.repository.js`                            | não lê campo comercial                             |
 | Usos de opção          | `crm-options.repository.js`, `contarUsos`                 | conta todas as oportunidades                       |
 | Regras (M8)            | `regras-campos.service.js`                                | recebe o objeto do lead, sem SQL                   |
