@@ -154,15 +154,16 @@ export function inserirOpcoes(tenantId, kind, opcoes, pipelineId) {
 /**
  * @param {string} tenantId
  * @param {string} kind
+ * @param {string} [pipelineId]  status de outro pipeline; sem ele, o padrão
  * @returns {Promise<number>} posição depois da última opção da lista
  */
-export function proximaPosicao(tenantId, kind) {
+export function proximaPosicao(tenantId, kind, pipelineId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       SELECT COALESCE(max(position) + 1, 0)::int AS posicao
       FROM modulo_crm.crm_option
       WHERE tenant_id = ${tenantId}::uuid AND kind = ${kind}
-        AND (pipeline_id IS NULL OR pipeline_id = ${pipelinePadraoSql(tenantId)})
+        AND (pipeline_id IS NULL OR pipeline_id = COALESCE(${pipelineId ?? null}::uuid, ${pipelinePadraoSql(tenantId)}))
     `.then((rows) => rows[FIRST_RESULT_INDEX].posicao),
   );
 }
@@ -233,21 +234,27 @@ export function excluirOpcao(tenantId, opcaoId) {
  * Quantos leads usam cada key de uma lista (`tags`: cada lead conta uma
  * vez por tag); no tipo de atividade, quantas atividades (M6); em status e
  * motivo de perda, quantas oportunidades, inclusive as não principais. Lead da
- * lixeira conta: pode ser restaurado.
+ * lixeira conta: pode ser restaurado. Status conta só no pipeline dele, porque a
+ * mesma key pode existir em outro.
  *
  * @param {string} tenantId
  * @param {string} kind
+ * @param {string} [pipelineId]  status de outro pipeline; sem ele, o padrão
  * @returns {Promise<Map<string, number>>}
  */
-export async function contarUsos(tenantId, kind) {
+export async function contarUsos(tenantId, kind, pipelineId) {
   if (kind === TIPOS_LISTA.STATUS || kind === TIPOS_LISTA.MOTIVO_PERDA) {
-    const coluna = kind === TIPOS_LISTA.STATUS ? Prisma.sql`d.status` : Prisma.sql`d.lost_reason`;
+    const status = kind === TIPOS_LISTA.STATUS;
+    const coluna = status ? Prisma.sql`d.status` : Prisma.sql`d.lost_reason`;
+    const doPipeline = status
+      ? Prisma.sql`d.pipeline_id = COALESCE(${pipelineId ?? null}::uuid, ${pipelinePadraoSql(tenantId)})`
+      : Prisma.sql`true`;
     const usos = await getTenantClient(
       tenantId,
       (tx) => tx.$queryRaw`
         SELECT ${coluna} AS key, count(*)::int AS usos
         FROM modulo_crm.crm_deal d
-        WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL
+        WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL AND ${doPipeline}
         GROUP BY 1
       `,
     );

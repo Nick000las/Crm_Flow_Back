@@ -36,6 +36,20 @@ export const CAMPOS_COMERCIAIS = Object.freeze([
 export const LIMITES_OPORTUNIDADE = Object.freeze({
   VALOR_MAXIMO: 999_999_999_999.99,
   PROBABILIDADE_MAXIMA: 100,
+  TITULO: 200,
+});
+
+/**
+ * Campo configurável do CRM → chaves que ele controla na oportunidade. Campo
+ * desligado ou oculto para o papel some da resposta, como em `/crm/leads`. A
+ * categoria e as datas de fechamento contam o status: ocultam junto.
+ */
+export const SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE = Object.freeze({
+  status: Object.freeze(['status', 'categoria', 'ganhaEm', 'perdidaEm']),
+  motivoPerda: Object.freeze(['motivoPerda']),
+  probabilidadeFechamento: Object.freeze(['probabilidadeFechamento']),
+  dataPrevistaFechamento: Object.freeze(['dataPrevistaFechamento']),
+  dataConversao: Object.freeze(['ganhaEm']),
 });
 
 /** Regra de quem assume o atendimento criado pela venda. */

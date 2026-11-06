@@ -2,6 +2,7 @@ import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors
 import { slugify } from '#shared/text/slugify.js';
 import {
   atualizarOpcao as atualizarOpcaoRepository,
+  buscarStatusDoPipeline,
   contarUsos,
   excluirOpcao as excluirOpcaoRepository,
   inserirOpcoes,
@@ -76,23 +77,34 @@ export async function listarListas(tenantId) {
  * @param {string} tenantId
  * @param {string} kind
  * @param {{ label: string, color?: string | null, category?: string }} dados
+ * @param {{ pipelineId?: string }} [escopo]  status de outro pipeline; sem ele, o padrão
  * @returns {Promise<OpcaoLista>}
  */
-export async function criarOpcao(tenantId, kind, { label, color = null, category }) {
-  const opcoes = await opcoesDaLista(tenantId, kind);
+export async function criarOpcao(
+  tenantId,
+  kind,
+  { label, color = null, category },
+  { pipelineId } = {},
+) {
+  const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const nome = garantirLabelLivre(opcoes, label);
   validarCategoria(kind, category, { obrigatoria: true });
 
   const key = chaveUnica(slugify(nome) || KEY_PADRAO, new Set(opcoes.map((opcao) => opcao.key)));
-  const [criada] = await inserirOpcoes(tenantId, kind, [
-    {
-      key,
-      label: nome,
-      color,
-      category: category ?? null,
-      position: await proximaPosicao(tenantId, kind),
-    },
-  ]);
+  const [criada] = await inserirOpcoes(
+    tenantId,
+    kind,
+    [
+      {
+        key,
+        label: nome,
+        color,
+        category: category ?? null,
+        position: await proximaPosicao(tenantId, kind, pipelineId),
+      },
+    ],
+    pipelineId,
+  );
   // Outra requisição criou a mesma key entre a leitura e o INSERT.
   if (!criada) throw erroDeConflito('label', 'Já existe uma opção com esse nome');
 
@@ -108,17 +120,18 @@ export async function criarOpcao(tenantId, kind, { label, color = null, category
  * @param {string} kind
  * @param {string} opcaoId
  * @param {{ label?: string, color?: string | null, category?: string, ativo?: boolean }} mudancas
+ * @param {{ pipelineId?: string }} [escopo]
  * @returns {Promise<OpcaoLista>}
  */
-export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas) {
-  const opcoes = await opcoesDaLista(tenantId, kind);
+export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas, { pipelineId } = {}) {
+  const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const atual = opcoes.find((opcao) => opcao.id === opcaoId);
   if (!atual) throw opcaoNaoEncontrada();
 
   const label =
     mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
   validarCategoria(kind, mudancas.category, { obrigatoria: false });
-  await garantirCategoriaLivre(tenantId, kind, atual, mudancas.category);
+  await garantirCategoriaLivre(tenantId, kind, atual, mudancas.category, pipelineId);
 
   const depois = { ...atual, ...(mudancas.category && { category: mudancas.category }) };
   if (mudancas.ativo !== undefined) depois.ativo = mudancas.ativo;
@@ -140,10 +153,11 @@ export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas) {
  * @param {string} tenantId
  * @param {string} kind
  * @param {string[]} ids
+ * @param {{ pipelineId?: string }} [escopo]
  * @returns {Promise<OpcaoLista[]>}
  */
-export async function reordenarLista(tenantId, kind, ids) {
-  const opcoes = await opcoesDaLista(tenantId, kind);
+export async function reordenarLista(tenantId, kind, ids, { pipelineId } = {}) {
+  const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const esperados = new Set(opcoes.map((opcao) => opcao.id));
   const recebidos = new Set(ids);
   const completa =
@@ -159,7 +173,7 @@ export async function reordenarLista(tenantId, kind, ids) {
 
   await reordenarOpcoes(tenantId, kind, ids);
   await invalidarSchemaCampos(tenantId);
-  return opcoesDaLista(tenantId, kind);
+  return opcoesDaLista(tenantId, kind, pipelineId);
 }
 
 /**
@@ -168,14 +182,15 @@ export async function reordenarLista(tenantId, kind, ids) {
  * @param {string} tenantId
  * @param {string} kind
  * @param {string} opcaoId
+ * @param {{ pipelineId?: string }} [escopo]
  * @returns {Promise<{ removido: true }>}
  */
-export async function excluirOpcao(tenantId, kind, opcaoId) {
-  const opcoes = await opcoesDaLista(tenantId, kind);
+export async function excluirOpcao(tenantId, kind, opcaoId, { pipelineId } = {}) {
+  const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const alvo = opcoes.find((opcao) => opcao.id === opcaoId);
   if (!alvo) throw opcaoNaoEncontrada();
 
-  const usos = (await contarUsos(tenantId, kind)).get(alvo.key) ?? 0;
+  const usos = (await contarUsos(tenantId, kind, pipelineId)).get(alvo.key) ?? 0;
   if (usos > 0) {
     throw erroDeConflito(
       'opcao',
@@ -351,8 +366,10 @@ export async function gravarTagsNovas(tenantId, tagsNovas) {
 /**
  * @param {string} tenantId
  * @param {string} kind
+ * @param {string} [pipelineId]  status de outro pipeline; sem ele, o padrão
  */
-async function opcoesDaLista(tenantId, kind) {
+async function opcoesDaLista(tenantId, kind, pipelineId) {
+  if (pipelineId) return buscarStatusDoPipeline(tenantId, pipelineId);
   return (await obterSchemaCampos(tenantId)).listas[kind] ?? [];
 }
 
@@ -399,10 +416,11 @@ function validarCategoria(kind, category, { obrigatoria }) {
  * @param {string} kind
  * @param {OpcaoLista} atual
  * @param {string | undefined} category
+ * @param {string} [pipelineId]
  */
-async function garantirCategoriaLivre(tenantId, kind, atual, category) {
+async function garantirCategoriaLivre(tenantId, kind, atual, category, pipelineId) {
   if (kind !== TIPOS_LISTA.STATUS || !category || category === atual.category) return;
-  const usos = (await contarUsos(tenantId, kind)).get(atual.key) ?? 0;
+  const usos = (await contarUsos(tenantId, kind, pipelineId)).get(atual.key) ?? 0;
   if (usos > 0) {
     throw erroDeConflito(
       'category',

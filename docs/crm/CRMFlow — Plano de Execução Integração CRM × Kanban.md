@@ -174,11 +174,11 @@ Marco criado em 5/11/2026, com a decisão de descartar a feat\_Forms: a base com
 
 **Aceite**
 
-- [ ] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status.
-- [ ] A API de leads não mudou de formato.
-- [ ] Venda ganha cria o card de atendimento com a automação ligada e não cria com ela desligada.
-- [ ] Toda mudança de status grava histórico e `crm_event` na mesma transação.
-- [ ] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal nelas.
+- [x] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status.
+- [x] A API de leads não mudou de formato.
+- [x] Venda ganha cria o card de atendimento com a automação ligada e não cria com ela desligada.
+- [x] Toda mudança de status grava histórico e `crm_event` na mesma transação.
+- [x] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal nelas.
 - [x] `funil_estagios` não existe mais.
 
 ## M3 — Provedor crm\_oportunidades

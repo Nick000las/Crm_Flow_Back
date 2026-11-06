@@ -7,7 +7,12 @@ import {
   inserirPipelinePadrao,
 } from '../adapters/crm-pipelines.repository.js';
 import { inserirOpcoes } from '../adapters/crm-options.repository.js';
-import { PIPELINES, STATUS_DO_ATENDIMENTO, TIPOS_PIPELINE } from '../constants.js';
+import {
+  PIPELINES,
+  STATUS_DE_VENDAS_NOVO,
+  STATUS_DO_ATENDIMENTO,
+  TIPOS_PIPELINE,
+} from '../constants.js';
 import { criarPipeline, reconciliarPipelines } from './pipelines.service.js';
 
 vi.mock('../adapters/crm-pipelines.repository.js', () => ({
@@ -66,11 +71,12 @@ describe('criarPipeline', () => {
 
   it('cria respeitando o limite', async () => {
     vi.mocked(inserirPipelineDentroDoLimite).mockResolvedValue(VENDAS);
-    await expect(criarPipeline(TENANT, dados)).resolves.toBe(VENDAS);
+    await expect(criarPipeline(TENANT, dados)).resolves.toMatchObject(VENDAS);
     expect(inserirPipelineDentroDoLimite).toHaveBeenCalledWith(
       TENANT,
       dados,
       PIPELINES.LIMITE_POR_TENANT,
+      STATUS_DE_VENDAS_NOVO,
     );
   });
 

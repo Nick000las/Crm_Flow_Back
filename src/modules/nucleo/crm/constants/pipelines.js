@@ -16,6 +16,13 @@ const COR_ABERTO = '#3B82F6';
 const COR_GANHO = '#22C55E';
 const COR_PERDIDO = '#EF4444';
 
+/** Lista inicial de um pipeline de vendas novo: o mínimo para funcionar. */
+export const STATUS_DE_VENDAS_NOVO = Object.freeze([
+  { key: 'novo', label: 'Novo', color: COR_ABERTO, category: CATEGORIAS_STATUS.ABERTO },
+  { key: 'ganho', label: 'Ganho', color: COR_GANHO, category: CATEGORIAS_STATUS.GANHO },
+  { key: 'perdido', label: 'Perdido', color: COR_PERDIDO, category: CATEGORIAS_STATUS.PERDIDO },
+]);
+
 /**
  * Lista inicial do pipeline Atendimento. O primeiro é onde o card nasce quando
  * a venda é ganha (`auto_create_initial_status`). O dono edita em Configurações.

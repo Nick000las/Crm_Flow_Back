@@ -6,6 +6,8 @@ import { registrarRotasUsuarios } from './controllers/usuarios.controller.js';
 import { registrarRotasConfiguracoes } from './controllers/configuracoes.controller.js';
 import { registrarRotasLayout } from './controllers/layout.controller.js';
 import { registrarRotasListas } from './controllers/listas.controller.js';
+import { registrarRotasOportunidades } from './controllers/oportunidades.controller.js';
+import { registrarRotasPipelines } from './controllers/pipelines.controller.js';
 import { registrarRotasAtividades } from './controllers/atividades.controller.js';
 import { registrarRotasDuplicidade } from './controllers/duplicidade.controller.js';
 import { registrarRotasRegras } from './controllers/regras.controller.js';
@@ -35,6 +37,8 @@ export const crmModule = {
     registrarRotasUsuarios(app);
     registrarRotasConfiguracoes(app);
     registrarRotasListas(app);
+    registrarRotasPipelines(app);
+    registrarRotasOportunidades(app);
     registrarRotasLayout(app);
     registrarRotasAtividades(app);
     registrarRotasDuplicidade(app);
