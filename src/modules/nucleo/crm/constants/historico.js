@@ -16,6 +16,12 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
   ENRIQUECIDO: 'enriquecido',
   // M15: pedido do titular atendido (detalhes só com as contagens).
   ANONIMIZADO: 'anonimizado',
+  // M2.5: ciclo de uma oportunidade da pessoa (o id vai em `detalhes`).
+  OPORTUNIDADE_CRIADA: 'oportunidade_criada',
+  OPORTUNIDADE_ARQUIVADA: 'oportunidade_arquivada',
+  OPORTUNIDADE_DESARQUIVADA: 'oportunidade_desarquivada',
+  OPORTUNIDADE_EXCLUIDA: 'oportunidade_excluida',
+  OPORTUNIDADE_RESTAURADA: 'oportunidade_restaurada',
 });
 
 /**
@@ -50,6 +56,11 @@ export const TIPOS_CICLO_DE_VIDA = Object.freeze([
   TIPOS_EVENTO_LEAD.EXCLUIDO,
   TIPOS_EVENTO_LEAD.RESTAURADO,
   TIPOS_EVENTO_LEAD.ANONIMIZADO,
+  TIPOS_EVENTO_LEAD.OPORTUNIDADE_CRIADA,
+  TIPOS_EVENTO_LEAD.OPORTUNIDADE_ARQUIVADA,
+  TIPOS_EVENTO_LEAD.OPORTUNIDADE_DESARQUIVADA,
+  TIPOS_EVENTO_LEAD.OPORTUNIDADE_EXCLUIDA,
+  TIPOS_EVENTO_LEAD.OPORTUNIDADE_RESTAURADA,
 ]);
 
 /**
