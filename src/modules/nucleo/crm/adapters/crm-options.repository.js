@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { COLUNA_DA_LISTA, TIPOS_LISTA } from '../constants.js';
 import { usaOportunidades } from './crm-lead-read-model.js';
+import { pipelinePadraoSql } from './crm-pipelines.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
 
@@ -34,7 +35,8 @@ function colunaDoLead(kind) {
 }
 
 /**
- * Todas as opções do tenant (ativas e inativas), na ordem configurada.
+ * Todas as opções do tenant (ativas e inativas), na ordem configurada. Status:
+ * só os do pipeline padrão, que é o que o `status` do lead aceita até a F4.
  *
  * @param {string} tenantId
  * @returns {Promise<OpcaoLista[]>}
@@ -46,6 +48,7 @@ export function buscarOpcoesDoTenant(tenantId) {
       SELECT ${RETORNO_OPCAO_SQL}
       FROM modulo_crm.crm_option
       WHERE tenant_id = ${tenantId}::uuid
+        AND (pipeline_id IS NULL OR pipeline_id = ${pipelinePadraoSql(tenantId)})
       ORDER BY kind, position, created_at, id
     `,
   );
@@ -86,21 +89,27 @@ export function buscarTagsDosLeads(tenantId) {
 
 /**
  * Insere as opções que ainda não existem (`ON CONFLICT DO NOTHING` em
- * `(tenant_id, kind, key)`) — rodar de novo não muda nada, e opção que o
- * tenant já editou nunca é sobrescrita.
+ * `(tenant_id, kind, pipeline_id, key)`) — rodar de novo não muda nada, e opção
+ * que o tenant já editou nunca é sobrescrita. Status sem `pipelineId` entra no
+ * pipeline padrão.
  *
  * @param {string} tenantId
  * @param {string} kind
  * @param {{ key: string, label: string, color?: string | null, category?: string | null, staleDays?: number | null, position: number }[]} opcoes
+ * @param {string} [pipelineId]
  * @returns {Promise<OpcaoLista[]>} só as criadas agora
  */
-export function inserirOpcoes(tenantId, kind, opcoes) {
+export function inserirOpcoes(tenantId, kind, opcoes, pipelineId) {
   if (opcoes.length === 0) return Promise.resolve([]);
+  const pipeline =
+    kind === TIPOS_LISTA.STATUS
+      ? (pipelineId ?? null) && Prisma.sql`${pipelineId}::uuid`
+      : Prisma.sql`NULL::uuid`;
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_option (tenant_id, kind, key, label, color, category, stale_days, position)
-      SELECT ${tenantId}::uuid, ${kind}, o.key, o.label, o.color, o.category, o.stale_days, o.position
+      INSERT INTO modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, stale_days, position)
+      SELECT ${tenantId}::uuid, ${kind}, ${pipeline ?? pipelinePadraoSql(tenantId)}, o.key, o.label, o.color, o.category, o.stale_days, o.position
       FROM unnest(
         ${opcoes.map((opcao) => opcao.key)}::varchar[],
         ${opcoes.map((opcao) => opcao.label)}::varchar[],
@@ -109,7 +118,7 @@ export function inserirOpcoes(tenantId, kind, opcoes) {
         ${opcoes.map((opcao) => opcao.staleDays ?? null)}::int[],
         ${opcoes.map((opcao) => opcao.position)}::int[]
       ) AS o(key, label, color, category, stale_days, position)
-      ON CONFLICT (tenant_id, kind, key) DO NOTHING
+      ON CONFLICT (tenant_id, kind, pipeline_id, key) DO NOTHING
       RETURNING ${RETORNO_OPCAO_SQL}
     `,
   );
@@ -126,6 +135,7 @@ export function proximaPosicao(tenantId, kind) {
       SELECT COALESCE(max(position) + 1, 0)::int AS posicao
       FROM modulo_crm.crm_option
       WHERE tenant_id = ${tenantId}::uuid AND kind = ${kind}
+        AND (pipeline_id IS NULL OR pipeline_id = ${pipelinePadraoSql(tenantId)})
     `.then((rows) => rows[FIRST_RESULT_INDEX].posicao),
   );
 }

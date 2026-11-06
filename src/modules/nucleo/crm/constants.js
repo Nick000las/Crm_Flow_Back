@@ -21,6 +21,7 @@
  * - `constants/lgpd.js`: base legal, origem do registro e anonimização.
  */
 export * from './constants/arquivo.js';
+export * from './constants/pipelines.js';
 export * from './constants/historico.js';
 export * from './constants/duplicidade.js';
 export * from './constants/regras.js';

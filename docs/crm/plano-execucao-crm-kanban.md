@@ -255,11 +255,12 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F2. Seed por tenant**
 
-- [ ] `reconciliarTenant`: pipelines Vendas (padrão) e Atendimento, de forma idempotente.
-- [ ] `crm_option`: backfill de `pipeline_id` nos status, `chk_crm_option_pipeline`, unicidade `(tenant_id, kind, pipeline_id, key)` e ajuste do `ON CONFLICT` de `inserirOpcoes`.
-- [ ] Status de Vendas: as opções de `crm_option` que já existem passam a pertencer ao pipeline. `funil_estagios` está vazio e não entra no seed (achado da F0). Atendimento ganha uma lista própria inicial.
-- [ ] Limite de 5 pipelines por tenant (D5), validado no service.
-- [ ] `pnpm crm:reconcile` duas vezes não duplica nada.
+- [x] `reconciliarTenant`: pipelines Vendas (padrão) e Atendimento, de forma idempotente. O passo `pipelines-padrao` roda antes das listas.
+- [x] `crm_option`: backfill de `pipeline_id` nos status, `chk_crm_option_pipeline`, unicidade `(tenant_id, kind, pipeline_id, key)` e ajuste do `ON CONFLICT` de `inserirOpcoes` (migration 0038). É migration de dado porque a constraint vale sobre as linhas que já existem.
+- [x] Status de Vendas: as opções de `crm_option` que já existem passam a pertencer ao pipeline. `funil_estagios` está vazio e não entra no seed (achado da F0). Atendimento ganha uma lista própria inicial: Aguardando início, Em atendimento, Concluído e Cancelado.
+- [x] Limite de 5 pipelines por tenant (D5), validado no service, com lock por tenant contra pedidos simultâneos.
+- [x] Até a F4, o `status` do lead é sempre um status do pipeline padrão: listas, inatividade e `ESFRIA_EM` filtram por ele. Sem isso, Atendimento vazaria para o formulário e nenhum lead esfriaria.
+- [x] `pnpm crm:reconcile` duas vezes não duplica nada (`pipelines.db.test.js`).
 
 **F3. Service único de oportunidade**
 

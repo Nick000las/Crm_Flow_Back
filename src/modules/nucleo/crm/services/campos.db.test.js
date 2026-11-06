@@ -68,6 +68,8 @@ import { reconciliarTenant } from './reconcile.service.js';
  * Exige as migrations até a 0023 aplicadas.
  */
 
+const PIPELINES_INICIAIS = ['Vendas', 'Atendimento'].length;
+
 const rodar =
   process.env.CRM_DB_TESTS === '1' && process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -133,11 +135,13 @@ rodar('campos do CRM no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_TESTE_LONGO_
     );
     expect(primeira).toEqual([
       { passo: 'campos-sistema', resultado: { criados: CAMPOS_SISTEMA.length } },
+      { passo: 'pipelines-padrao', resultado: { criados: PIPELINES_INICIAIS } },
       { passo: 'listas-padrao', resultado: { criadas: opcoesSugeridas } }, // tenant sem lead: padrão da spec
       { passo: 'regras-padrao', resultado: { criadas: REGRAS_DO_SISTEMA.length } }, // Perdido exige Motivo (M8)
     ]);
     expect(segunda).toEqual([
       { passo: 'campos-sistema', resultado: { criados: 0 } },
+      { passo: 'pipelines-padrao', resultado: { criados: 0 } },
       { passo: 'listas-padrao', resultado: { criadas: 0 } },
       { passo: 'regras-padrao', resultado: { criadas: 0 } },
     ]);

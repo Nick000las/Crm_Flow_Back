@@ -97,8 +97,8 @@ it('usos de status e motivo contam todas as oportunidades, inclusive as não pri
   }
 });
 
-it('inatividade distingue status de pipelines diferentes, mantendo suporte ao legado', () => {
-  expect(colunaEsfriandoDesde(new Date()).sql).toContain(
-    "(to_jsonb(o)->>'pipeline_id') IS NOT DISTINCT FROM (to_jsonb(l)->>'pipeline_id')",
-  );
+it('inatividade distingue status de pipelines diferentes; sem oportunidade, vale o padrão', () => {
+  const { sql } = colunaEsfriandoDesde(new Date());
+  expect(sql).toContain("to_jsonb(l)->>'pipeline_id'");
+  expect(sql).toContain('p.is_default');
 });

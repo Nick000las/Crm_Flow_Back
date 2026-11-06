@@ -16,7 +16,11 @@ import { Prisma } from '@prisma/client';
  * Espera `l` = `modulo_crm.leads` (ou uma linha com as mesmas colunas).
  */
 
-/** Quando o lead esfria (passado ou futuro); NULL se o status não esfria. */
+/**
+ * Quando o lead esfria (passado ou futuro); NULL se o status não esfria. A mesma
+ * key pode existir em vários pipelines: sem oportunidade na linha, o status do
+ * lead é o do pipeline padrão.
+ */
 const ESFRIA_EM = Prisma.sql`(
   SELECT GREATEST(
     COALESCE(l.ultima_interacao_em, l.created_at),
@@ -27,7 +31,11 @@ const ESFRIA_EM = Prisma.sql`(
   ) + make_interval(days => o.stale_days)
   FROM modulo_crm.crm_option o
   WHERE o.tenant_id = l.tenant_id AND o.kind = 'status' AND o.key = l.status
-    AND (to_jsonb(o)->>'pipeline_id') IS NOT DISTINCT FROM (to_jsonb(l)->>'pipeline_id')
+    AND o.pipeline_id::text = COALESCE(
+      to_jsonb(l)->>'pipeline_id',
+      (SELECT p.id::text FROM modulo_crm.crm_pipeline p
+       WHERE p.tenant_id = l.tenant_id AND p.is_default)
+    )
 )`;
 
 const LEAD_NA_LISTA = Prisma.sql`l.archived_at IS NULL AND l.deleted_at IS NULL`;
