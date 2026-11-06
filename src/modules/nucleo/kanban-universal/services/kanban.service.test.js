@@ -5,7 +5,6 @@ import { operarKanban } from './kanban.service.js';
 vi.mock('../adapters/kanban.repository.js', () => ({
   executar: vi.fn(),
   executarComEvento: vi.fn(),
-  verificarModulo: vi.fn(),
 }));
 describe('permissões Kanban', () => {
   const context = { tenantId: 'tenant', userId: 'user', role: 'OPERADOR' };

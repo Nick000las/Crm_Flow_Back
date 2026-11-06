@@ -34,15 +34,15 @@ O CRM é dono dos dados; o Kanban é uma forma de trabalhar sobre eles. O motor 
 
 ## Pré-requisitos, escopo e decisões
 
-Este plano cobre só a integração CRM × Kanban. M0–M2 e M6 podem começar já; M3–M5 dependem da feat\_Forms refeita, que tem plano próprio.
+Este plano cobre só a integração CRM × Kanban. M0–M2 e M6 podem começar já; M3–M5 dependem do M2.5 (Fundação comercial). A branch feat\_Forms foi descartada: os formulários serão feitos do zero depois da sincronização, com plano próprio.
 
-### Pré-requisitos (fora deste plano, no plano da feat\_Forms refeita)
+### Pré-requisitos (entregues no M2.5, salvo indicação)
 
 - Oportunidades (`crm_deal`, N por pessoa) com ciclo de vida derivado.
 - `crm_pipeline` com tipo `sales` | `service`, opções de status por pipeline e regra de auto-criação do card de atendimento.
 - **O dono pode criar pipelines** além dos padrões, com **limite de 5 pipelines por tenant, incluindo Vendas e Atendimento** (limite fixo por enquanto; vai mudar no futuro).
 - **Card de atendimento nasce automaticamente** quando uma venda é ganha; o dono pode desligar a automação.
-- **Segunda venda com tratamento ativo** (D6): quando há alguém na tela, o sistema oferece juntar ao card existente ou criar um novo. Quando a venda é ganha por automação ou importação, **não cria card novo**: o card existente ganha o aviso "nova venda: juntar ou separar?" até alguém decidir.
+- **Segunda venda com tratamento ativo** (D6): quando há alguém na tela, o sistema oferece juntar ao card existente ou criar um novo. Quando a venda é ganha por automação ou importação, **não cria card novo**: o card existente ganha o aviso "nova venda: juntar ou separar?" até alguém decidir. Fica para depois do M5.
 - `funil_estagios` aposentado; os estágios atuais viram o seed das opções de status do pipeline Vendas.
 - Outbox `crm_event` gravado na mesma transação de cada mudança.
 
@@ -50,6 +50,7 @@ Este plano cobre só a integração CRM × Kanban. M0–M2 e M6 podem começar j
 
 - Bot de atendimento, motor de mensagens e carteira de créditos.
 - Campos personalizados e catálogo de etiquetas próprios do Kanban (suspensos, ver P5).
+- Formulários e anamnese: refeitos do zero depois deste plano.
 
 ### Decisões aplicadas (P0–P22)
 
@@ -89,12 +90,12 @@ Destrava o trabalho de todos: banco alinhado com a main e CI verde. Não depende
 2. Commit único de formatação na main (`pnpm format`), sem nenhuma outra mudança no mesmo commit.
 3. Docs do CRM migrados de npm para pnpm.
 4. Regra registrada no MASTER\_DOCUMENT: contador único de migrations entre módulos daqui em diante.
-5. As migrations 0030–0034, que existem no histórico do banco antigo mas não na main, serão **recriadas com novos números** pela feat\_Forms refeita, nunca reaproveitadas.
+5. As migrations 0030–0034, que existem no histórico do banco antigo mas não na main, serão **recriadas com novos números** pelo M2.5, nunca reaproveitadas.
 
 **Aceite**
 
-- [ ] `prisma migrate status` e o catálogo do Postgres batem com os arquivos da main.
-- [ ] Criar e editar lead funcionam no banco novo.
+- [x] `prisma migrate status` e o catálogo do Postgres batem com os arquivos da main.
+- [x] Criar e editar lead funcionam no banco novo.
 - [ ] CI verde, incluindo `format:check`.
 
 ## M1 — Correções do Kanban atual
@@ -111,9 +112,9 @@ Correções que valem para os quadros de projeto de hoje e preparam a escala dos
 
 **Aceite**
 
-- [ ] Dois usuários do mesmo tenant editando quadros diferentes não entram em fila.
-- [ ] Lembrete de prazo de um tenant em outro fuso chega no dia certo perto da virada.
-- [ ] `test:kanban:integration` verde.
+- [x] Dois usuários do mesmo tenant editando quadros diferentes não entram em fila.
+- [x] Lembrete de prazo de um tenant em outro fuso chega no dia certo perto da virada.
+- [x] `test:kanban:integration` verde.
 
 ## M2 — Contrato de provedor de quadro no core
 
@@ -152,13 +153,37 @@ Declarado no objeto `Module` (campo novo e opcional) e publicado por `#core/regi
 
 ### Aceite
 
-- [ ] Provedor falso nos testes: listar, paginar, mover com sucesso, mover com `CAMPOS_OBRIGATORIOS`, criar.
-- [ ] Tenant sem módulo CRM usa só cards nativos, sem mudança de comportamento.
-- [ ] Nenhum import entre módulos (verificado pelo ESLint de fronteiras).
+- [x] Provedor falso nos testes: listar, paginar, mover com sucesso, mover com `CAMPOS_OBRIGATORIOS`, criar.
+- [x] Tenant sem módulo CRM usa só cards nativos, sem mudança de comportamento.
+- [x] Nenhum import entre módulos (verificado pelo ESLint de fronteiras).
+
+## M2.5 — Fundação comercial
+
+Marco criado em 5/11/2026, com a decisão de descartar a feat\_Forms: a base comercial que M3–M5 usam nasce aqui, e os formulários ficam para depois. Checklist completo em `plano-execucao-crm-kanban.md`.
+
+**Entregas**
+
+1. `crm_pipeline`, `crm_deal` e `crm_event` em migrations novas, a partir da 0036.
+2. Pipelines Vendas e Atendimento por tenant, com status por pipeline e limite de 5.
+3. Um service único de oportunidade, usado pela ficha, pela importação, pela edição em massa e pelo quadro.
+4. Card de atendimento automático ao ganhar a venda, que o dono pode desligar.
+5. Mesclar, anonimizar, lixeira, inatividade, score e distribuição funcionando sobre oportunidades.
+6. Leitura com um modelo só: `funil_estagios` aposentado. A API de leads mantém o formato, com os dados da oportunidade principal.
+
+**Fora:** formulários, segunda venda (D6), campo por pipeline e consumo do outbox (M5).
+
+**Aceite**
+
+- [ ] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status.
+- [ ] A API de leads não mudou de formato.
+- [ ] Venda ganha cria o card de atendimento com a automação ligada e não cria com ela desligada.
+- [ ] Toda mudança de status grava histórico e `crm_event` na mesma transação.
+- [ ] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal nelas.
+- [ ] `funil_estagios` não existe mais.
 
 ## M3 — Provedor crm\_oportunidades
 
-O CRM implementa o contrato do M2: cada pipeline vira um quadro de pipeline, e cada oportunidade vira um card. Depende da feat\_Forms refeita. Atrás da flag `crm.quadro_comercial`.
+O CRM implementa o contrato do M2: cada pipeline vira um quadro de pipeline, e cada oportunidade vira um card. Depende do M2.5. Atrás da flag `crm.quadro_comercial`.
 
 ### Quadros e colunas
 
@@ -263,9 +288,9 @@ Quadros de projeto seguem livres, como o Kanban é hoje. A única novidade é po
 
 **Aceite**
 
-- [ ] Card de projeto vinculado mostra o nome atualizado quando o CRM muda.
-- [ ] Anonimizar a pessoa remove o vínculo e o nome de todos os cards de projeto.
-- [ ] Usuário sem acesso ao registro não vê nenhum dado dele pelo card.
+- [x] Card de projeto vinculado mostra o nome atualizado quando o CRM muda.
+- [x] Anonimizar a pessoa remove o vínculo e o nome de todos os cards de projeto.
+- [x] Usuário sem acesso ao registro não vê nenhum dado dele pelo card.
 
 ## M7 — Segunda etapa
 
@@ -284,9 +309,10 @@ Itens decididos, mas que entram depois que os quadros de pipeline estiverem em u
 
 1. M0 → M1 (já).
 2. M2 e M6 (já, em paralelo).
-3. Feat\_Forms refeita (plano próprio).
+3. M2.5 (Fundação comercial).
 4. M3 → M4 → M5.
-5. M7.
+5. Formulários do zero (plano próprio) e segunda venda (D6).
+6. M7.
 
 **Gates em todo marco:** `lint`, `format:check`, `test`, `test:rls-coverage`, `test:fk-coverage`, `test:tenant-isolation`, `test:kanban:integration`.
 
@@ -294,16 +320,16 @@ Itens decididos, mas que entram depois que os quadros de pipeline estiverem em u
 
 ### Decisões do dono
 
-| #   | Decisão                                                                                                                                    | Onde                 |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
-| D1  | Arrastar com filtro ativo é permitido; o card some com aviso se sair do filtro (padrão HubSpot)                                            | M4                   |
-| D2  | Ordenação escolhida pelo usuário, salva no `localStorage` por quadro; padrão = última atualização, mais recente primeiro; sem ordem manual | M2, M4               |
-| D3  | Vínculo de card de projeto só com a pessoa; aba "Projetos" na ficha, visível só quando há vínculo explícito                                | M6                   |
-| D4  | Visibilidade por pipeline, por papel, só entre OPERADOR e DONO; vale em todo o CRM                                                         | M3                   |
-| D4b | Quem arrasta = quem pode editar o campo Status; sem restrição por coluna/transição                                                         | M3                   |
-| D5  | Até 5 pipelines por tenant, incluindo Vendas e Atendimento (fixo por enquanto)                                                             | Plano da feat\_Forms |
-| D6  | Segunda venda com tratamento ativo: oferece juntar; por automação/importação não cria card novo e avisa no card existente                  | Plano da feat\_Forms |
-| D7  | Core Web Vitals no p75 (LCP ≤ 2,5 s, INP ≤ 200 ms, TTFB ≤ 800 ms) + API ≤ 500 ms p95 por coluna                                            | M4                   |
+| #   | Decisão                                                                                                                                    | Onde         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| D1  | Arrastar com filtro ativo é permitido; o card some com aviso se sair do filtro (padrão HubSpot)                                            | M4           |
+| D2  | Ordenação escolhida pelo usuário, salva no `localStorage` por quadro; padrão = última atualização, mais recente primeiro; sem ordem manual | M2, M4       |
+| D3  | Vínculo de card de projeto só com a pessoa; aba "Projetos" na ficha, visível só quando há vínculo explícito                                | M6           |
+| D4  | Visibilidade por pipeline, por papel, só entre OPERADOR e DONO; vale em todo o CRM                                                         | M3           |
+| D4b | Quem arrasta = quem pode editar o campo Status; sem restrição por coluna/transição                                                         | M3           |
+| D5  | Até 5 pipelines por tenant, incluindo Vendas e Atendimento (fixo por enquanto)                                                             | M2.5         |
+| D6  | Segunda venda com tratamento ativo: oferece juntar; por automação/importação não cria card novo e avisa no card existente                  | Depois do M5 |
+| D7  | Core Web Vitals no p75 (LCP ≤ 2,5 s, INP ≤ 200 ms, TTFB ≤ 800 ms) + API ≤ 500 ms p95 por coluna                                            | M4           |
 
 ### Ainda pendente
 

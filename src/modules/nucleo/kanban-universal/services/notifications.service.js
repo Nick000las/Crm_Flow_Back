@@ -21,7 +21,14 @@ export async function processarEmails(config, logger, isStopping = () => false) 
       if (isStopping()) {
         return;
       }
-      const pending = await prepararEmails(tenant.id, config.KANBAN_EMAIL_TIMEZONE, randomUUID());
+      let pending;
+      try {
+        pending = await prepararEmails(tenant.id, tenant.fuso_horario, randomUUID());
+      } catch {
+        // Fuso inválido ou falha pontual num tenant não trava os demais.
+        logger.warn({ tenantId: tenant.id }, 'Falha ao preparar e-mails Kanban do tenant.');
+        continue;
+      }
       for (const item of pending) {
         if (isStopping()) {
           return;

@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { sendSuccess } from '#shared/http/response.js';
 import { cardSchema, cardUpdateSchema } from '../schemas/card.schema.js';
+import { TIPOS_QUADRO } from '../constants.js';
 import { operarKanban } from '../services/kanban.service.js';
+import { apresentarVinculos } from '../services/vinculo.service.js';
 const MAX_NAME = 200;
 const MAX_INITIAL_COLUMNS = 10;
 const MAX_COMMENT = 10000;
@@ -25,9 +27,10 @@ export function registrarRotasKanbanCompleto(app) {
     app[method](path, async (req, reply) => {
       const id = req.params.id ? uuid.parse(req.params.id) : undefined;
       const data = schema ? schema.parse(req.body) : undefined;
+      const valor = await operarKanban(req.tenantContext, action, id, data, app.publicarKanban);
       return sendSuccess(
         reply,
-        await operarKanban(req.tenantContext, action, id, data, app.publicarKanban),
+        await apresentarVinculos(req.tenantContext, action, valor, req.log),
       );
     });
   route('get', '/kanban/membros', 'members');
@@ -59,7 +62,7 @@ export function registrarRotasKanbanCompleto(app) {
     z
       .object({
         nome: name,
-        boardType: name,
+        boardType: z.enum(TIPOS_QUADRO),
         participantes: participantes.default([]),
         permissoes: permissions.optional(),
         colunasIniciais: z.array(name).max(MAX_INITIAL_COLUMNS).optional(),

@@ -6,6 +6,8 @@ import {
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { ACOES_DE_LEITURA, PAPEIS_GESTAO_KANBAN } from '../constants.js';
 
 function fail(message, conflict = false) {
   throw new AppError({
@@ -14,50 +16,81 @@ function fail(message, conflict = false) {
     message,
   });
 }
+// O vínculo do card (M6) só sai por `comVinculo`, depois de passar pelo provedor.
+const COLUNAS_INTERNAS = new Set(['tenant_id', 'entidade_tipo', 'entidade_id']);
 const present = (row) =>
   row &&
   Object.fromEntries(
     Object.entries(row)
-      .filter(([key]) => key !== 'tenant_id')
+      .filter(([key]) => !COLUNAS_INTERNAS.has(key))
       .map(([key, value]) => [
         key === 'order' ? 'ordem' : key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()),
         value,
       ]),
   );
 
-// Todas as mutações do tenant são serializadas antes de ler o estado.
-// O lock transacional também protege inserções e reordenações concorrentes.
+/** Card com a referência crua; `apresentarVinculos` a troca pelo vínculo legível. */
+const comVinculo = (card) => ({
+  ...present(card),
+  vinculo: card.entidade_id ? { tipo: card.entidade_tipo, id: card.entidade_id } : null,
+});
+
+/**
+ * O quadro de que o recurso (quadro, coluna, card ou comentário) faz parte.
+ * Consulta só os ids: card e coluna nunca mudam de quadro, então o resultado
+ * continua válido depois de esperar o lock.
+ */
+async function resolverQuadro(tx, tenantId, action, id) {
+  if (!id) {
+    return {};
+  }
+  if (action === 'comment.delete') {
+    const [comment] = await tx.$queryRaw`
+      SELECT c.board_id, c.id AS card_id FROM modulo_kanban_universal.card_comments m
+      JOIN modulo_kanban_universal.cards c ON c.tenant_id = m.tenant_id AND c.id = m.card_id
+      WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ${id}::uuid
+    `;
+    return { boardId: comment?.board_id, cardId: comment?.card_id };
+  }
+  const [recurso] = await tx.$queryRaw`
+    SELECT id AS board_id FROM modulo_kanban_universal.boards
+    WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
+    UNION ALL
+    SELECT board_id FROM modulo_kanban_universal.colunas
+    WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
+    UNION ALL
+    SELECT board_id FROM modulo_kanban_universal.cards
+    WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
+  `;
+  return { boardId: recurso?.board_id };
+}
+
+/**
+ * Estado de um quadro só. Colunas antes dos cards: sem lock (leitura), uma
+ * coluna nova no meio das duas consultas no máximo deixa um card de fora até
+ * o próximo evento, e a consulta de cards enxerga uma reordenação inteira ou
+ * nada dela.
+ */
+async function carregarQuadro(tx, tenantId, boardId) {
+  if (!boardId) {
+    return { boards: [], columns: [], allCards: [] };
+  }
+  const boards =
+    await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.boards WHERE tenant_id = ${tenantId}::uuid AND id = ${boardId}::uuid`;
+  const columns =
+    await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.colunas WHERE tenant_id = ${tenantId}::uuid AND board_id = ${boardId}::uuid ORDER BY "order", id`;
+  const allCards =
+    await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.cards WHERE tenant_id = ${tenantId}::uuid AND board_id = ${boardId}::uuid ORDER BY "order", id`;
+  return { boards, columns, allCards };
+}
+
+// Escritas no mesmo quadro são serializadas antes de ler o estado: o lock
+// transacional protege inserções e reordenações. Quadros diferentes não
+// disputam entre si, e leituras não pegam lock.
 export function executar(tenantId, action, id, data = {}, context = {}, change) {
   return getTenantClient(tenantId, async (tx) => {
-    const enabled =
-      await tx.$queryRaw`SELECT id FROM tenant_modules WHERE tenant_id = ${tenantId}::uuid AND module_key = 'kanban_universal' AND disabled_at IS NULL`;
-    if (!enabled.length) {
-      throw new AppError({
-        code: 'FORBIDDEN',
-        statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'O módulo Kanban não está ativo para esta empresa.',
-      });
-    }
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}, 0))`;
-    const boards =
-      await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.boards WHERE tenant_id = ${tenantId}::uuid ORDER BY created_at, id`;
-    const columns =
-      await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.colunas WHERE tenant_id = ${tenantId}::uuid ORDER BY "order", id`;
-    const allCards =
-      await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.cards WHERE tenant_id = ${tenantId}::uuid ORDER BY "order", id`;
-    const cards = allCards.filter((item) => !item.archived_at);
-    const reads = [
-      'board.get',
-      'board.members',
-      'card.get',
-      'card.list',
-      'comment.list',
-      'members',
-      'archive.list',
-      'activity.list',
-      'email.get',
-    ];
-    if (!reads.includes(action)) {
+    const writing = !ACOES_DE_LEITURA.has(action);
+    if (writing) {
       await tx.$queryRaw`SELECT set_config('app.current_user_id', ${context.userId ?? ''}, true)`;
     }
     if (action === 'email.get') {
@@ -69,24 +102,27 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
       await tx.$executeRaw`INSERT INTO modulo_kanban_universal.email_preferences(tenant_id,usuario_id,enabled) VALUES(${tenantId}::uuid,${context.userId}::uuid,${data.enabled}) ON CONFLICT(tenant_id,usuario_id) DO UPDATE SET enabled=EXCLUDED.enabled`;
       return { enabled: data.enabled };
     }
+    // Resolve também recursos indiretos antes de autorizar (cards, colunas, comentários).
+    const { boardId: resourceBoardId, cardId: commentCardId } = await resolverQuadro(
+      tx,
+      tenantId,
+      action,
+      id,
+    );
+    if (writing && resourceBoardId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${resourceBoardId}, 0))`;
+    }
+    // Depois do lock: uma revogação em andamento vale para esta escrita.
+    if (resourceBoardId) {
+      await exigirParticipacao(tx, tenantId, resourceBoardId, context, writing);
+    }
+    const { boards, columns, allCards } = await carregarQuadro(tx, tenantId, resourceBoardId);
+    const cards = allCards.filter((item) => !item.archived_at);
     const board = boards.find((b) => b.id === id);
     const column = columns.find((c) => c.id === id);
     const card = allCards.find((c) => c.id === id);
-    // Resolve também recursos indiretos antes de autorizar (cards, colunas, comentários).
-    let resourceBoardId = board?.id ?? column?.board_id ?? card?.board_id;
-    if (action === 'comment.delete') {
-      const comments = await tx.$queryRaw`
-        SELECT c.board_id, c.id AS card_id FROM modulo_kanban_universal.card_comments m
-        JOIN modulo_kanban_universal.cards c ON c.tenant_id = m.tenant_id AND c.id = m.card_id
-        WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ${id}::uuid
-      `;
-      resourceBoardId = comments[0]?.board_id;
-      if (change) {
-        change.cardId = comments[0]?.card_id;
-      }
-    }
-    if (resourceBoardId) {
-      await exigirParticipacao(tx, tenantId, resourceBoardId, context, !reads.includes(action));
+    if (change && commentCardId) {
+      change.cardId = commentCardId;
     }
     if (change && resourceBoardId) {
       change.boardId = resourceBoardId;
@@ -95,11 +131,7 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
         .filter((user) => user.ativo)
         .map((user) => user.id);
     }
-    if (
-      card?.archived_at &&
-      !reads.includes(action) &&
-      !['card.restore', 'card.delete'].includes(action)
-    ) {
+    if (card?.archived_at && writing && !['card.restore', 'card.delete'].includes(action)) {
       fail('Restaure o card antes de alterá-lo.', true);
     }
     const requireBoard = () => board || fail('Quadro não encontrado.');
@@ -129,14 +161,14 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
       return {
         ...present(board),
         canEdit:
-          ['DONO', 'MASTER'].includes(context.role) ||
+          PAPEIS_GESTAO_KANBAN.includes(context.role) ||
           participantes.find((member) => member.id === context.userId)?.permissao !== 'leitor',
         participantes,
         colunas: columns
           .filter((c) => c.board_id === id)
           .map((c) => ({
             ...present(c),
-            cards: cards.filter((k) => k.coluna_id === c.id).map(present),
+            cards: cards.filter((k) => k.coluna_id === c.id).map(comVinculo),
           })),
       };
     }
@@ -280,7 +312,22 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
     }
     if (action === 'card.get') {
       requireCard();
-      return present(card);
+      return comVinculo(card);
+    }
+    if (action === 'card.link') {
+      requireCard();
+      const entidadeTipo = data.entidadeTipo ?? null;
+      const entidadeId = data.entidadeId ?? null;
+      if ((card.entidade_id ?? null) === entidadeId) {
+        return comVinculo(card);
+      }
+      const updated = (
+        await tx.$queryRaw`UPDATE modulo_kanban_universal.cards SET entidade_tipo=${entidadeTipo}, entidade_id=${entidadeId}::uuid, updated_at=now() WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid RETURNING *`
+      )[0];
+      // Sem o id do registro: o histórico do card não guarda referência à pessoa.
+      await tx.$executeRaw`INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action,details)
+        VALUES(${tenantId}::uuid,${card.board_id}::uuid,${id}::uuid,${context.userId}::uuid,${entidadeId ? 'card.link' : 'card.unlink'},${JSON.stringify({ entidadeTipo: entidadeTipo ?? card.entidade_tipo })}::jsonb)`;
+      return comVinculo(updated);
     }
     if (action === 'card.create') {
       requireBoard();
@@ -384,9 +431,9 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
       return null;
     }
     if (action === 'members') {
-      if (!['DONO', 'MASTER'].includes(context.role)) {
+      if (!PAPEIS_GESTAO_KANBAN.includes(context.role)) {
         throw new AppError({
-          code: 'FORBIDDEN',
+          code: ERROR_CODES.FORBIDDEN,
           statusCode: HTTP_STATUS.FORBIDDEN,
           message: 'A lista da empresa é restrita à gestão de quadros.',
         });
@@ -398,20 +445,6 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
     throw new Error('Operação Kanban desconhecida');
   });
 }
-export function verificarModulo(tenantId) {
-  return getTenantClient(tenantId, async (tx) => {
-    const rows =
-      await tx.$queryRaw`SELECT id FROM tenant_modules WHERE tenant_id = ${tenantId}::uuid AND module_key = 'kanban_universal' AND disabled_at IS NULL`;
-    if (!rows.length) {
-      throw new AppError({
-        code: 'FORBIDDEN',
-        statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'O módulo Kanban não está ativo para esta empresa.',
-      });
-    }
-  });
-}
-
 /** Retorna os metadados apenas depois que o gateway confirmou a transação. */
 export async function executarComEvento(tenantId, action, id, data, context) {
   const event = { tenantId, type: action, actorId: context.userId };

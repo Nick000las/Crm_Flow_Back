@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { setTimeout } from 'node:timers';
 import { buildApp } from '#api/app.js';
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
+import { invalidarFeatures } from '#core/tenant/feature-flags.js';
+import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
 import {
+  listarEmpresasParaEmail,
   prepararEmails,
   carregarEmailAutorizado,
   concluirEmail,
@@ -11,6 +15,15 @@ import { HTTP_STATUS } from '#shared/constants/index.js';
 
 // Opt-in: execute somente contra um banco de teste com migrations aplicadas.
 const integration = process.env.RUN_KANBAN_INTEGRATION === '1' ? describe : describe.skip;
+const ESPERA_POR_BLOQUEIO_MS = 1500;
+const TAMANHO_DATA = 10;
+const CARDS_CONCORRENTES = 3;
+// 25h de distância: nunca estão na mesma data, em nenhuma hora do dia.
+const FUSO_ADIANTADO = 'Pacific/Kiritimati';
+const FUSO_ATRASADO = 'Pacific/Pago_Pago';
+
+const hojeNoFuso = (fuso) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: fuso }).format(new Date());
 
 integration('quadros e equipes no PostgreSQL', () => {
   const tenantId = randomUUID();
@@ -349,6 +362,171 @@ integration('quadros e equipes no PostgreSQL', () => {
       wipLimit: 1,
     });
     expect(changed.body.data.wipLimit).toBe(1);
+    await owner('DELETE', `/kanban/boards/${boardId}`);
+  });
+
+  it('módulo desligado barra o Kanban, inclusive para o dono', async () => {
+    const ligado = { tenantId, moduleKey: 'kanban_universal' };
+    await admin.tenantModule.updateMany({ where: ligado, data: { disabledAt: new Date() } });
+    await invalidarAcessoModulo(tenantId);
+    expect((await owner('GET', '/kanban/boards')).status).toBe(HTTP_STATUS.FORBIDDEN);
+
+    await admin.tenantModule.updateMany({ where: ligado, data: { disabledAt: null } });
+    await invalidarAcessoModulo(tenantId);
+    expect((await owner('GET', '/kanban/boards')).status).toBe(HTTP_STATUS.OK);
+  });
+
+  it('quadros de entidade: desligado nada muda; ligado, nativo ganha o modo e quadro sem provedor é 404', async () => {
+    const criado = await owner('POST', '/kanban/boards', { nome: 'Nativo', boardType: 'projetos' });
+    const boardId = criado.body.data.id;
+    const doQuadro = (lista) => lista.find((board) => board.id === boardId);
+
+    const desligado = await owner('GET', '/kanban/boards');
+    expect(doQuadro(desligado.body.data)).not.toHaveProperty('modo');
+    const semFlag = await owner('GET', '/kanban/quadros/projetos/qualquer/colunas');
+    expect(semFlag.status).toBe(HTTP_STATUS.FORBIDDEN);
+
+    await admin.tenantModuleFeature.create({
+      data: {
+        tenantId,
+        moduleKey: 'kanban_universal',
+        featureKey: 'kanban_universal.quadros_entidade',
+      },
+    });
+    await invalidarFeatures(tenantId);
+
+    const ligado = await owner('GET', '/kanban/boards');
+    expect(doQuadro(ligado.body.data)).toMatchObject({ modo: 'nativo' });
+    const semProvedor = await owner('GET', '/kanban/quadros/projetos/qualquer/colunas');
+    expect(semProvedor.status).toBe(HTTP_STATUS.NOT_FOUND);
+
+    await admin.tenantModuleFeature.deleteMany({ where: { tenantId } });
+    await invalidarFeatures(tenantId);
+    await owner('DELETE', `/kanban/boards/${boardId}`);
+  });
+
+  /** Mantém o advisory lock até `soltar()`, como uma escrita em andamento faria. */
+  async function segurarLock(chave) {
+    let soltar;
+    const liberado = new Promise((resolve) => {
+      soltar = resolve;
+    });
+    let avisarAdquirido;
+    const adquirido = new Promise((resolve) => {
+      avisarAdquirido = resolve;
+    });
+    const transacao = getTenantClient(tenantId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${chave}, 0))`;
+      avisarAdquirido();
+      await liberado;
+    });
+    await adquirido;
+    return {
+      soltar: async () => {
+        soltar();
+        await transacao;
+      },
+    };
+  }
+
+  async function quadroComCards(nome, titulos) {
+    const criado = await owner('POST', '/kanban/boards', {
+      nome,
+      boardType: 'projetos',
+      colunasIniciais: ['A fazer', 'Feito'],
+    });
+    const boardId = criado.body.data.id;
+    const board = (await owner('GET', `/kanban/boards/${boardId}`)).body.data;
+    const [origem, destino] = board.colunas;
+    const cards = [];
+    for (const titulo of titulos) {
+      const card = await owner('POST', `/kanban/boards/${boardId}/cards`, {
+        titulo,
+        colunaId: origem.id,
+      });
+      cards.push(card.body.data);
+    }
+    return { boardId, origem, destino, cards };
+  }
+
+  const esperar = (ms) =>
+    new Promise((resolve) => {
+      setTimeout(() => resolve('pendente'), ms);
+    });
+
+  it('escritas em quadros diferentes não entram em fila; no mesmo quadro, sim', async () => {
+    const quadroA = await quadroComCards('Quadro A', ['A1']);
+    const quadroB = await quadroComCards('Quadro B', ['B1']);
+    const editar = (card, titulo) => owner('PATCH', `/kanban/cards/${card.id}`, { titulo });
+
+    // Nada disputa mais o tenant inteiro.
+    const lockDoTenant = await segurarLock(tenantId);
+    const semFila = await Promise.race([
+      editar(quadroA.cards[0], 'A1 editado'),
+      esperar(ESPERA_POR_BLOQUEIO_MS),
+    ]);
+    await lockDoTenant.soltar();
+    expect(semFila).toMatchObject({ status: HTTP_STATUS.OK });
+
+    // Quadro B ocupado: A segue, e B espera a vez dele.
+    const lockDoQuadro = await segurarLock(quadroB.boardId);
+    expect(await editar(quadroA.cards[0], 'A1 de novo')).toMatchObject({ status: HTTP_STATUS.OK });
+    const escritaEmB = editar(quadroB.cards[0], 'B1 editado');
+    expect(await Promise.race([escritaEmB, esperar(ESPERA_POR_BLOQUEIO_MS)])).toBe('pendente');
+    await lockDoQuadro.soltar();
+    expect(await escritaEmB).toMatchObject({ status: HTTP_STATUS.OK });
+
+    await owner('DELETE', `/kanban/boards/${quadroA.boardId}`);
+    await owner('DELETE', `/kanban/boards/${quadroB.boardId}`);
+  });
+
+  it('movimentos simultâneos no mesmo quadro mantêm a ordem íntegra, inclusive para quem lê', async () => {
+    const titulos = Array.from({ length: CARDS_CONCORRENTES }, (_, indice) => `Card ${indice}`);
+    const { boardId, destino, cards } = await quadroComCards('Quadro concorrente', titulos);
+
+    const [leitura] = await Promise.all([
+      owner('GET', `/kanban/boards/${boardId}`),
+      ...cards.map((card) =>
+        owner('PATCH', `/kanban/cards/${card.id}/mover`, {
+          novaColunaId: destino.id,
+          novaOrdem: 0,
+        }),
+      ),
+    ]);
+    // Leitura sem lock nunca vê card duplicado nem perdido.
+    const vistos = leitura.body.data.colunas.flatMap((coluna) => coluna.cards.map((c) => c.id));
+    expect(vistos.sort()).toEqual(cards.map((card) => card.id).sort());
+
+    const final = (await owner('GET', `/kanban/boards/${boardId}`)).body.data;
+    const coluna = final.colunas.find((item) => item.id === destino.id);
+    expect(coluna.cards.map((card) => card.ordem)).toEqual(titulos.map((_, indice) => indice));
+    await owner('DELETE', `/kanban/boards/${boardId}`);
+  });
+
+  it('o lembrete de prazo usa a data local do fuso do tenant', async () => {
+    await admin.tenant.update({ where: { id: tenantId }, data: { fusoHorario: FUSO_ADIANTADO } });
+    const empresas = [];
+    for (let lote = await listarEmpresasParaEmail(null); lote.length;) {
+      empresas.push(...lote);
+      lote = await listarEmpresasParaEmail(lote.at(-1).id);
+    }
+    expect(empresas.find((item) => item.id === tenantId).fuso_horario).toBe(FUSO_ADIANTADO);
+
+    const { boardId, cards, origem } = await quadroComCards('Quadro de prazos', []);
+    expect(cards).toEqual([]);
+    const prazo = hojeNoFuso(FUSO_ADIANTADO).slice(0, TAMANHO_DATA);
+    const criado = await owner('POST', `/kanban/boards/${boardId}/cards`, {
+      titulo: 'Entrega no outro lado do mundo',
+      colunaId: origem.id,
+      responsavelId: ownerId,
+      dadosExtras: { prazo },
+    });
+    const cardId = criado.body.data.id;
+    const lembretes = (itens) =>
+      itens.filter((item) => item.kind === 'due' && item.card_id === cardId);
+
+    expect(lembretes(await prepararEmails(tenantId, FUSO_ATRASADO, randomUUID()))).toEqual([]);
+    expect(lembretes(await prepararEmails(tenantId, FUSO_ADIANTADO, randomUUID()))).toHaveLength(1);
     await owner('DELETE', `/kanban/boards/${boardId}`);
   });
 });

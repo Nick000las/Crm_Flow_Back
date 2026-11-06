@@ -212,3 +212,12 @@ BEGIN
  ON CONFLICT (tenant_id,dedupe_key) DO NOTHING;
  RETURN NULL;
 END $$;
+
+-- 0035 (M6): vínculo opcional do card com um registro de outro módulo.
+ALTER TABLE modulo_kanban_universal.cards
+  ADD COLUMN entidade_tipo TEXT,
+  ADD COLUMN entidade_id UUID,
+  ADD CONSTRAINT cards_vinculo_completo
+    CHECK ((entidade_tipo IS NULL) = (entidade_id IS NULL));
+CREATE INDEX idx_cards_vinculo ON modulo_kanban_universal.cards (tenant_id, entidade_tipo, entidade_id)
+  WHERE entidade_id IS NOT NULL;

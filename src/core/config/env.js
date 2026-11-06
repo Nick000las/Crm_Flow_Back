@@ -44,17 +44,6 @@ const envSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((value) => value === 'true'),
-    KANBAN_EMAIL_TIMEZONE: z
-      .string()
-      .default('America/Sao_Paulo')
-      .refine((value) => {
-        try {
-          new Intl.DateTimeFormat('pt-BR', { timeZone: value });
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Fuso horário inválido.'),
     SMTP_HOST: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
     SMTP_PORT: z.coerce
       .number()

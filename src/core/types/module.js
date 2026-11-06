@@ -14,7 +14,84 @@
  * @property {(tenantId: string) => Promise<unknown>} [reconciliar]  ajustes
  *   idempotentes do estado do módulo num tenant (ex: semear configuração
  *   padrão). Pode rodar quantas vezes for preciso — `scripts/reconcile.js`
+ * @property {ProvedorDeQuadro[]} [quadros]  quadros que o módulo publica no
+ *   motor do Kanban (`#core/quadros/registro.js`)
+ * @property {ProvedorDeEntidade[]} [entidades]  registros que outro módulo
+ *   pode referenciar sem copiar dado
  */
+
+/**
+ * Conteúdo de um quadro que vem de outro módulo. `quadroRef`, `colunaRef` e
+ * `entidadeId` são opacos para o motor. Erros de domínio saem como `AppError`
+ * (`erroCamposObrigatorios` se faltar campo). Só existe o que está aqui: não
+ * há editar coluna nem excluir card.
+ *
+ * @typedef {object} ProvedorDeQuadro
+ * @property {string} boardType
+ * @property {string} entidadeTipo  `tipo` do `ProvedorDeEntidade` dos cards
+ * @property {(ctx: TenantContext) => Promise<{ quadroRef: string, nome: string }[]>} listarQuadros
+ * @property {(ctx: TenantContext, quadroRef: string) => Promise<{ ref: string, nome: string, cor: string | null }[]>} listarColunas
+ * @property {(ctx: TenantContext, quadroRef: string, consulta: { colunaRef: string, filtros?: object, cursor?: string, limite: number }) => Promise<{ itens: { entidadeId: string }[], proximoCursor: string | null }>} listarCards
+ * @property {(ctx: TenantContext, quadroRef: string, consulta: { colunaRef: string, filtros?: object }) => Promise<{ total: number, soma: number | null }>} resumoColuna
+ * @property {(ctx: TenantContext, entidadeId: string) => Promise<string[]>} acoesPermitidas
+ * @property {(ctx: TenantContext, movimento: { quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string }) => Promise<unknown>} mover
+ * @property {(ctx: TenantContext, novo: { quadroRef: string, colunaRef: string, dados: object }) => Promise<unknown>} criar
+ */
+
+/**
+ * Referência leve a um registro de outro módulo.
+ *
+ * @typedef {object} ProvedorDeEntidade
+ * @property {string} tipo
+ * @property {(ctx: TenantContext, ids: string[]) => Promise<{ id: string, idAtual?: string }[]>} descrever  o
+ *   que este usuário pode ver; id ausente da resposta sai como restrito.
+ *   `idAtual` difere de `id` quando o registro passou para outro (mesclagem)
+ * @property {(id: string) => string} rotaFicha
+ * @property {(tenantId: string, ids: string[]) => Promise<Record<string, string | null>>} resolverVinculos
+ *   id → id atual (lead mesclado aponta para o principal) ou `null` se não
+ *   existe mais. Sem usuário: é chamado por job
+ */
+
+/** Métodos obrigatórios de cada contrato, conferidos ao subir. */
+const METODOS_DO_QUADRO = Object.freeze([
+  'listarQuadros',
+  'listarColunas',
+  'listarCards',
+  'resumoColuna',
+  'acoesPermitidas',
+  'mover',
+  'criar',
+]);
+const METODOS_DA_ENTIDADE = Object.freeze(['descrever', 'rotaFicha', 'resolverVinculos']);
+
+/**
+ * @param {string} chaveDoModulo
+ * @param {string} contrato  nome do campo em `Module`
+ * @param {unknown} provedores
+ * @param {string[]} identificadores  campos de texto obrigatórios
+ * @param {readonly string[]} metodos
+ */
+function assertProvedores(chaveDoModulo, contrato, provedores, identificadores, metodos) {
+  if (provedores === undefined) return;
+  if (!Array.isArray(provedores)) {
+    throw new Error(`Módulo "${chaveDoModulo}" inválido: \`${contrato}\` deve ser um array.`);
+  }
+  for (const provedor of provedores) {
+    for (const campo of identificadores) {
+      if (typeof provedor?.[campo] !== 'string' || provedor[campo].length === 0) {
+        throw new Error(
+          `Módulo "${chaveDoModulo}" inválido: \`${contrato}\` exige \`${campo}\` (string não vazia).`,
+        );
+      }
+    }
+    const faltando = metodos.find((metodo) => typeof provedor[metodo] !== 'function');
+    if (faltando) {
+      throw new Error(
+        `Módulo "${chaveDoModulo}" inválido: \`${contrato}\` exige o método \`${faltando}\`.`,
+      );
+    }
+  }
+}
 
 /**
  * @typedef {'MASTER' | 'DONO' | 'OPERADOR'} Role
@@ -67,6 +144,15 @@ export function assertModule(candidato) {
   if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`reconciliar(tenantId)\` deve ser função.`);
   }
+
+  assertProvedores(
+    mod.key,
+    'quadros',
+    mod.quadros,
+    ['boardType', 'entidadeTipo'],
+    METODOS_DO_QUADRO,
+  );
+  assertProvedores(mod.key, 'entidades', mod.entidades, ['tipo'], METODOS_DA_ENTIDADE);
 
   return /** @type {Module} */ (mod);
 }

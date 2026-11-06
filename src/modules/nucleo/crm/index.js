@@ -16,6 +16,7 @@ import { registrarRotasPermissoes } from './controllers/permissoes.controller.js
 import { registrarRotasScore } from './controllers/score.controller.js';
 import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
+import { provedorDePessoa } from './services/pessoa-entidade.service.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
 
 /** @type {import('#core/types/module.js').Module} */
@@ -24,6 +25,7 @@ export const crmModule = {
   name: 'CRM de Vendas',
   featureFlags: Object.values(CRM_FEATURES),
   reconciliar: reconciliarTenant,
+  entidades: [provedorDePessoa],
   // Autenticação e módulo contratado já são aplicados por `#api/app.js`
   // a todo módulo, antes destas rotas.
   async registerRoutes(app) {

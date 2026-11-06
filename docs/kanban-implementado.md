@@ -176,6 +176,22 @@ permissão `editor` ou `leitor`, apenas para participantes selecionados. O padr�
 Leitor consulta sem criar, editar, mover, arquivar, comentar ou excluir. Gestão
 continua exclusiva de DONO/MASTER. A API do quadro retorna `canEdit`.
 
+## Vínculo de card com a pessoa do CRM
+
+Atrás da flag `kanban_universal.vinculo_entidade`. Um card de projeto pode
+apontar para uma pessoa, somente para leitura. O card guarda só tipo e id
+(migration 0035); o nome vem do CRM a cada leitura, pelo `ProvedorDeEntidade`.
+
+- `PUT` e `DELETE /kanban/cards/:id/vinculo`: seguem a permissão de escrita do
+  quadro e registram `card.link` e `card.unlink`, sem o id da pessoa.
+- `GET /kanban/boards/:id` e `GET /kanban/cards/:id` trazem `vinculo`. Sem a
+  flag, o campo não existe.
+- `GET /kanban/vinculos?entidadeTipo=pessoa&entidadeId=`: aba Projetos da ficha,
+  só com cards ativos dos quadros que o usuário vê.
+- `pnpm worker:kanban`: varredura diária às 2h de Brasília. Remove vínculo de
+  pessoa anonimizada ou apagada e aponta mesclado para o principal. **Precisa
+  estar no deploy**: sem ele o nome some na leitura, mas a referência fica.
+
 ## Notificações por e-mail
 
 As migrations `0010_kanban_professional` e `0011_kanban_comment_mentions` incluem
@@ -196,8 +212,8 @@ arquivamento e preferência são revalidados antes de enviar.
 
 Configuração: SMTP existente (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`,
 `SMTP_PASS`, `SMTP_TIMEOUT_MS`), `FRONTEND_URL` com a URL pública do frontend,
-`KANBAN_EMAIL_ENABLED` (padrão true) e `KANBAN_EMAIL_TIMEZONE`
-(padrão America/Sao_Paulo). Em produção, a URL deve apontar para o domínio real.
+e `KANBAN_EMAIL_ENABLED` (padrão true). O lembrete de prazo usa o fuso de cada
+tenant (`tenants.fuso_horario`). Em produção, a URL deve apontar para o domínio real.
 Sem SMTP ou FRONTEND_URL o worker avisa no log e não envia. Reinicie o backend
 após ajustar o ambiente. Em NODE_ENV=test o worker não inicia.
 

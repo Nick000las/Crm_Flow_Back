@@ -13,6 +13,7 @@ import { authenticateHook } from '#core/auth/rbac.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
+import { assertProvedoresValidos } from '#core/quadros/registro.js';
 import { registrarModulos } from '#core/registry/modules.js';
 import { exigirModuloAtivo } from '#core/tenant/module-access.js';
 import { assertModule } from '#core/types/module.js';
@@ -51,6 +52,7 @@ export async function buildApp(options = {}) {
 
   const modules = MODULES.map(assertModule);
   assertUniqueModuleKeys(modules);
+  assertProvedoresValidos(modules);
   // O core (provisionamento, flags, reconcile) lê a lista daqui — não
   // pode importar `#api/modules.js`.
   registrarModulos(modules);

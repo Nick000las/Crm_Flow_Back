@@ -34,6 +34,16 @@ describe('contrato HTTP Kanban', () => {
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
+  it('recusa tipo de quadro fora do catálogo', async () => {
+    const app = await appForTest();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/kanban/boards',
+      payload: { nome: 'Quadro', boardType: 'crm_leads' },
+    });
+    expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+    await app.close();
+  });
   it('rejeita posições negativas', async () => {
     const app = await appForTest();
     const response = await app.inject({
