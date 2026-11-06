@@ -95,5 +95,10 @@ jobs:
       - name: Integração de quadros e equipes
         run: pnpm test:kanban:integration
 
+      - name: Testes de banco do CRM (contrato da API de leads)
+        env:
+          CRM_DB_TESTS: '1'
+        run: pnpm test:crm:db
+
       - name: Testes
         run: pnpm test

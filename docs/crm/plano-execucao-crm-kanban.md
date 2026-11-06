@@ -221,7 +221,7 @@ Depende só do M2. Atrás de `kanban_universal.vinculo_entidade`. Executado **de
 | Consumir o outbox                                                            | aqui ele só é gravado                                            | M5                           |
 | Bot, mensagens e créditos                                                    | fora do escopo                                                   | outro plano                  |
 
-**A decidir com o dono antes da F1** (nada abaixo começa sem isso):
+**Decididas pelo dono em 05/11/2026** (as quatro recomendações aprovadas):
 
 | #   | Pergunta                                                  | Recomendação                                                                                                       |
 | --- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -236,8 +236,9 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F0. Mapa e rede de proteção**
 
-- [ ] Listar quem lê e quem grava cada campo comercial. Ponto de partida: 14 arquivos com `funil_estagio`, 6 com campos comerciais e os fluxos de `status`.
-- [ ] Testes de caracterização de `/crm/leads` (criar, editar, buscar, filtrar, exportar, importar), rodando **antes** da mudança. Eles são o contrato da transição.
+- [x] Listar quem lê e quem grava cada campo comercial: `docs/crm/mapa-campos-comerciais.md`.
+- [x] Testes de caracterização de `/crm/leads`, rodando **antes** da mudança: `leads.contrato.db.test.js`, 13 casos, incluindo edição em massa, mesclar e anonimizar. Eles são o contrato da transição.
+- [x] Testes de banco do CRM no CI: `pnpm test:crm:db`, com `CRM_DB_TESTS=1`. Antes não rodavam lá. Só valida de fato no primeiro PR.
 
 **F1. Schema aditivo**
 
@@ -249,7 +250,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 **F2. Seed por tenant**
 
 - [ ] `reconciliarTenant`: pipelines Vendas (padrão) e Atendimento, de forma idempotente.
-- [ ] Status de Vendas nascem dos estágios atuais; Atendimento ganha uma lista própria inicial.
+- [ ] Status de Vendas: as opções de `crm_option` que já existem passam a pertencer ao pipeline. `funil_estagios` está vazio e não entra no seed (achado da F0). Atendimento ganha uma lista própria inicial.
 - [ ] Limite de 5 pipelines por tenant (D5), validado no service.
 - [ ] `pnpm crm:reconcile` duas vezes não duplica nada.
 
@@ -257,7 +258,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 - [ ] `oportunidades.service.js`: criar, editar, mudar status, ganhar, perder, reabrir, arquivar e lixeira. Ficha, importação, edição em massa e o `mover` do M3 passam todos por ele.
 - [ ] Reaproveitar `errosDasRegras`: obrigatoriedade por status, motivo de perda e opção ativa. Campo faltando vira `CAMPOS_OBRIGATORIOS`.
-- [ ] Na mesma transação: oportunidade, ciclo de vida, oportunidade principal, histórico na timeline da pessoa e `crm_event`.
+- [ ] Na mesma transação: oportunidade, ciclo de vida, oportunidade principal, histórico na timeline da pessoa e `crm_event`. Mudar status continua contando como interação (`ultima_interacao_em`), que é o relógio do M9.
 - [ ] Atendimento automático ao ganhar, sem duplicar (`uq_crm_deal_origem_quadro`), e `source_reopened_at` quando a venda de origem reabre.
 - [ ] Publicar por `crm-outbox.repository.js`, usado só dentro de transação.
 
@@ -270,7 +271,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 - [ ] Edição em massa e distribuição: mudar responsável alcança a oportunidade.
 - [ ] Inatividade (M9) e score (M14): relógio e regras leem o status da oportunidade.
 - [ ] **Mesclar:** oportunidades do secundário passam para o principal, e a principal é recalculada.
-- [ ] **Anonimizar:** `title` e `lost_reason` da oportunidade são limpos em toda a cadeia de mesclagem, e `crm_event` não pode guardar dado pessoal (payload só com ids).
+- [ ] **Anonimizar:** `title` da oportunidade é limpo em toda a cadeia de mesclagem, e `crm_event` não pode guardar dado pessoal (payload só com ids). `status`, valor e motivo de perda ficam, como hoje.
 - [ ] **Lixeira e purga:** oportunidade acompanha a pessoa.
 
 **F5. Um modelo só**
@@ -349,7 +350,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 2. M1 (feito).
 3. M2 (feito).
 4. M6 (feito).
-5. M2.5 (próximo; depende das decisões F-1 a F-4).
+5. M2.5 (em andamento).
 6. M3 → M4 → M5.
 7. Formulários do zero e segunda venda (D6).
 8. M7.
