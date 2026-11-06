@@ -1,9 +1,12 @@
 import {
+  AppError,
   erroCamposObrigatorios,
   erroDeConflito,
   erroDeValidacao,
   erroNaoEncontrado,
 } from '#core/errors/app-error.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarStatusDoPipeline } from '../adapters/crm-options.repository.js';
 import {
   alterarOportunidade,
@@ -12,10 +15,13 @@ import {
   criarOportunidade as criarOportunidadeRepository,
 } from '../adapters/crm-oportunidades.repository.js';
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
-import { atualizarLead, criarLead } from '../adapters/leads.repository.js';
+import { atualizarLead, buscarLeadPorId, criarLead } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
-import { TIPOS_EVENTO_LEAD } from '../constants.js';
-import { EVENTOS_OPORTUNIDADE } from '../constants/oportunidades.js';
+import { CAMPOS_SISTEMA, TIPOS_EVENTO_LEAD } from '../constants.js';
+import {
+  EVENTOS_OPORTUNIDADE,
+  SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE,
+} from '../constants/oportunidades.js';
 import { leadAnonimizadoNaoEditavel } from './lgpd.service.js';
 import {
   diffDaOportunidade,
@@ -93,6 +99,24 @@ export function formatarOportunidade(linha) {
     criadaEm: linha.created_at,
     atualizadaEm: linha.updated_at,
   };
+}
+
+/**
+ * Oportunidade no formato da API, sem o que o papel não vê: campo desligado ou
+ * oculto some da resposta, como em `/crm/leads`.
+ *
+ * @param {Record<string, any>} linha
+ * @param {Pick<import('./field-schema.service.js').SchemaCampos, 'campos'>} schema
+ */
+function oportunidadeParaOPapel(linha, { campos }) {
+  const oportunidade = formatarOportunidade(linha);
+  const ligados = new Set(campos.map((campo) => campo.chave));
+  const doSistema = new Set(CAMPOS_SISTEMA.map((campo) => campo.systemKey));
+  for (const [campo, saidas] of Object.entries(SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE)) {
+    if (!doSistema.has(campo) || ligados.has(campo)) continue;
+    for (const saida of saidas) delete oportunidade[saida];
+  }
+  return oportunidade;
 }
 
 /**
@@ -199,6 +223,7 @@ async function validarResponsavel(tenantId, usuarioId) {
  * @param {Acesso} [acesso]
  */
 export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { papel } = {}) {
+  validarComerciais(dados);
   const pipeline = await pipelineDeDestino(tenantId, dados.pipelineId);
   const [schema, opcoes] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
@@ -208,6 +233,8 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
     status: dados.status,
     valor: dados.valor,
     motivoPerda: dados.motivoPerda,
+    probabilidadeFechamento: dados.probabilidadeFechamento,
+    dataPrevistaFechamento: dados.dataPrevistaFechamento,
   });
   await validarResponsavel(tenantId, dados.responsavelId);
 
@@ -243,7 +270,7 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
   );
   if (!criada) throw erroNaoEncontrado('Lead não encontrado');
   await recalcularScoreDosLeads(tenantId, [leadId]);
-  return formatarOportunidade(criada);
+  return oportunidadeParaOPapel(criada, schema);
 }
 
 /**
@@ -301,12 +328,13 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
   );
   if (!depois) throw naoEncontrada();
   await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
-  return { ...formatarOportunidade(depois), conflito };
+  return { ...oportunidadeParaOPapel(depois, schema), conflito };
 }
 
 /**
  * Edição dos dados: omitido mantém, `null` limpa. Editar não é como mover:
- * `expectedUpdatedAt` antigo é 409 (P8), para não sobrescrever a outra pessoa.
+ * `expectedUpdatedAt` antigo é 409 (P8), para não sobrescrever a outra pessoa, e
+ * a resposta traz o estado atual em `details.atual`.
  *
  * @param {string} tenantId
  * @param {string} id
@@ -318,6 +346,7 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
  * @param {Acesso} [acesso]
  */
 export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel } = {}) {
+  validarComerciais(dados);
   const schema = await obterSchemaDoPapel(tenantId, papel);
   garantirEscritaPermitida(schema, {
     valor: dados.valor,
@@ -348,10 +377,15 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
         dados.expectedUpdatedAt &&
         new Date(dados.expectedUpdatedAt).getTime() !== new Date(deal.updated_at).getTime()
       ) {
-        throw erroDeConflito(
-          'oportunidade',
-          'Esta oportunidade foi alterada por outra pessoa. Carregue a versão atual.',
-        );
+        const mensagem =
+          'Esta oportunidade foi alterada por outra pessoa. Carregue a versão atual.';
+        throw new AppError({
+          statusCode: HTTP_STATUS.CONFLICT,
+          code: ERROR_CODES.RESOURCE_CONFLICT,
+          message: mensagem,
+          fields: { oportunidade: [mensagem] },
+          details: { atual: oportunidadeParaOPapel(deal, schema) },
+        });
       }
       return {
         mudancas,
@@ -363,7 +397,7 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
   );
   if (!depois) throw naoEncontrada();
   await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
-  return formatarOportunidade(depois);
+  return oportunidadeParaOPapel(depois, schema);
 }
 
 /**
@@ -439,7 +473,14 @@ export function definirLixeiraDaOportunidade(tenantId, id, excluir, usuarioId) {
 /**
  * @param {string} tenantId
  * @param {string} leadId
+ * @param {Acesso} [acesso]
  */
-export async function listarOportunidadesDaPessoa(tenantId, leadId) {
-  return (await buscarOportunidadesDaPessoa(tenantId, leadId)).map(formatarOportunidade);
+export async function listarOportunidadesDaPessoa(tenantId, leadId, { papel } = {}) {
+  const [lead, schema, linhas] = await Promise.all([
+    buscarLeadPorId(tenantId, leadId),
+    obterSchemaDoPapel(tenantId, papel),
+    buscarOportunidadesDaPessoa(tenantId, leadId),
+  ]);
+  if (!lead) throw erroNaoEncontrado('Lead não encontrado');
+  return linhas.map((linha) => oportunidadeParaOPapel(linha, schema));
 }

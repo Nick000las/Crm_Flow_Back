@@ -26,8 +26,12 @@ export const CATEGORIAS_STATUS = Object.freeze({
 
 export const LISTA_CATEGORIAS_STATUS = Object.freeze(Object.values(CATEGORIAS_STATUS));
 
-/** Categorias que precisam de ao menos um status ativo (fechar o funil). */
+/**
+ * Categorias que precisam de ao menos um status ativo: aberto é onde a
+ * oportunidade nasce; ganho e perdido fecham o funil.
+ */
 export const CATEGORIAS_OBRIGATORIAS = Object.freeze([
+  CATEGORIAS_STATUS.ABERTO,
   CATEGORIAS_STATUS.GANHO,
   CATEGORIAS_STATUS.PERDIDO,
 ]);

@@ -300,22 +300,25 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 **F6. API de pipelines e oportunidades**
 
-- [ ] Configurações (só gestão): listar, criar, editar, ativar e desativar pipeline; status por pipeline; automação do atendimento. Sem apagar pipeline com oportunidade.
-- [ ] Ficha: `GET` e `POST /crm/leads/:id/oportunidades`, `PUT /crm/oportunidades/:id` e `PATCH /crm/oportunidades/:id/status`, com `expectedUpdatedAt`.
-- [ ] Permissão por campo aplicada, como em `/crm/leads`.
+- [x] Configurações: listar, criar, editar, ativar, desativar e excluir pipeline; status por pipeline; automação do atendimento. Escrita só de gestão. A leitura fica liberada a todos, como em Listas, porque a aba da ficha precisa dos pipelines e dos status. Sem apagar pipeline com oportunidade, o padrão ou a origem de uma automação.
+- [x] Ficha: `GET` e `POST /crm/leads/:id/oportunidades`, `PUT /crm/oportunidades/:id` e `PATCH /crm/oportunidades/:id/status`. `expectedUpdatedAt` é obrigatório no `PUT`, e o 409 traz o estado atual em `details.atual`. No `PATCH` é opcional, e a resposta avisa com `conflito`.
+- [x] Permissão por campo aplicada, como em `/crm/leads`. `valor` não é campo configurável, então não tem permissão própria: é o mesmo caso de `/crm/leads`.
+- [x] Dois ajustes que a API exigiu: status passa a ser contado dentro do pipeline dele, porque a mesma key pode existir em outro, e cada pipeline precisa manter um status aberto ativo, senão lead novo não nasce.
+- [x] Pipeline novo nasce com lista inicial: Novo, Ganho e Perdido em vendas; a lista de Atendimento em `service`. A automação de pipeline novo começa desligada.
+- [ ] Arquivar e lixeira da oportunidade têm service, mas ainda não têm rota: entram no M3, com o quadro (P9).
 
 **Aceite**
 
-- [ ] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status.
-- [ ] Os testes de caracterização da F0 continuam verdes: a API de leads não mudou de formato.
-- [ ] Venda ganha cria o card de atendimento com a automação ligada, não cria com ela desligada, e repetir o ganho não duplica.
-- [ ] Toda mudança de status grava `crm_event` e histórico na mesma transação; falhar em uma desfaz a outra.
-- [ ] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal em `crm_deal` nem em `crm_event`.
-- [ ] Tenant com 5 pipelines não cria o sexto.
-- [ ] `funil_estagios` não existe e nenhum código o cita.
-- [ ] Todos os gates verdes, sem teste ignorado.
+- [x] Uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status (`controllers/oportunidades.db.test.js`).
+- [x] Os testes de caracterização da F0 continuam verdes: a API de leads não mudou de formato. Dois casos mudaram por decisão do dono, e estão marcados no teste: lead sem status e mesclar.
+- [x] Venda ganha cria o card de atendimento com a automação ligada, não cria com ela desligada, e repetir o ganho não duplica.
+- [x] Toda mudança de status grava `crm_event` e histórico na mesma transação; falhar em uma desfaz a outra. Provado no service único (F3) e no PUT do lead (F4), com falha forçada no outbox.
+- [x] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal em `crm_deal` nem em `crm_event`.
+- [x] Tenant com 5 pipelines não cria o sexto.
+- [x] `funil_estagios` não existe, e o código só o cita no teste que prova isso. Os nomes `funil_estagio_id` e `funilEstagioId` seguem na API por decisão do dono.
+- [x] Todos os gates verdes, sem teste ignorado: 990 de 990 em 06/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
 
-**Handoff ao front:** a tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5. Mudanças de comportamento da F4: lead sem status nasce no primeiro aberto; `funil_estagio_id` deixa de ser nulo; `status: null` é 400; `dataConversao` fora de venda ganha é 400, e reabrir uma venda exige não reenviar a data; `valor` negativo é 400; `probabilidadeFechamento` é inteiro de 0 a 100; a escolha de status, valor e motivo sai da tela de mesclar; mudar a categoria de status em uso é 409; ganhar preenche `data_conversao`, e sair de Perdido limpa `motivo_perda`. Na F5: o código de erro `CRM_SCHEMA_INCOMPATIBLE` não existe mais, e a coluna "Estágio do funil" da planilha aceita o nome de um status ativo.
+**Handoff ao front:** instruções completas em `handoff-front-m2.5.md`. A tabela e a ficha seguem funcionando na transição. Telas novas: Configurações de pipelines, aba Oportunidades na ficha. 5 arquivos do front citam funil ou estágio e precisam acompanhar a F5. Mudanças de comportamento da F4: lead sem status nasce no primeiro aberto; `funil_estagio_id` deixa de ser nulo; `status: null` é 400; `dataConversao` fora de venda ganha é 400, e reabrir uma venda exige não reenviar a data; `valor` negativo é 400; `probabilidadeFechamento` é inteiro de 0 a 100; a escolha de status, valor e motivo sai da tela de mesclar; mudar a categoria de status em uso é 409; ganhar preenche `data_conversao`, e sair de Perdido limpa `motivo_perda`. Na F5: o código de erro `CRM_SCHEMA_INCOMPATIBLE` não existe mais, e a coluna "Estágio do funil" da planilha aceita o nome de um status ativo.
 
 ---
 

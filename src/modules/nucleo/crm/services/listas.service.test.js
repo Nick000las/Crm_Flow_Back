@@ -60,15 +60,20 @@ describe('criarOpcao', () => {
       label: 'Feira de Negócios',
       color: '#123ABC',
     });
-    expect(inserirOpcoes).toHaveBeenCalledWith(TENANT, TIPOS_LISTA.FONTE_LEAD, [
-      {
-        key: 'feira_de_negocios',
-        label: 'Feira de Negócios',
-        color: '#123ABC',
-        category: null,
-        position: POSICAO_FINAL,
-      },
-    ]);
+    expect(inserirOpcoes).toHaveBeenCalledWith(
+      TENANT,
+      TIPOS_LISTA.FONTE_LEAD,
+      [
+        {
+          key: 'feira_de_negocios',
+          label: 'Feira de Negócios',
+          color: '#123ABC',
+          category: null,
+          position: POSICAO_FINAL,
+        },
+      ],
+      undefined,
+    );
     expect(invalidarSchemaCampos).toHaveBeenCalledWith(TENANT);
   });
 
