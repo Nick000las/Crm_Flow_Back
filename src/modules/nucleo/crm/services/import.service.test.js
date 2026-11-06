@@ -8,7 +8,6 @@ import {
 } from './import.service.js';
 import { gerarPlanilha } from './planilha.service.js';
 import { listarCamposDoTenant } from './leads.service.js';
-import { buscarEstagiosPorTenant } from '../adapters/funil-estagios.repository.js';
 import {
   criarImportJob,
   buscarImportJob,
@@ -68,13 +67,23 @@ vi.mock('./leads.service.js', async (importOriginal) => {
 });
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
-  obterSchemaCampos: vi.fn().mockResolvedValue({ visibilidade: [], definicoes: [], campos: [] }),
+  obterSchemaCampos: vi.fn().mockResolvedValue({
+    visibilidade: [],
+    definicoes: [],
+    campos: [],
+    listas: {
+      status: [
+        { id: 'estagio-novo', label: 'Novo', ativo: true },
+        { id: 'estagio-proposta', label: 'Proposta', ativo: true },
+        { id: 'estagio-antigo', label: 'Antigo', ativo: false },
+      ],
+    },
+  }),
 }));
 // A coluna Responsável (M12) é do tipo usuário: a validação lista os usuários ativos pelo nome.
 vi.mock('../adapters/usuarios.repository.js', () => ({
   listarUsuariosAtivosDoTenant: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../adapters/funil-estagios.repository.js', () => ({ buscarEstagiosPorTenant: vi.fn() }));
 vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
   buscarImportJob: vi.fn(),
@@ -111,7 +120,6 @@ const DUPLICADO_BLOQUEIO = { ...DUPLICADO_AVISO, acao: 'block' };
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const USUARIO = '00000000-0000-0000-0000-000000000002';
 const JOB = '00000000-0000-0000-0000-000000000003';
-const ESTAGIO_NOVO = 'estagio-novo';
 const ESTAGIO_PROPOSTA = 'estagio-proposta';
 // Números de linha da planilha (linha 1 é o cabeçalho).
 const LINHA_ANA = 2;
@@ -173,10 +181,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   featureAtiva.mockResolvedValue(false);
   listarCamposDoTenant.mockResolvedValue(CAMPOS);
-  buscarEstagiosPorTenant.mockResolvedValue([
-    { id: ESTAGIO_NOVO, nome: 'Novo' },
-    { id: ESTAGIO_PROPOSTA, nome: 'Proposta' },
-  ]);
   criarImportJob.mockResolvedValue({ id: JOB });
 });
 
@@ -329,7 +333,7 @@ describe('validarImportacao', () => {
         'E-mail inválido em "E-mail": "email-ruim"',
         '"talvez" não é uma opção de "Status"',
         '"Última interação" espera uma data (dd/mm/aaaa)',
-        'Estágio "Inexistente" não existe no funil',
+        'Estágio "Inexistente" não é um status ativo',
       ]),
     );
     const motivosLinha4 = resultado.erros

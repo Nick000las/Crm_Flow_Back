@@ -8,7 +8,7 @@ import {
 } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
-import { fonteLeads } from './crm-lead-read-model.js';
+import { FONTE_LEADS } from './crm-lead-read-model.js';
 import {
   criarOportunidadeDoLead,
   excluirOportunidadesDoLead,
@@ -23,7 +23,7 @@ const DOIS_LEADS = 2;
 /**
  * Colunas devolvidas por toda leitura de lead (lista, detalhe, busca
  * filtrada) — uma lista só, pra uma coluna nova não ficar faltando em uma
- * das três. Espera `l` = `fonteLeads`, que traz o comercial da oportunidade
+ * das três. Espera `l` = `FONTE_LEADS`, que traz o comercial da oportunidade
  * principal.
  */
 const COLUNAS_BASE = Prisma.sql`
@@ -78,7 +78,7 @@ const COLUNAS_UUID = new Set(['usuarioResponsavelId']);
 async function lerLead(tx, tenantId, leadId, inatividade = null) {
   const [lead] = await tx.$queryRaw`
     SELECT ${colunasLeitura(inatividade)}
-    FROM ${await fonteLeads(tx)} l
+    FROM ${FONTE_LEADS} l
     WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid
   `;
   return lead;
@@ -106,7 +106,7 @@ export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
   return getTenantClient(tenantId, async (tx) =>
     tx.$queryRaw`
       SELECT ${colunasLeitura(inatividade)}
-      FROM ${await fonteLeads(tx)} l
+      FROM ${FONTE_LEADS} l
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
@@ -130,15 +130,14 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
   const where = Prisma.join([Prisma.sql`l.tenant_id = ${tenantId}::uuid`, ...condicoes], ' AND ');
 
   return getTenantClient(tenantId, async (tx) => {
-    const fonte = await fonteLeads(tx);
     const [contagem] = await tx.$queryRaw`
       SELECT COUNT(*)::int AS total
-      FROM ${fonte} l
+      FROM ${FONTE_LEADS} l
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
       SELECT ${colunasLeitura(inatividade)}
-      FROM ${fonte} l
+      FROM ${FONTE_LEADS} l
       WHERE ${where}
       ORDER BY l.created_at DESC, l.id
       LIMIT ${limite} OFFSET ${offset}

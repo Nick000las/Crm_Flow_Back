@@ -82,8 +82,7 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
   /** @param {string} id */
   const linhaDoLead = async (id) => {
     const [linha] = await prisma.$queryRaw`
-      SELECT status, valor, motivo_perda, lifecycle_stage, principal_deal_id::text,
-             ultima_interacao_em, deleted_at
+      SELECT lifecycle_stage, principal_deal_id::text, ultima_interacao_em, deleted_at
       FROM modulo_crm.leads WHERE id = ${id}::uuid
     `;
     return linha;
@@ -158,7 +157,7 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
   });
 
   describe('criar', () => {
-    it('nasce com oportunidade em Vendas, principal, e a coluna antiga fica vazia', async () => {
+    it('nasce com oportunidade em Vendas, que é a principal', async () => {
       const id = await novoLead({ status: 'proposta', valor: VALOR });
 
       const [deal, ...resto] = await linhasDeOportunidade(id);
@@ -166,8 +165,6 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
       expect(deal).toMatchObject({ pipeline_id: vendas.id, status: 'proposta', owner_id: donoId });
       expect(Number(deal.amount)).toBe(VALOR);
       expect(await linhaDoLead(id)).toMatchObject({
-        status: null,
-        valor: null,
         lifecycle_stage: 'oportunidade',
         principal_deal_id: deal.id,
       });
@@ -212,7 +209,6 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
       expect(Number(lead.probabilidade_fechamento)).toBe(PROBABILIDADE);
       const [deal] = await linhasDeOportunidade(id);
       expect(Number(deal.amount)).toBe(VALOR);
-      expect((await linhaDoLead(id)).valor).toBeNull();
     });
 
     it('um PUT é um evento só na timeline, com o diff do comercial', async () => {
@@ -440,6 +436,29 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
       expect(resto).toEqual([]);
       expect(deal.status).toBe('proposta');
       expect((await linhaDoLead(id)).principal_deal_id).toBe(deal.id);
+    });
+
+    it('a coluna Estágio casa com o nome do status; inativo ou desconhecido não entra', async () => {
+      const email = `${randomUUID()}@smoke.test`;
+      const planilha = await gerarPlanilha(
+        ['Nome', 'E-mail', 'Estágio'],
+        [
+          ['Com estágio', email, 'PROPOSTA'],
+          ['Sem estágio', `${randomUUID()}@smoke.test`, 'Não existe'],
+        ],
+      );
+      const { jobId } = await validarImportacao(tenantId, donoId, planilha, {
+        mapeamento: { Nome: 'nome', 'E-mail': 'email', Estágio: 'funilEstagio' },
+        estrategiaDuplicata: 'criar',
+      });
+      await transicionarStatus(tenantId, jobId, 'pendente', 'processando');
+      await processarImportacao(tenantId, jobId);
+
+      expect(await buscarImportJob(tenantId, jobId)).toMatchObject({ linhas_criadas: 1 });
+      const [{ id }] = await prisma.$queryRaw`
+        SELECT id::text FROM modulo_crm.leads WHERE email = ${email}
+      `;
+      expect((await ler(id)).status).toBe('proposta');
     });
 
     it('duplicado com "atualizar" muda a principal, sem criar outra', async () => {

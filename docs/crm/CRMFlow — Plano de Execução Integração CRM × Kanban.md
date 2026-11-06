@@ -179,7 +179,7 @@ Marco criado em 5/11/2026, com a decisão de descartar a feat\_Forms: a base com
 - [ ] Venda ganha cria o card de atendimento com a automação ligada e não cria com ela desligada.
 - [ ] Toda mudança de status grava histórico e `crm_event` na mesma transação.
 - [ ] Mesclar preserva as oportunidades; anonimizar não deixa dado pessoal nelas.
-- [ ] `funil_estagios` não existe mais.
+- [x] `funil_estagios` não existe mais.
 
 ## M3 — Provedor crm\_oportunidades
 

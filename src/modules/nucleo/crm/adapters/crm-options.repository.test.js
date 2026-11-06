@@ -40,10 +40,10 @@ beforeEach(() => {
 });
 
 describe('contarUsos', () => {
-  it('lista escalar agrupa pela coluna fixa do mapa (nunca texto do cliente)', async () => {
+  it('status conta as oportunidades, com a coluna fixa (nunca texto do cliente)', async () => {
     resposta = [{ key: 'ganho', usos: USOS }];
     const usos = await contarUsos(TENANT, TIPOS_LISTA.STATUS);
-    expect(chamadas.at(-1).sql).toContain('SELECT l.status AS key');
+    expect(chamadas.at(-1).sql).toContain('SELECT d.status AS key');
     expect(usos.get('ganho')).toBe(USOS);
   });
 

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
-import { usaOportunidades } from './crm-lead-read-model.js';
 
 /**
  * Regras do banco das migrations 0036 e 0037 (M2.5, F1), direto no Postgres,
@@ -92,8 +91,18 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
     expect(sobras).toBe(0);
   });
 
-  it('a leitura de leads usa as oportunidades', async () => {
-    await expect(getTenantClient(tenantId, usaOportunidades)).resolves.toBe(true);
+  it('o modelo antigo não existe mais: nem a tabela do funil, nem as colunas comerciais', async () => {
+    const [{ tabela }] = await prisma.$queryRaw`
+      SELECT to_regclass('modulo_crm.funil_estagios')::text AS tabela
+    `;
+    expect(tabela).toBeNull();
+    const colunas = await prisma.$queryRaw`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'modulo_crm' AND table_name = 'leads'
+        AND column_name IN ('status', 'valor', 'funil_estagio_id', 'data_conversao',
+          'probabilidade_fechamento', 'data_prevista_fechamento', 'motivo_perda')
+    `;
+    expect(colunas).toEqual([]);
   });
 
   it('lead novo nasce como "lead", sem oportunidade principal', async () => {

@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
  *   a contagem até a data dela; vencida e não concluída, conta dali.
  * - Lead arquivado ou na lixeira nunca está esfriando.
  *
- * Espera `l` = a leitura do lead (`fonteLeads`): o status vem da oportunidade
+ * Espera `l` = a leitura do lead (`FONTE_LEADS`): o status vem da oportunidade
  * principal, com o `pipeline_id` dela.
  */
 

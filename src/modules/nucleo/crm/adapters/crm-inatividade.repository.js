@@ -1,6 +1,6 @@
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { condicaoEsfriando } from './crm-inatividade.sql.js';
-import { fonteLeads } from './crm-lead-read-model.js';
+import { FONTE_LEADS } from './crm-lead-read-model.js';
 import { pipelinePadraoSql } from './crm-pipelines.repository.js';
 
 /**
@@ -71,9 +71,9 @@ export function definirDiasPorStatus(tenantId, diasPorKey) {
 export function contarEsfriandoPorResponsavel(tenantId, agora) {
   return getTenantClient(
     tenantId,
-    async (tx) => tx.$queryRaw`
+    (tx) => tx.$queryRaw`
       SELECT CASE WHEN u.ativo THEN l.usuario_responsavel_id END AS usuario_id, count(*)::int AS total
-      FROM ${await fonteLeads(tx)} l
+      FROM ${FONTE_LEADS} l
       LEFT JOIN usuarios u ON u.id = l.usuario_responsavel_id
       WHERE l.tenant_id = ${tenantId}::uuid AND ${condicaoEsfriando(agora)}
       GROUP BY 1

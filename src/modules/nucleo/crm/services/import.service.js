@@ -2,7 +2,6 @@ import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { buscarEstagiosPorTenant } from '../adapters/funil-estagios.repository.js';
 import {
   criarImportJob,
   buscarImportJob,
@@ -33,6 +32,7 @@ import {
   IMPORTACAO,
   ORIGENS_REGISTRO,
   TIPOS_CAMPO,
+  TIPOS_LISTA,
 } from '../constants.js';
 import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
 import {
@@ -134,10 +134,10 @@ export async function validarImportacao(
   { mapeamento, estrategiaDuplicata, baseLegalLote },
 ) {
   await garantirBaseDoLote(tenantId, baseLegalLote);
-  const [{ colunas, linhas }, camposDaPlanilha, estagios] = await Promise.all([
+  const [{ colunas, linhas }, camposDaPlanilha, { listas }] = await Promise.all([
     lerPlanilha(buffer),
     listarCamposDaPlanilha(tenantId),
-    buscarEstagiosPorTenant(tenantId),
+    obterSchemaCampos(tenantId),
   ]);
   const campos = await comUsuariosDoTenant(tenantId, camposDaPlanilha);
 
@@ -152,7 +152,9 @@ export async function validarImportacao(
   validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos);
 
   const estagioPorNome = new Map(
-    estagios.map((estagio) => [estagio.nome.trim().toLowerCase(), estagio.id]),
+    (listas[TIPOS_LISTA.STATUS] ?? [])
+      .filter((opcao) => opcao.ativo)
+      .map((opcao) => [opcao.label.trim().toLowerCase(), opcao.id]),
   );
   // Regras do M8: a linha é avaliada como lead novo (o Revisar mostra a violação).
   const schema = await obterSchemaCampos(tenantId);
@@ -319,8 +321,7 @@ export async function processarImportacao(tenantId, jobId) {
   try {
     // O payload guarda `customFields` por `chave` (validado no request);
     // as definições de AGORA dão o `id` com que ele é gravado.
-    const [[estagioPadrao], schema, regras, distribuicao] = await Promise.all([
-      buscarEstagiosPorTenant(tenantId),
+    const [schema, regras, distribuicao] = await Promise.all([
       obterSchemaCampos(tenantId),
       regrasDoImport(tenantId),
       carregarContextoDistribuicao(tenantId),
@@ -347,7 +348,6 @@ export async function processarImportacao(tenantId, jobId) {
           dados,
           acoes[String(item.linha)] ?? job.estrategia_duplicata,
           {
-            estagioPadraoId: estagioPadrao?.id ?? null,
             responsavelPadraoId: job.usuario_id,
             regras,
             // Lead novo sem responsável na linha (M12): avaliado no formato da API (custom field pela chave).
@@ -420,12 +420,11 @@ export function encerrarImportacao() {
  * @param {Record<string, unknown>} dadosDaPlanilha
  * @param {string} acao `pular` | `atualizar` | `criar`
  * @param {{
- *   estagioPadraoId: string | null,
  *   responsavelPadraoId: string,
  *   regras: import('./duplicidade.service.js').RegraDuplicidade[],
  *   validarAtualizacao?: (leadId: string) => Promise<string | null>,
  *   distribuirLinha?: ((tags: unknown) => Promise<import('./distribuicao.service.js').Atribuicao>) | null,
- * }} contexto  estágio e responsável padrão só em lead novo — o da coluna Responsável, senão
+ * }} contexto  responsável padrão só em lead novo — o da coluna Responsável, senão
  *   o da distribuição automática (M12, `distribuirLinha` recebe as tags já como keys), senão
  *   quem importou; `validarAtualizacao` devolve o motivo se a atualização violar uma regra (M8)
  * @returns {Promise<{
@@ -439,13 +438,7 @@ async function importarLinha(
   tenantId,
   dadosDaPlanilha,
   acao,
-  {
-    estagioPadraoId,
-    responsavelPadraoId,
-    regras,
-    validarAtualizacao = async () => null,
-    distribuirLinha = null,
-  },
+  { responsavelPadraoId, regras, validarAtualizacao = async () => null, distribuirLinha = null },
 ) {
   const dados = await comTagsResolvidas(tenantId, dadosDaPlanilha);
   const historico = { autorId: responsavelPadraoId };
@@ -456,8 +449,6 @@ async function importarLinha(
     if (acao === ACOES_IMPORT_DUPLICATA.ATUALIZAR) {
       const violacao = await validarAtualizacao(existente.id);
       if (violacao) return { resultado: 'linhasComErro', motivo: violacao };
-      // Sem estágio padrão aqui de propósito: atualizar não pode mover o
-      // lead de estágio só porque a planilha não tinha a coluna.
       const ignorar = dados.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
       const comPrimeiroNome = comPrimeiroNomeNaEdicao(
         dados,
@@ -486,7 +477,6 @@ async function importarLinha(
     {
       // M15: origem "importação" e a data da base legal (a do lote já veio na linha).
       ...comDadosLgpdNaCriacao(comPrimeiroNomeNaCriacao(dados), ORIGENS_REGISTRO.IMPORTACAO),
-      funilEstagioId: dados.funilEstagioId ?? estagioPadraoId,
       usuarioResponsavelId: atribuicao
         ? atribuicao.usuarioId
         : (dados.usuarioResponsavelId ?? responsavelPadraoId),
@@ -615,7 +605,7 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos 
  * @param {Record<string, string>} mapeamento
  * @param {CampoPlanilha[]} campos
  * @param {Map<string, CampoPlanilha>} campoPorChave
- * @param {Map<string, string>} estagioPorNome
+ * @param {Map<string, string>} estagioPorNome  nome do status ativo → id da opção
  * @param {{ baseLegal?: string }} [padroes]  M15: base legal do lote (linha sem a sua)
  */
 export function converterLinha(
@@ -643,7 +633,7 @@ export function converterLinha(
         erros.push({
           linha: linha.numero,
           coluna,
-          motivo: `Estágio "${bruto}" não existe no funil`,
+          motivo: `Estágio "${bruto}" não é um status ativo`,
         });
       }
       continue;

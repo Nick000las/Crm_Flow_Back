@@ -1,8 +1,8 @@
 /**
  * Colunas de planilha que não são "campos" do formulário (não estão em
  * `GET /crm/leads/fields`) mas fazem sentido em import/export: `valor` e
- * o estágio do funil pelo nome (no import, casado contra
- * `modulo_crm.funil_estagios.nome` do tenant).
+ * o estágio do funil pelo nome (no import, casado contra o nome dos status
+ * ativos do pipeline padrão).
  */
 export const CAMPOS_EXTRAS_PLANILHA = Object.freeze([
   { chave: 'valor', label: 'Valor', tipo: 'numero', obrigatorio: false },

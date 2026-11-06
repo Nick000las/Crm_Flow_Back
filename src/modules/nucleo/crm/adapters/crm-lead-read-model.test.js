@@ -1,8 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { Prisma } from '@prisma/client';
-import { HTTP_STATUS } from '#shared/constants/index.js';
-import { fonteLeads } from './crm-lead-read-model.js';
+import { FONTE_LEADS } from './crm-lead-read-model.js';
 import { buscarLeadPorId, buscarLeadsComFiltro } from './leads.repository.js';
 import { contarUsos } from './crm-options.repository.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
@@ -10,13 +9,11 @@ import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 vi.mock('#core/db/tenantClient.js', () => ({ getTenantClient: vi.fn() }));
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const LEAD = '00000000-0000-0000-0000-000000000002';
-let capabilities;
 let queries;
 const tx = {
   $queryRaw: vi.fn(async (strings, ...values) => {
     const query = Prisma.sql(strings, ...values);
     queries.push(query);
-    if (query.sql.includes('to_regclass')) return [capabilities];
     if (query.sql.includes('COUNT(*)::int AS total')) return [{ total: 1 }];
     if (query.sql.includes('count(*)::int AS usos')) return [{ key: 'novo', usos: 1 }];
     return [{ id: LEAD }];
@@ -24,44 +21,16 @@ const tx = {
 };
 beforeEach(() => {
   queries = [];
-  capabilities = { oportunidades: true, funil_legado: false, principal_deal: true };
   getTenantClient.mockImplementation((_id, run) => run(tx));
 });
 
-it('modelo atual resolve campos comerciais pela oportunidade principal e etapa do mesmo tenant e pipeline', async () => {
-  const source = await fonteLeads(tx);
-  expect(source.sql).toContain('negocio.id = contato.principal_deal_id');
-  expect(source.sql).toContain('negocio.tenant_id = contato.tenant_id');
-  expect(source.sql).toContain('negocio.lead_id = contato.id');
-  expect(source.sql).toContain('etapa.pipeline_id = negocio.pipeline_id');
-  expect(source.sql).toContain('negocio.amount AS valor');
-  expect(source.sql).not.toContain('funil_estagios');
-});
-
-it('modelo legado mantém estágio e colunas nativas sem consultar crm_deal', async () => {
-  capabilities = { oportunidades: false, funil_legado: true, status_legado: true };
-  const source = await fonteLeads(tx);
-  expect(source.sql).toContain('modulo_crm.funil_estagios');
-  expect(source.sql).toContain('etapa.tenant_id = contato.tenant_id');
-  expect(source.sql).not.toContain('crm_deal');
-});
-
-it('schema incompleto informa indisponibilidade sem fabricar dados', async () => {
-  capabilities = { oportunidades: false, funil_legado: false };
-  await expect(fonteLeads(tx)).rejects.toMatchObject({
-    code: 'CRM_SCHEMA_INCOMPATIBLE',
-    statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
-  });
-});
-
-it('com crm_deal no schema, a leitura é pela oportunidade, mesmo com as colunas antigas', async () => {
-  capabilities = {
-    oportunidades: true,
-    funil_legado: true,
-    status_legado: true,
-    principal_deal: true,
-  };
-  expect((await fonteLeads(tx)).sql).toContain('contato.principal_deal_id');
+it('campos comerciais vêm da oportunidade principal, e a etapa do mesmo tenant e pipeline', () => {
+  const { sql } = FONTE_LEADS;
+  expect(sql).toContain('negocio.id = contato.principal_deal_id');
+  expect(sql).toContain('negocio.tenant_id = contato.tenant_id');
+  expect(sql).toContain('negocio.lead_id = contato.id');
+  expect(sql).toContain('etapa.pipeline_id = negocio.pipeline_id');
+  expect(sql).toContain('negocio.amount AS valor');
 });
 
 it('busca e total usam a mesma projeção, tenant e filtros com paginação estável', async () => {
