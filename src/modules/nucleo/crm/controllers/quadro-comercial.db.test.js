@@ -8,10 +8,6 @@ import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
-import {
-  atualizarConfiguracaoCampo,
-  listarConfiguracaoCampos,
-} from '../services/configuracoes-campos.service.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
@@ -139,13 +135,10 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       ].map((linha) => ({ tenantId, ...linha })),
     });
     await invalidarFeatures(tenantId);
+    // Tenant padrão: nada é ligado aqui. O aceite do M3 depende de
+    // `motivoPerda` nascer ligado (P0); ligar o campo na preparação escondia
+    // que ele nascia desligado.
     await reconciliarTenant(tenantId);
-    const campos = await listarConfiguracaoCampos(tenantId);
-    await atualizarConfiguracaoCampo(
-      tenantId,
-      campos.find((campo) => campo.chave === 'motivoPerda').id,
-      { visibilidade: { create_form: true, detail: true, table: true, filter: true } },
-    );
     app = await buildApp({
       config: {
         APP_NAME: 'crm-quadro',

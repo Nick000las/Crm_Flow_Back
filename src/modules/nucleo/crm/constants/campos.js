@@ -276,6 +276,13 @@ const CAPACIDADES_CAMADA_2 = Object.freeze({
 });
 
 /**
+ * Campos da Camada 2 que nascem ligados. `motivoPerda`: a regra do sistema
+ * "motivo obrigatório em Perdido" só vale com o campo ligado, e desligado
+ * por padrão ela some (decisão do dono, 07/11/2026).
+ */
+export const CAMADA_2_VISIVEIS_POR_PADRAO = Object.freeze(['motivoPerda']);
+
+/**
  * Contrato dos campos do sistema (Camadas 1 e 2): a constante continua
  * sendo a fonte da verdade de coluna, tipo e capacidades; `crm_field`
  * guarda só a configuração por tenant (label, posição, obrigatoriedade,
@@ -319,7 +326,7 @@ export const CAMPOS_SISTEMA = Object.freeze([
     camada: CAMADA.CAMADA_2,
     ordemPadrao: CAMPOS_CAMADA_1.length + indice,
     obrigatorioPadrao: false,
-    visivelPadrao: false,
+    visivelPadrao: CAMADA_2_VISIVEIS_POR_PADRAO.includes(CAMADA_2_COLUNA_PARA_CAMPO[coluna]),
     ...CAPACIDADES_CAMADA_2,
   })),
 ]);

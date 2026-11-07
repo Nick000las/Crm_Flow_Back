@@ -31,6 +31,11 @@ describe('reconciliarCamposSistema', () => {
       visivel: false,
       isRequired: false,
     });
+    // Exceção (P0): sem o campo ligado, a regra de motivo em Perdido some.
+    expect(campos.find((campo) => campo.systemKey === 'motivoPerda')).toMatchObject({
+      visivel: true,
+      isRequired: false,
+    });
   });
 
   it('devolve quantos campos nasceram (0 na segunda rodada)', async () => {

@@ -606,7 +606,10 @@ rodar('lead sobre a oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
     it('purgar apaga as oportunidades junto', async () => {
       const id = await novoLead();
       await excluirLead(tenantId, id, donoId);
-      await purgarLixeira(tenantId, new Date(Date.now() + 1));
+      // O limite sai do relógio do banco, que carimbou `deleted_at`: o do Neon
+      // anda quase 1 s à frente desta máquina, e `Date.now()` deixava a linha escapar.
+      const [{ deleted_at: excluidoEm }] = await linhasDeOportunidade(id);
+      await purgarLixeira(tenantId, new Date(excluidoEm.getTime() + 1));
       expect(await linhasDeOportunidade(id)).toEqual([]);
     });
 
