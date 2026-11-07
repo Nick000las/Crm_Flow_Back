@@ -475,12 +475,37 @@ export async function pesquisarLeads(tenantId, input, acesso = {}) {
  * @param {{ papel?: string }} [acesso]  papel de quem busca (M13); sem ele (export, só gestão), tudo
  */
 export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel } = {}) {
+  const { condicoes, schema, inatividade, ocultos } = await prepararFiltro(tenantId, filtro, papel);
+  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, {
+    ...paginacao,
+    inatividade,
+    ocultos,
+  });
+
+  return {
+    itens: itens.map((lead) => formatarLead(lead, schema)),
+    total,
+    campos: schema.campos,
+  };
+}
+
+/**
+ * O filtro em condições SQL, com as flags e as permissões do papel: um só
+ * caminho para tabela, export e quadro. O quadro já é de um pipeline visível e
+ * compara o responsável da oportunidade.
+ *
+ * @param {string} tenantId
+ * @param {import('./lead-filter.service.js').FiltroLeads} filtro
+ * @param {string | undefined} papel
+ * @param {{ colunaResponsavel?: import('@prisma/client').Prisma.Sql }} [noQuadro]
+ */
+export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
   const [schema, identificador, comArquivo, inatividade, ocultos] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
     identificadorDaBusca(tenantId),
     featureAtiva(tenantId, CRM_FEATURES.ARQUIVO),
     relogioDaInatividade(tenantId),
-    pipelinesOcultos(tenantId, papel),
+    noQuadro ? [] : pipelinesOcultos(tenantId, papel),
   ]);
   // Arquivados e lixeira só existem com o arquivo ligado (M5).
   if (!comArquivo && filtro.situacao && filtro.situacao !== SITUACOES_LEAD.ATIVOS) {
@@ -508,19 +533,9 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
     contato: contatoNaBusca(schema),
     comArquivo,
     agora: inatividade ?? undefined,
-    pipelinesOcultos: ocultos,
+    ...(noQuadro ?? { pipelinesOcultos: ocultos }),
   });
-  const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, {
-    ...paginacao,
-    inatividade,
-    ocultos,
-  });
-
-  return {
-    itens: itens.map((lead) => formatarLead(lead, schema)),
-    total,
-    campos: schema.campos,
-  };
+  return { condicoes, schema, inatividade, ocultos };
 }
 
 /**

@@ -121,7 +121,9 @@ export function condicaoDaSituacao(
  *   comArquivo?: boolean,
  *   agora?: Date,
  *   contato?: { email: boolean, telefone: boolean },
- * }} [opcoes] `identificador`: do layout do tenant (M4), também entra na
+ *   colunaResponsavel?: Prisma.Sql,
+ * }} [opcoes] `colunaResponsavel`: no quadro, é o responsável da oportunidade (P13).
+ *   `identificador`: do layout do tenant (M4), também entra na
  *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`; `agora` também
  *   é o relógio do filtro `esfriando` (M9 — a flag é conferida por quem chama).
  *   `contato`: e-mail/telefone entram na `busca` (M13: oculto pro papel não entra).
@@ -136,6 +138,7 @@ export function montarCondicoes(
     agora,
     contato = { email: true, telefone: true },
     pipelinesOcultos = [],
+    colunaResponsavel = Prisma.raw('l.usuario_responsavel_id'),
   } = {},
 ) {
   const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
@@ -172,13 +175,13 @@ export function montarCondicoes(
     });
   }
   if (filtro.usuarioResponsavelId) {
-    condicoes.push(Prisma.sql`l.usuario_responsavel_id = ${filtro.usuarioResponsavelId}::uuid`);
+    condicoes.push(Prisma.sql`${colunaResponsavel} = ${filtro.usuarioResponsavelId}::uuid`);
   }
   if (filtro.semResponsavel) {
     // Mesmo critério de `contarEsfriandoPorResponsavel`: responsável
     // desativado conta como sem responsável.
     condicoes.push(
-      Prisma.sql`NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)`,
+      Prisma.sql`NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = ${colunaResponsavel} AND u.ativo)`,
     );
   }
   if (filtro.valorMin !== undefined) {

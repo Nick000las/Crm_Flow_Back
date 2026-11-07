@@ -31,10 +31,10 @@
  * @property {string} entidadeTipo  `tipo` do `ProvedorDeEntidade` dos cards
  * @property {(ctx: TenantContext) => Promise<{ quadroRef: string, nome: string }[]>} listarQuadros
  * @property {(ctx: TenantContext, quadroRef: string) => Promise<{ ref: string, nome: string, cor: string | null }[]>} listarColunas
- * @property {(ctx: TenantContext, quadroRef: string, consulta: { colunaRef: string, filtros?: object, cursor?: string, limite: number }) => Promise<{ itens: { entidadeId: string }[], proximoCursor: string | null }>} listarCards
+ * @property {(ctx: TenantContext, quadroRef: string, consulta: { colunaRef: string, filtros?: object, ordem?: object, cursor?: string, limite: number }) => Promise<{ itens: { entidadeId: string }[], proximoCursor: string | null }>} listarCards
  * @property {(ctx: TenantContext, quadroRef: string, consulta: { colunaRef: string, filtros?: object }) => Promise<{ total: number, soma: number | null }>} resumoColuna
  * @property {(ctx: TenantContext, entidadeId: string) => Promise<string[]>} acoesPermitidas
- * @property {(ctx: TenantContext, movimento: { quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string }) => Promise<unknown>} mover
+ * @property {(ctx: TenantContext, movimento: { quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string, filtros?: object, campos?: object }) => Promise<unknown>} mover
  * @property {(ctx: TenantContext, novo: { quadroRef: string, colunaRef: string, dados: object }) => Promise<unknown>} criar
  */
 

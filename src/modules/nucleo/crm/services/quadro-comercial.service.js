@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
@@ -11,21 +12,33 @@ import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
 import {
   buscarCardsPorIds,
   buscarIdsDeOportunidades,
+  cardAtendeAoFiltro,
   listarCardsDaColuna,
+  RESPONSAVEL_DO_CARD,
   resumirColuna,
 } from '../adapters/crm-quadro.repository.js';
-import { CRM_FEATURES, ROTULOS_DO_QUADRO, SELOS_DO_CARD, TIPOS_LISTA } from '../constants.js';
 import {
+  CRM_FEATURES,
+  ORDENS_DO_QUADRO,
+  PADRAO_UUID,
+  ROTULOS_DO_QUADRO,
+  SELOS_DO_CARD,
+  TIPOS_LISTA,
+} from '../constants.js';
+import {
+  camposDoMoverSchema,
   cardDePessoaExistenteSchema,
   cardDePessoaNovaSchema,
+  filtroDoQuadroSchema,
+  ordemDoQuadroSchema,
 } from '../schemas/quadro-comercial.schema.js';
 import { customFieldsParaApi } from './field-schema.service.js';
 import { obterLayout } from './layout.service.js';
-import { registrarNovoLead } from './leads.service.js';
+import { prepararFiltro, registrarNovoLead } from './leads.service.js';
 import { criarOportunidade, mudarStatusDaOportunidade } from './oportunidades.service.js';
 import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
 import { tituloDaPessoa } from './pessoa-entidade.service.js';
-import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
+import { papelComPipelinesOcultos } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: o contrato de quadro do M2, com o CRM como dono. Cada pipeline ativo
@@ -37,8 +50,6 @@ import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
  * @typedef {import('#core/types/module.js').TenantContext} TenantContext
  */
 
-const SEPARADOR_DO_CURSOR = '|';
-const CAMPOS_DO_CURSOR = 2;
 const CHAVE_STATUS = 'status';
 const CHAVE_RESPONSAVEL = 'usuarioResponsavelId';
 
@@ -48,6 +59,13 @@ const quadroInexistente = () => erroNaoEncontrado('Quadro não encontrado.');
 const quadroLigado = (tenantId) => featureAtiva(tenantId, CRM_FEATURES.QUADRO_COMERCIAL);
 
 /**
+ * @param {{ ativo: boolean, visivel_operador: boolean }} pipeline
+ * @param {string} papel
+ */
+const noQuadroDoPapel = (pipeline, papel) =>
+  pipeline.ativo && (pipeline.visivel_operador || !papelComPipelinesOcultos(papel));
+
+/**
  * Pipeline ativo que este papel vê. Qualquer outro caso é o mesmo 404.
  *
  * @param {TenantContext} context
@@ -55,24 +73,86 @@ const quadroLigado = (tenantId) => featureAtiva(tenantId, CRM_FEATURES.QUADRO_CO
  */
 async function pipelineDoQuadro({ tenantId, role }, quadroRef) {
   if (!(await quadroLigado(tenantId))) throw quadroInexistente();
-  const [pipelines, ocultos] = await Promise.all([
-    buscarPipelines(tenantId),
-    pipelinesOcultos(tenantId, role),
-  ]);
+  const pipelines = await buscarPipelines(tenantId);
   const pipeline = pipelines.find((item) => item.id === quadroRef);
-  if (!pipeline || !pipeline.ativo || ocultos.includes(pipeline.id)) throw quadroInexistente();
+  if (!pipeline || !noQuadroDoPapel(pipeline, role)) throw quadroInexistente();
   return pipeline;
 }
 
-/** @param {string | undefined} cursor */
-function lerCursor(cursor) {
-  if (!cursor) return null;
-  const partes = cursor.split(SEPARADOR_DO_CURSOR);
-  const [emTexto, id] = partes;
-  if (partes.length !== CAMPOS_DO_CURSOR || Number.isNaN(Date.parse(emTexto))) {
-    throw erroDeValidacao('cursor', 'Cursor inválido');
+/**
+ * @param {string} tenantId
+ * @param {unknown} filtros  o corpo salvo numa view, ou o da tabela
+ * @param {string} papel
+ */
+async function condicoesDoQuadro(tenantId, filtros, papel) {
+  const { condicoes } = await prepararFiltro(
+    tenantId,
+    filtroDoQuadroSchema.parse(filtros ?? {}),
+    papel,
+    { colunaResponsavel: RESPONSAVEL_DO_CARD },
+  );
+  return condicoes;
+}
+
+/**
+ * Sem `ordem`, a da D2. Quem não vê o campo não ordena por ele: a ordem
+ * revelaria o valor.
+ *
+ * @param {TenantContext} context
+ * @param {unknown} pedido
+ */
+async function ordemDoQuadro({ tenantId, role }, pedido) {
+  const { campo, direcao } = ordemDoQuadroSchema.parse(pedido ?? {});
+  const definicao = ORDENS_DO_QUADRO[campo];
+  if (definicao.campo) {
+    const schema = await obterSchemaDoPapel(tenantId, role);
+    if (!schema.campos.some((item) => item.chave === definicao.campo)) {
+      throw erroDeValidacao('ordem', 'Este campo não está disponível para ordenar');
+    }
   }
-  return { emTexto, id };
+  return { ...definicao, campo, direcao };
+}
+
+/** @param {{ campo: string, direcao: string }} ordem */
+const chaveDaOrdem = ({ campo, direcao }) => `${campo}:${direcao}`;
+
+/**
+ * O cursor é opaco para quem chama, e vale só para a ordem em que nasceu.
+ *
+ * @param {{ campo: string, direcao: string }} ordem
+ * @param {{ ordem_valor: string | null, deal_id: string }} linha
+ */
+function escreverCursor(ordem, linha) {
+  const conteudo = { o: chaveDaOrdem(ordem), v: linha.ordem_valor, id: linha.deal_id };
+  return Buffer.from(JSON.stringify(conteudo)).toString('base64url');
+}
+
+/** @param {unknown} valor @param {string} tipo */
+function valorDoTipo(valor, tipo) {
+  if (valor === null) return true;
+  if (typeof valor !== 'string') return false;
+  if (tipo === 'numeric') return valor.trim() !== '' && Number.isFinite(Number(valor));
+  return tipo === 'text' || !Number.isNaN(Date.parse(valor));
+}
+
+/**
+ * @param {string | undefined} cursor
+ * @param {{ campo: string, direcao: string, tipo: string }} ordem
+ */
+function lerCursor(cursor, ordem) {
+  if (!cursor) return null;
+  const invalido = () => erroDeValidacao('cursor', 'Cursor inválido');
+  let conteudo;
+  try {
+    conteudo = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+  } catch {
+    throw invalido();
+  }
+  const { o, v, id } = conteudo ?? {};
+  if (o !== chaveDaOrdem(ordem) || !PADRAO_UUID.test(id ?? '') || !valorDoTipo(v, ordem.tipo)) {
+    throw invalido();
+  }
+  return { valor: v ?? null, id };
 }
 
 /** Número, para o `Decimal` do driver não sair como texto na resposta. */
@@ -83,12 +163,9 @@ function numero(valor) {
 /** @param {TenantContext} context */
 async function listarQuadros({ tenantId, role }) {
   if (!(await quadroLigado(tenantId))) return [];
-  const [pipelines, ocultos] = await Promise.all([
-    buscarPipelines(tenantId),
-    pipelinesOcultos(tenantId, role),
-  ]);
+  const pipelines = await buscarPipelines(tenantId);
   return pipelines
-    .filter((pipeline) => pipeline.ativo && !ocultos.includes(pipeline.id))
+    .filter((pipeline) => noQuadroDoPapel(pipeline, role))
     .map((pipeline) => ({ quadroRef: pipeline.id, nome: pipeline.nome }));
 }
 
@@ -119,14 +196,20 @@ async function listarColunas(context, quadroRef) {
 /**
  * @param {TenantContext} context
  * @param {string} quadroRef
- * @param {{ colunaRef: string, cursor?: string, limite: number }} consulta
+ * @param {{ colunaRef: string, filtros?: object, ordem?: object, cursor?: string, limite: number }} consulta
  */
-async function listarCards(context, quadroRef, { colunaRef, cursor, limite }) {
-  const { id } = await pipelineDoQuadro(context, quadroRef);
+async function listarCards(context, quadroRef, { colunaRef, filtros, ordem, cursor, limite }) {
+  const [{ id }, condicoes, ordenacao] = await Promise.all([
+    pipelineDoQuadro(context, quadroRef),
+    condicoesDoQuadro(context.tenantId, filtros, context.role),
+    ordemDoQuadro(context, ordem),
+  ]);
   const linhas = await listarCardsDaColuna(context.tenantId, {
     pipelineId: id,
     status: colunaRef,
-    cursor: lerCursor(cursor),
+    condicoes,
+    ordem: ordenacao,
+    cursor: lerCursor(cursor, ordenacao),
     limite: limite + 1,
   });
   const pagina = linhas.slice(0, limite);
@@ -136,10 +219,7 @@ async function listarCards(context, quadroRef, { colunaRef, cursor, limite }) {
       entidadeId: linha.deal_id,
       atualizadoEm: linha.deal_atualizada_em,
     })),
-    proximoCursor:
-      linhas.length > limite
-        ? `${ultima.deal_cursor}${SEPARADOR_DO_CURSOR}${ultima.deal_id}`
-        : null,
+    proximoCursor: linhas.length > limite ? escreverCursor(ordenacao, ultima) : null,
   };
 }
 
@@ -148,12 +228,15 @@ async function listarCards(context, quadroRef, { colunaRef, cursor, limite }) {
  *
  * @param {TenantContext} context
  * @param {string} quadroRef
- * @param {{ colunaRef: string }} consulta
+ * @param {{ colunaRef: string, filtros?: object }} consulta
  */
-async function resumoColuna(context, quadroRef, { colunaRef }) {
-  const { id } = await pipelineDoQuadro(context, quadroRef);
+async function resumoColuna(context, quadroRef, { colunaRef, filtros }) {
+  const [{ id }, condicoes] = await Promise.all([
+    pipelineDoQuadro(context, quadroRef),
+    condicoesDoQuadro(context.tenantId, filtros, context.role),
+  ]);
   const [resumo, schema] = await Promise.all([
-    resumirColuna(context.tenantId, { pipelineId: id, status: colunaRef }),
+    resumirColuna(context.tenantId, { pipelineId: id, status: colunaRef, condicoes }),
     obterSchemaDoPapel(context.tenantId, context.role),
   ]);
   const veValor = schema.campos.some((campo) => campo.chave === 'valor');
@@ -164,27 +247,43 @@ async function resumoColuna(context, quadroRef, { colunaRef }) {
  * Quem arrasta = quem pode editar o Status (D4b), sem regra por coluna.
  * Oportunidade arquivada ou de pessoa anonimizada não muda.
  *
+ * @param {Record<string, any>} linha
+ * @param {{ restritos?: Set<string> }} schema
+ */
+function podeMoverCard(linha, schema) {
+  return !linha.anonimizado_em && !linha.deal_arquivada_em && !schema.restritos?.has(CHAVE_STATUS);
+}
+
+/**
  * @param {TenantContext} context
  * @param {string} entidadeId
  * @returns {Promise<string[]>}
  */
 async function acoesPermitidas({ tenantId, role }, entidadeId) {
   const [linha] = await buscarCardsPorIds(tenantId, [entidadeId], {
-    ocultos: await pipelinesOcultos(tenantId, role),
+    soVisiveis: papelComPipelinesOcultos(role),
     inatividade: null,
   });
-  if (!linha || linha.anonimizado_em || linha.deal_arquivada_em) return [];
+  if (!linha) return [];
   const schema = await obterSchemaDoPapel(tenantId, role);
-  return schema.restritos?.has(CHAVE_STATUS) ? [] : [ROTULOS_DO_QUADRO.MOVER];
+  return podeMoverCard(linha, schema) ? [ROTULOS_DO_QUADRO.MOVER] : [];
 }
 
 /**
  * @param {TenantContext} context
- * @param {{ quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string }} movimento
+ * @param {{ quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string, filtros?: object, campos?: object }} movimento
+ *   `filtros`: o filtro aberto na tela. Com ele, a resposta diz se o card saiu dele (D1).
+ *   `campos`: o que o formulário de campos faltantes grava junto com o status.
  */
-async function mover(context, { quadroRef, entidadeId, colunaDestino, expectedUpdatedAt }) {
+async function mover(
+  context,
+  { quadroRef, entidadeId, colunaDestino, expectedUpdatedAt, filtros, campos },
+) {
   const { tenantId, userId, role } = context;
   await pipelineDoQuadro(context, quadroRef);
+  const { motivoPerda } = camposDoMoverSchema.parse(campos ?? {});
+  // Antes de gravar: filtro inválido não pode mover o card.
+  const condicoes = filtros ? await condicoesDoQuadro(tenantId, filtros, role) : null;
   const deal = await buscarOportunidade(tenantId, entidadeId);
   if (!deal) throw erroNaoEncontrado('Oportunidade não encontrada');
   if (deal.pipeline_id !== quadroRef) {
@@ -197,7 +296,7 @@ async function mover(context, { quadroRef, entidadeId, colunaDestino, expectedUp
   const movida = await mudarStatusDaOportunidade(
     tenantId,
     entidadeId,
-    { status: colunaDestino, expectedUpdatedAt },
+    { status: colunaDestino, motivoPerda, expectedUpdatedAt },
     userId,
     { papel: role },
   );
@@ -206,6 +305,7 @@ async function mover(context, { quadroRef, entidadeId, colunaDestino, expectedUp
     colunaRef: colunaDestino,
     conflito: movida.conflito,
     atualizadoEm: movida.atualizadaEm,
+    saiuDoFiltro: condicoes ? !(await cardAtendeAoFiltro(tenantId, entidadeId, condicoes)) : false,
   };
 }
 
@@ -283,16 +383,17 @@ function selosDoCard(linha) {
  */
 async function descrever({ tenantId, userId, role }, ids) {
   if (ids.length === 0) return [];
-  const [ocultos, inatividade, schema, { efetivo }] = await Promise.all([
-    pipelinesOcultos(tenantId, role),
-    featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE),
+  const inatividade = await featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE);
+  // Em paralelo: cada etapa em série custa uma transação inteira, e o quadro
+  // pede uma página por coluna (M4).
+  const [schema, { efetivo }, linhas] = await Promise.all([
     obterSchemaDoPapel(tenantId, role),
     obterLayout(tenantId, userId, { papel: role }),
+    buscarCardsPorIds(tenantId, ids, {
+      soVisiveis: papelComPipelinesOcultos(role),
+      inatividade: inatividade ? new Date() : null,
+    }),
   ]);
-  const linhas = await buscarCardsPorIds(tenantId, ids, {
-    ocultos,
-    inatividade: inatividade ? new Date() : null,
-  });
   const noCard = (linha, item) => ({
     ref: item.ref,
     chave: item.chave,
@@ -310,6 +411,7 @@ async function descrever({ tenantId, userId, role }, ids) {
     selos: selosDoCard(linha),
     tituloOportunidade: linha.deal_titulo,
     responsavelId: linha.deal_dono_id,
+    podeMover: podeMoverCard(linha, schema),
   }));
 }
 

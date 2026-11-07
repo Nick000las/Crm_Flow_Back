@@ -27,7 +27,7 @@ export const ACOES_CARD_ENTIDADE = Object.freeze({ MOVER: 'mover' });
 
 export const QUADRO_ENTIDADE = Object.freeze({
   MAX_REFERENCIA: 200,
-  MAX_CURSOR: 500,
+  MAX_CURSOR: 1000,
   MIN_LIMITE: 1,
   MAX_LIMITE: 100,
   LIMITE_PADRAO: 50,
