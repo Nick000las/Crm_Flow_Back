@@ -163,6 +163,37 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
     expect(obterLayout).toHaveBeenCalledWith(TENANT, USUARIO);
   });
 
+  it('sem colunas: campo sensível (FM1) fica fora do padrão, mas sai se for pedido', async () => {
+    listarCamposDoTenant.mockResolvedValue([
+      ...CAMPOS,
+      {
+        chave: 'alergias',
+        label: 'Alergias',
+        tipo: 'texto',
+        camada: CAMADA.CAMADA_3,
+        sensivel: true,
+      },
+    ]);
+    obterLayout.mockResolvedValue({
+      efetivo: {
+        identificador: { ref: 'f-nome', chave: 'nome' },
+        colunas: [{ ref: 'f-alergias', chave: 'alergias' }],
+      },
+    });
+    buscarLeadsFiltrados.mockResolvedValue({
+      total: 1,
+      itens: [{ nome: 'Ana', custom_fields: { alergias: 'Dipirona' } }],
+    });
+
+    const padrao = await lerPlanilha(await exportarLeads(TENANT, {}, USUARIO));
+    expect(padrao.colunas).toEqual(['Nome']);
+
+    const pedido = await lerPlanilha(
+      await exportarLeads(TENANT, { colunas: ['nome', 'alergias'] }, USUARIO),
+    );
+    expect(pedido.linhas[0].valores).toEqual({ Nome: 'Ana', Alergias: 'Dipirona' });
+  });
+
   it('sem colunas e sem crm.massa: continua obrigatório escolher', async () => {
     featureAtiva.mockResolvedValue(false);
     await expect(exportarLeads(TENANT, {}, USUARIO)).rejects.toMatchObject({

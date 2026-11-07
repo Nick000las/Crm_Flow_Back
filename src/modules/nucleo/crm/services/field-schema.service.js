@@ -37,7 +37,7 @@ import { resolverRegras } from './regras-campos.service.js';
  * @typedef {import('../types/index.js').FieldVisibility} FieldVisibility
  * @typedef {import('../types/index.js').FieldDefinition} FieldDefinition
  * @typedef {Record<string, boolean>} VisibilidadePorContexto  `{ create_form, detail, table, filter }`
- * @typedef {{ id?: string, label?: string, obrigatorio?: boolean, ordem?: number, visibilidade?: VisibilidadePorContexto }} Sobreposicao
+ * @typedef {{ id?: string, label?: string, obrigatorio?: boolean, ordem?: number, visibilidade?: VisibilidadePorContexto, sensivel?: boolean }} Sobreposicao
  *   o que a configuração do tenant muda num campo, por `chave` (M2)
  * @typedef {import('../adapters/crm-options.repository.js').OpcaoLista} OpcaoLista
  * @typedef {Record<string, OpcaoLista[]>} Listas  opções por `kind` (M3), inclusive as inativas
@@ -285,6 +285,7 @@ export function montarBaseDoModeloNovo(linhas) {
         contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
       ordem: linha.position,
       visibilidade: visibilidadeDaLinha(linha),
+      sensivel: linha.is_sensitive ?? false,
     };
   }
 
@@ -298,6 +299,7 @@ export function montarBaseDoModeloNovo(linhas) {
       opcoes: linha.options,
       obrigatorio: linha.is_required,
       ordem: linha.position,
+      sensivel: linha.is_sensitive ?? false,
       created_at: linha.created_at,
     }));
 
@@ -336,6 +338,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
       coluna: CAMADA_1_CAMPOS[campo.chave],
       camada: CAMADA.CAMADA_1,
       visibilidade: sobre?.visibilidade ?? emTodosOsContextos(true),
+      sensivel: sobre?.sensivel ?? false,
     };
   });
 
@@ -354,6 +357,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
         obrigatorio: item.obrigatorio,
         ordem: item.ordem,
         visibilidade: sobre?.visibilidade ?? emTodosOsContextos(true),
+        sensivel: sobre?.sensivel ?? false,
       };
     });
 
@@ -361,6 +365,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
     ...definicao,
     camada: CAMADA.CAMADA_3,
     visibilidade: sobreposicoes[definicao.chave]?.visibilidade ?? emTodosOsContextos(true),
+    sensivel: definicao.sensivel ?? false,
   }));
 
   return [...camposCamada1, ...camposCamada2, ...camposCamada3]

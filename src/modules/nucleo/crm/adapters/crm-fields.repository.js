@@ -14,7 +14,7 @@ const FIRST_RESULT_INDEX = 0;
  * @typedef {{
  *   id: string, system_key: string | null, chave: string, label: string,
  *   type: string, options: string[] | null, position: number,
- *   is_required: boolean, is_active: boolean, created_at: Date,
+ *   is_required: boolean, is_active: boolean, is_sensitive: boolean, created_at: Date,
  *   visibilidade: Record<string, boolean>,
  * }} CrmFieldRow
  * @typedef {import('../types/index.js').FieldDefinition} FieldDefinition
@@ -50,7 +50,7 @@ export function buscarCamposDoTenant(tenantId) {
     (tx) => tx.$queryRaw`
       SELECT
         f.id, f.system_key, f.chave, f.label, f.type, f.options, f.position,
-        f.is_required, f.is_active, f.created_at,
+        f.is_required, f.is_active, f.is_sensitive, f.created_at,
         COALESCE(
           (SELECT jsonb_object_agg(v.context, v.visible)
            FROM modulo_crm.crm_field_visibility v
@@ -224,13 +224,14 @@ export function desativarCampoPersonalizado(tenantId, fieldId) {
 export function atualizarCampoConfigurado(
   tenantId,
   fieldId,
-  { label, isRequired, visibilidade = {} },
+  { label, isRequired, isSensitive, visibilidade = {} },
 ) {
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
       UPDATE modulo_crm.crm_field
       SET label = COALESCE(${label ?? null}, label),
           is_required = COALESCE(${isRequired ?? null}::boolean, is_required),
+          is_sensitive = COALESCE(${isSensitive ?? null}::boolean, is_sensitive),
           updated_at = now()
       WHERE id = ${fieldId}::uuid AND tenant_id = ${tenantId}::uuid
     `;

@@ -48,6 +48,7 @@ const DEFINICOES = [
     opcoes: null,
     obrigatorio: false,
     ordem: ORDEM_ORIGEM,
+    sensivel: false,
     created_at: CRIADO_EM,
   },
   {
@@ -58,6 +59,7 @@ const DEFINICOES = [
     opcoes: ['alta', 'baixa'],
     obrigatorio: true,
     ordem: ORDEM_PRIORIDADE,
+    sensivel: false,
     created_at: CRIADO_EM,
   },
 ];

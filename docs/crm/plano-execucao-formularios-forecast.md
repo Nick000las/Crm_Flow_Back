@@ -89,13 +89,22 @@ As quatro colunas da 1A.5 que faltam entram na FC2, calculadas na leitura (`MIN/
 
 ### FM1. Formulário e versões
 
-- [ ] Migration: `crm_form` (nome, descrição, ativo, `current_version_id`, `link_ttl_days` padrão 7) e `crm_form_version` (imutável depois de publicada: `sections`, `fields_snapshot`, `intro_text`, `consent_text`), com RLS.
-- [ ] `crm_field.is_sensitive`: campo sensível nasce oculto para OPERADOR (`permissoes.service.js`) e sai do export por padrão (`export.service.js`).
-- [ ] Configurações: criar, editar rascunho, publicar, desativar. Publicar copia label, tipo e opções de cada campo para `fields_snapshot`. Publicar com campo inativo ou fora da pessoa é 400. Escrita só de gestão.
-- [ ] Item do formulário: `field_id`, `obrigatorio` (do formulário, independente do campo) e `write_policy` (`overwrite` ou `fill_if_empty`; padrão `fill_if_empty` para e-mail, telefone e CPF).
-- [ ] Modelo inicial "Anamnese" semeado desligado pelo `reconciliarTenant`, só com campos que o tenant tem. **A confirmar com você no início do marco:** quais perguntas e quais campos novos a anamnese padrão cria.
+- [x] Migration 0043: `crm_form` (nome único por tenant sem diferenciar maiúscula, `draft` com o rascunho, `link_ttl_days` de 1 a 90, padrão 7) e `crm_form_version` (`sections`, `fields_snapshot`, `intro_text`, `consent_text` obrigatório), com RLS e FK por tenant. Imutável por trigger: `UPDATE` é recusado pelo banco (teste). O `app_tenant` também não tem `UPDATE` na tabela.
+- [x] Migration 0042, `crm_field.is_sensitive`: marcado em `PUT /crm/configuracoes/campos/:id` (`sensivel`). Para o OPERADOR, sem linha de permissão, o campo é oculto, com ou sem `crm.permissoes`; com a flag, o dono pode liberá-lo (grava `edit`). Nome, contato e campos de LGPD não podem ser sensíveis. Sai das colunas padrão do export e só vai quando pedido pelo nome (`campo-sensivel.db.test.js`, `export.service.test.js`).
+- [x] Configurações (`/crm/configuracoes/formularios`): listar, campos elegíveis, criar, editar (dados e rascunho), desativar e reativar, publicar e ler uma versão. Publicar copia label, tipo e opções de cada campo para `fields_snapshot` e exige ao menos um campo e o termo. Campo desligado depois de salvo bloqueia a publicação (400). Só gestão, atrás de `crm.formularios`. Duas publicações simultâneas geram versões 1 e 2 (a linha do formulário é travada).
+- [x] Item do formulário: `campoId`, `obrigatorio` (do formulário, independente do campo) e `politica` (`overwrite` ou `fill_if_empty`). Padrão `fill_if_empty` para e-mail, telefone, CPF e CNPJ: CNPJ entrou junto por ser documento, como o CPF.
+- [x] **Decisão do dono (07/11/2026):** o formulário é uma seleção dos campos da pessoa que o CRM já tem, cada um ligado pelo dono. Pergunta nova (ex.: "Alergias") é criada como campo personalizado em Configurações. Sem modelo de anamnese semeado.
+- [x] Campos elegíveis: campos ligados da pessoa que a pessoa preenche. Ficam de fora os carimbados pelo sistema (responsável, score, ciclo de vida, LGPD, só leitura) e os comerciais da oportunidade (status, valor, motivo, previsão, probabilidade). A API devolve a lista de elegíveis para a tela de montar. Do sistema: nome, e-mail, telefone, empresa, cargo, CPF, CNPJ, cidade, UF, CEP e endereço (`CHAVES_SISTEMA_DO_FORMULARIO`); personalizados, menos os do tipo usuário.
+- [x] Endereço entra inteiro. Escolher só partes (cidade e UF) fica para depois.
 
-**Aceite:** editar um formulário publicado gera versão nova, e a anterior não muda; OPERADOR não vê campo sensível na ficha nem no export.
+**Aceite**
+
+- [x] Editar um formulário publicado gera versão nova, e a anterior não muda: renomear o campo e trocar o rascunho, publicar a v2 e reler a v1 dá o mesmo conteúdo, com o nome antigo (`controllers/formularios.db.test.js`).
+- [x] OPERADOR não vê campo sensível na ficha: não aparece em `/fields`, não vem no lead e não é gravado (403). O export é só de gestão, então o OPERADOR nem exporta; para a gestão, o sensível fica fora das colunas padrão.
+- [x] Gates verdes: 1090 de 1090 em 07/11/2026, com banco, Redis e os testes de integração do Kanban. Lint, formato, RLS, FK, isolamento e boot real no Node.
+- [x] 10 proteções quebradas uma a uma, todas detectadas: elegibilidade, campo repetido, termo, comparação de rascunho, trava da publicação, padrão do sensível com e sem a flag, contato sensível, export e papel.
+
+**Handoff ao front:** `handoff-front-fm1.md`.
 
 ### FM2. Link pessoal
 
@@ -111,7 +120,7 @@ As quatro colunas da 1A.5 que faltam entram na FC2, calculadas na leitura (`MIN/
 
 - [ ] `Module.registerPublicRoutes` em `src/core/types/module.js`, registrado em `app.js` num escopo sem `authenticateHook`, prefixo `/public`. Documentar em `MODULE_CONTRACT.md`.
 - [ ] Token → tenant pelo cliente admin, com consulta só por `token_hash` (padrão de `feature-flags.js`); o resto com `getTenantClient`. Confere módulo contratado e flag do tenant do link.
-- [ ] `GET /public/f/:token`: snapshot da versão, primeiro nome, telefone mascarado, pré-preenchimento só de campos não sensíveis. Não muda estado. `POST /public/f/:token/aberto` marca `opened_at`.
+- [ ] `GET /public/f/:token`: snapshot da versão, primeiro nome, telefone mascarado, sem pré-preenchimento (decisão do dono, 07/11/2026: link vazado ou encaminhado não pode mostrar dado já salvo). Não muda estado. `POST /public/f/:token/aberto` marca `opened_at`.
 - [ ] Cabeçalhos: `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`, `Cache-Control: no-store`.
 - [ ] `@fastify/rate-limit` com store Redis, por IP e por token. Logs da rota pública sem token e sem respostas, só `form_link_id`.
 - [ ] Token inválido, expirado, revogado ou já respondido: mesma resposta 404 genérica (não revela qual).

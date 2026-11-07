@@ -130,6 +130,7 @@
  * @property {string[] | null} opcoes
  * @property {boolean} obrigatorio
  * @property {number} ordem
+ * @property {boolean} [sensivel]  FM1: oculto para o OPERADOR por padrão
  * @property {string} created_at
  */
 

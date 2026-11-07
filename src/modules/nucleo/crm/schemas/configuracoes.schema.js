@@ -34,11 +34,11 @@ export const atualizarCampoBodySchema = z
       .optional(),
     obrigatorio: booleano('Informe se o campo é obrigatório').optional(),
     visibilidade: visibilidadeSchema.optional(),
+    sensivel: booleano('Informe se o campo é sensível').optional(),
   })
   .strict()
   .refine(
-    (body) =>
-      body.label !== undefined || body.obrigatorio !== undefined || body.visibilidade !== undefined,
+    (body) => Object.values(body).some((valor) => valor !== undefined),
     'Informe ao menos uma mudança',
   );
 
