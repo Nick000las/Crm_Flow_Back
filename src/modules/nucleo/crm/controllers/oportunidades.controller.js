@@ -4,11 +4,14 @@ import { leadIdParamSchema } from '../schemas/leads.schema.js';
 import {
   criarOportunidadeBodySchema,
   editarOportunidadeBodySchema,
+  listarOportunidadesQuerySchema,
   mudarStatusBodySchema,
   oportunidadeParamSchema,
 } from '../schemas/oportunidades.schema.js';
 import {
   criarOportunidade,
+  definirArquivamentoDaOportunidade,
+  definirLixeiraDaOportunidade,
   editarOportunidade,
   listarOportunidadesDaPessoa,
   mudarStatusDaOportunidade,
@@ -24,7 +27,14 @@ export function registrarRotasOportunidades(app) {
   app.get('/crm/leads/:id/oportunidades', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const { id } = leadIdParamSchema.parse(req.params);
-    return sendSuccess(reply, await listarOportunidadesDaPessoa(tenantId, id, { papel: role }));
+    const { situacao } = listarOportunidadesQuerySchema.parse(req.query);
+    return sendSuccess(
+      reply,
+      await listarOportunidadesDaPessoa(tenantId, id, {
+        papel: role,
+        daLixeira: situacao === 'lixeira',
+      }),
+    );
   });
 
   app.post('/crm/leads/:id/oportunidades', async (req, reply) => {
@@ -47,6 +57,21 @@ export function registrarRotasOportunidades(app) {
       await editarOportunidade(tenantId, id, dados, userId, { papel: role }),
     );
   });
+
+  // Arquivar e lixeira (P9): o card sai do quadro e volta se restaurado.
+  const situacoes = [
+    ['post', 'arquivar', (t, id, u, a) => definirArquivamentoDaOportunidade(t, id, true, u, a)],
+    ['post', 'desarquivar', (t, id, u, a) => definirArquivamentoDaOportunidade(t, id, false, u, a)],
+    ['post', 'excluir', (t, id, u, a) => definirLixeiraDaOportunidade(t, id, true, u, a)],
+    ['post', 'restaurar', (t, id, u, a) => definirLixeiraDaOportunidade(t, id, false, u, a)],
+  ];
+  for (const [metodo, acao, executar] of situacoes) {
+    app[metodo](`/crm/oportunidades/:id/${acao}`, async (req, reply) => {
+      const { tenantId, userId, role } = req.tenantContext;
+      const { id } = oportunidadeParamSchema.parse(req.params);
+      return sendSuccess(reply, await executar(tenantId, id, userId, { papel: role }));
+    });
+  }
 
   app.patch('/crm/oportunidades/:id/status', async (req, reply) => {
     const { tenantId, userId, role } = req.tenantContext;

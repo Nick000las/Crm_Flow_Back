@@ -56,6 +56,10 @@ import { anonimizarLeadDoTitular, salvarConfigLgpd } from '../services/lgpd.serv
 const findManyModulos = vi.fn();
 const findManyFeatures = vi.fn();
 
+vi.mock('../adapters/crm-pipelines.repository.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  buscarPipelinesOcultos: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('#core/db/tenantClient.js', () => ({
   getAdminClient: vi.fn(() => ({
     tenantModule: { findMany: findManyModulos },

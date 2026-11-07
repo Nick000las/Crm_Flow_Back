@@ -305,7 +305,7 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 - [x] Permissão por campo aplicada, como em `/crm/leads`. `valor` não é campo configurável, então não tem permissão própria: é o mesmo caso de `/crm/leads`.
 - [x] Dois ajustes que a API exigiu: status passa a ser contado dentro do pipeline dele, porque a mesma key pode existir em outro, e cada pipeline precisa manter um status aberto ativo, senão lead novo não nasce.
 - [x] Pipeline novo nasce com lista inicial: Novo, Ganho e Perdido em vendas; a lista de Atendimento em `service`. A automação de pipeline novo começa desligada.
-- [ ] Arquivar e lixeira da oportunidade têm service, mas ainda não têm rota: entram no M3, com o quadro (P9).
+- [x] Arquivar e lixeira da oportunidade têm service; as rotas entraram no M3, com o quadro (P9).
 
 **Aceite**
 
@@ -330,12 +330,44 @@ Cada etapa fecha com os gates verdes e para para validação. Só a F5 apaga alg
 
 Passos adaptados ao código:
 
-- [ ] O `mover` chama o service único de oportunidade do M2.5 (F3), sem regra própria.
-- [ ] Permissão: `obterSchemaDoPapel` em `listarCards` e `descrever`; a soma sai `null` sem acesso a Valor.
-- [ ] `expectedUpdatedAt` também na edição do CRM.
-- [ ] Visibilidade por pipeline (D4) como condição central em `lead-filter.service.js`, para valer em busca, export e totais.
+**Decididas pelo dono em 06/11/2026, antes de começar:**
 
-Aceite: os 6 itens do documento.
+- **Valor** vira campo do sistema, com permissão por papel, e vale em todo o CRM.
+- **Visibilidade por pipeline (D4):** a pessoa aparece ao OPERADOR se tiver ao menos uma oportunidade visível, ou nenhuma. Se a principal estiver oculta, os campos comerciais saem nulos, e a aba Oportunidades lista só as visíveis. Pessoa só com oportunidades ocultas dá 404.
+- **Pessoa nova criada no quadro** nasce só naquele pipeline: exceção à F-1. Formulário de leads e importação continuam em Vendas.
+
+- [x] O `mover` chama `mudarStatusDaOportunidade`, o service único do M2.5 (F3), sem regra própria. A única conferência dele é a de o card pertencer ao quadro.
+- [x] Permissão: `obterSchemaDoPapel` em `listarCards` e `descrever`; a soma sai `null` sem acesso a Valor.
+- [x] `expectedUpdatedAt` também na edição do CRM: opcional em `PUT /crm/leads/:id`, com 409 e o estado atual em `details.atual`.
+- [x] Visibilidade por pipeline (D4) como condição central em `lead-filter.service.js`, para valer em busca e totais. O export passa pelo mesmo filtro e é só de gestão, que vê todos os pipelines.
+- [x] Rotas de arquivar, desarquivar, excluir e restaurar a oportunidade, e `?situacao=lixeira` na aba (P9).
+- [x] `visibilidade.hook.js`: pessoa ou oportunidade oculta dá 404 em toda rota `/crm/leads/:id*` e `/crm/oportunidades/:id*`. Rota nova nesses caminhos entra sozinha.
+- [x] Oportunidade não entra no vínculo de card de projeto (`vinculavel: false`), como a D3 pede.
+
+**Aceite** (provado em `controllers/quadro-comercial.db.test.js`, 25 casos)
+
+- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. **Falta a tela:** a API recusa com `CAMPOS_OBRIGATORIOS` e `fields` (provado); abrir o formulário é do front.
+- [x] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
+- [x] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban; desativado some.
+- [x] Venda ganha gera card no quadro de atendimento com a auto-criação ligada, e não gera com ela desligada.
+- [x] OPERADOR sem acesso a Valor não recebe valor nem soma.
+- [x] Nenhuma tabela do Kanban guarda dado pessoal do CRM.
+- [x] Todos os gates verdes: 1015 de 1015 em 06/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
+- [x] 13 proteções quebradas uma a uma, todas detectadas. Duas passaram na primeira rodada: os testes foram reforçados, e uma delas revelou uma brecha real, já corrigida: o `PUT` do lead gravava evento sem o pipeline, e o histórico mostrava ao OPERADOR valor e status da principal oculta.
+
+**Achado depois da entrega:** a revisão do handoff revelou que regra sobre data prevista, probabilidade ou data de conversão recusava para sempre, porque lia esses campos da pessoa, que não os tem desde a F5. Mover e criar agora leem da oportunidade, com teste.
+
+**Como ficou:** cada pipeline ativo é um quadro, e tudo é lido do CRM a cada consulta. A migration 0040 cria `crm_pipeline.operator_visible`. O campo Valor nasce pelo `pnpm crm:reconcile`, que precisa rodar no deploy.
+
+**Limitações conhecidas:**
+
+- D4 ainda não vale em `POST /crm/leads/duplicados`, nem no resumo diário de leads esfriando.
+- Ocultar o pipeline padrão faz o que o OPERADOR cria sumir para ele, se a pessoa não tiver outra oportunidade visível. A tela deve avisar.
+- Os dias para esfriar vêm só do pipeline padrão.
+- O documento cita forecast na D4, mas ainda não existe forecast no código: a regra entra quando ele for criado.
+- Alerta de formulário no card e contador de sessões ficam para os formulários. Filtros e ordem escolhida ficam no M4.
+
+**Handoff ao front:** instruções completas em `handoff-front-m3.md`.
 
 ### M4. Ordem, filtros e escala
 
@@ -371,8 +403,8 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 2. M1 (feito).
 3. M2 (feito).
 4. M6 (feito).
-5. M2.5 (em andamento).
-6. M3 → M4 → M5.
+5. M2.5 (feito).
+6. M3 (feito no back; falta a tela do aceite 1) → M4 → M5.
 7. Formulários do zero e segunda venda (D6).
 8. M7.
 

@@ -8,7 +8,7 @@ import {
 } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
-import { FONTE_LEADS } from './crm-lead-read-model.js';
+import { condicaoPessoaVisivel, fonteLeadsVisivel } from './crm-lead-read-model.js';
 import {
   criarOportunidadeDoLead,
   excluirOportunidadesDoLead,
@@ -73,12 +73,12 @@ const COLUNAS_UUID = new Set(['usuarioResponsavelId']);
  * @param {import('@prisma/client').Prisma.TransactionClient} tx
  * @param {string} tenantId
  * @param {string} leadId
- * @param {Date | null} [inatividade]
+ * @param {{ inatividade?: Date | null, ocultos?: string[] }} [opcoes]
  */
-async function lerLead(tx, tenantId, leadId, inatividade = null) {
+async function lerLead(tx, tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   const [lead] = await tx.$queryRaw`
     SELECT ${colunasLeitura(inatividade)}
-    FROM ${FONTE_LEADS} l
+    FROM ${fonteLeadsVisivel(ocultos)} l
     WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid
   `;
   return lead;
@@ -99,14 +99,15 @@ async function lerLead(tx, tenantId, leadId, inatividade = null) {
  *
  * @param {string} tenantId
  * @param {string} leadId
- * @param {{ inatividade?: Date | null }} [opcoes] ver `colunasLeitura`
+ * @param {{ inatividade?: Date | null, ocultos?: string[] }} [opcoes] `inatividade`: ver
+ *   `colunasLeitura`; `ocultos`: pipelines que quem lê não vê (D4)
  * @returns {Promise<Lead | undefined>}
  */
-export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
+export function buscarLeadPorId(tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   return getTenantClient(tenantId, async (tx) =>
     tx.$queryRaw`
       SELECT ${colunasLeitura(inatividade)}
-      FROM ${FONTE_LEADS} l
+      FROM ${fonteLeadsVisivel(ocultos)} l
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
@@ -122,28 +123,51 @@ export function buscarLeadPorId(tenantId, leadId, { inatividade = null } = {}) {
  *
  * @param {string} tenantId
  * @param {Prisma.Sql[]} condicoes
- * @param {{ limite: number, offset: number, inatividade?: Date | null }} paginacao
- *   `inatividade`: ver `colunasLeitura`
+ * @param {{ limite: number, offset: number, inatividade?: Date | null, ocultos?: string[] }} paginacao
+ *   `inatividade`: ver `colunasLeitura`; `ocultos`: pipelines que quem busca não vê (D4)
  * @returns {Promise<{ itens: Lead[], total: number }>}
  */
-export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inatividade = null }) {
+export function buscarLeadsComFiltro(
+  tenantId,
+  condicoes,
+  { limite, offset, inatividade = null, ocultos = [] },
+) {
   const where = Prisma.join([Prisma.sql`l.tenant_id = ${tenantId}::uuid`, ...condicoes], ' AND ');
+  const fonte = fonteLeadsVisivel(ocultos);
 
   return getTenantClient(tenantId, async (tx) => {
     const [contagem] = await tx.$queryRaw`
       SELECT COUNT(*)::int AS total
-      FROM ${FONTE_LEADS} l
+      FROM ${fonte} l
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
       SELECT ${colunasLeitura(inatividade)}
-      FROM ${FONTE_LEADS} l
+      FROM ${fonte} l
       WHERE ${where}
       ORDER BY l.created_at DESC, l.id
       LIMIT ${limite} OFFSET ${offset}
     `;
     return { itens, total: contagem.total };
   });
+}
+
+/**
+ * @param {string} tenantId
+ * @param {string[]} ids
+ * @param {string[]} ocultos  não vazio
+ * @returns {Promise<string[]>} os ids que quem pede pode ver (D4)
+ */
+export async function buscarPessoasVisiveis(tenantId, ids, ocultos) {
+  const linhas = await getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT l.id::text FROM modulo_crm.leads l
+      WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ANY(${ids}::uuid[])
+        AND ${condicaoPessoaVisivel(ocultos)}
+    `,
+  );
+  return linhas.map((linha) => linha.id);
 }
 
 /**
@@ -159,9 +183,10 @@ export function buscarLeadsComFiltro(tenantId, condicoes, { limite, offset, inat
  * @param {{ autorId?: string | null, detalhes?: Record<string, unknown> }} [historico] sem ele (import), sem
  *   evento; `detalhes` vai no evento `criado` (ex.: como o responsável foi distribuído)
  * @param {import('./crm-oportunidades.repository.js').ComercialDoLead['nova']} novaOportunidade
+ * @param {string} [pipelineId]  sem ele, o padrão; com ele, só para quem cria pelo quadro
  * @returns {Promise<{ id: string }>}
  */
-export function criarLead(tenantId, dados, historico, novaOportunidade) {
+export function criarLead(tenantId, dados, historico, novaOportunidade, pipelineId) {
   const customFieldsJson = JSON.stringify(dados.customFields ?? {});
   return getTenantClient(tenantId, async (tx) => {
     const criado = await tx.$queryRaw`
@@ -194,6 +219,7 @@ export function criarLead(tenantId, dados, historico, novaOportunidade) {
       { id: criado.id, usuario_responsavel_id: dados.usuarioResponsavelId ?? null },
       novaOportunidade,
       historico?.autorId ?? null,
+      pipelineId,
     );
     return criado;
   });
@@ -224,7 +250,10 @@ export function criarLead(tenantId, dados, historico, novaOportunidade) {
  * @param {{
  *   inatividade?: Date | null,
  *   oportunidade?: import('./crm-oportunidades.repository.js').ComercialDoLead,
- * }} [opcoes] `inatividade`: ver `colunasLeitura` (só a linha devolvida)
+ *   ocultos?: string[],
+ *   conferir?: (lead: { updated_at: Date }) => Promise<void>,
+ * }} [opcoes] `inatividade`: ver `colunasLeitura` (só a linha devolvida); `ocultos`: pipelines
+ *   que quem edita não vê; `conferir`: roda com o lead travado, antes de gravar
  * @returns {Promise<Lead | undefined>}
  */
 export function atualizarLead(
@@ -232,17 +261,18 @@ export function atualizarLead(
   leadId,
   dados,
   historico,
-  { inatividade = null, oportunidade } = {},
+  { inatividade = null, oportunidade, ocultos = [], conferir } = {},
 ) {
   const atribuicoes = montarAtribuicoes(dados);
   return getTenantClient(tenantId, async (tx) => {
     const [travado] = await tx.$queryRaw`
-      SELECT id::text, principal_deal_id::text FROM modulo_crm.leads
+      SELECT id::text, principal_deal_id::text, updated_at FROM modulo_crm.leads
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
         AND anonimizado_em IS NULL
       FOR UPDATE
     `;
     if (!travado) return undefined;
+    await conferir?.(travado);
     const antes = historico ? await lerLead(tx, tenantId, leadId) : undefined;
 
     const [{ usuario_responsavel_id: responsavel }] = await tx.$queryRaw`
@@ -251,8 +281,9 @@ export function atualizarLead(
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
       RETURNING usuario_responsavel_id::text
     `;
+    let pipelineId = null;
     if (oportunidade) {
-      await gravarComercialDoLead(
+      pipelineId = await gravarComercialDoLead(
         tx,
         tenantId,
         { ...travado, usuario_responsavel_id: responsavel },
@@ -263,7 +294,7 @@ export function atualizarLead(
         },
       );
     }
-    const depois = await lerLead(tx, tenantId, leadId, inatividade);
+    const depois = await lerLead(tx, tenantId, leadId, { inatividade, ocultos });
 
     if (historico) {
       const diff = historico.montarDiff(antes, depois);
@@ -272,7 +303,8 @@ export function atualizarLead(
           tipo: historico.tipo ?? TIPOS_EVENTO_LEAD.ATUALIZADO,
           autorId: historico.autorId,
           diff,
-          detalhes: historico.detalhes,
+          // O evento diz de qual pipeline é o comercial: quem não o vê não recebe o evento (D4).
+          detalhes: pipelineId ? { ...historico.detalhes, pipelineId } : historico.detalhes,
         });
       }
     }

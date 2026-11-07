@@ -158,6 +158,15 @@ describe('vincular e desvincular', () => {
     expect(operarKanban).not.toHaveBeenCalled();
   });
 
+  it('entidade que é só card de quadro não recebe vínculo (D3)', async () => {
+    modulo.entidades[0] = { ...modulo.entidades[0], vinculavel: false };
+    registrarModulos([modulo]);
+    await expect(vincularCard(context, 'c', entidade, publish, logger)).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.NOT_FOUND,
+    });
+    expect(operarKanban).not.toHaveBeenCalled();
+  });
+
   it('módulo dono não contratado: 404', async () => {
     vi.mocked(moduloAtivo).mockResolvedValue(false);
     await expect(vincularCard(context, 'c', entidade, publish, logger)).rejects.toMatchObject({

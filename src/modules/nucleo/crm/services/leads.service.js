@@ -1,6 +1,8 @@
-import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarLeadsComFiltro, buscarLeadPorId } from '../adapters/leads.repository.js';
 import {
   buscarUsuarioAtivoDoTenant,
@@ -13,7 +15,7 @@ import {
   customFieldsParaArmazenamento,
   exigidoNaCriacao,
 } from './field-schema.service.js';
-import { dataDaPurga, montarCondicoes } from './lead-filter.service.js';
+import { dataDaPurga, erroDeFiltro, montarCondicoes } from './lead-filter.service.js';
 import {
   camposDeDuplicidadeAlterados,
   encontrarDuplicados,
@@ -21,7 +23,12 @@ import {
 } from './duplicidade.service.js';
 import { diffDoLead } from './historico.service.js';
 import { identificadorDaBusca } from './layout.service.js';
-import { atualizarLeadComOportunidade, criarLeadComOportunidade } from './oportunidades.service.js';
+import {
+  atualizarLeadComOportunidade,
+  criarLeadComOportunidade,
+  garantirRegrasDaPessoaNova,
+} from './oportunidades.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 export { leadParaApi, regrasAplicaveis };
 import { agendarEnriquecimento } from './cnpj.service.js';
@@ -74,6 +81,8 @@ import {
  */
 const CHAVES_OBRIGATORIEDADE_PROPRIA = new Set(['nome', 'email', 'telefone']);
 
+const CHAVE_VALOR = 'valor';
+
 /** CPF/CNPJ/CEP nativos (Camada 2), por chave da API — ver `comDocumentosNormalizados`. */
 const TIPOS_DOCUMENTO = new Set([TIPOS_CAMPO.CPF, TIPOS_CAMPO.CNPJ, TIPOS_CAMPO.CEP]);
 const DOCUMENTOS_NATIVOS = Object.freeze(
@@ -102,8 +111,8 @@ const DOCUMENTOS_NATIVOS = Object.freeze(
  */
 export async function buscarLeadFormatado(tenantId, leadId, { papel } = {}) {
   const [lead, schema] = await Promise.all([
-    relogioDaInatividade(tenantId).then((inatividade) =>
-      buscarLeadPorId(tenantId, leadId, { inatividade }),
+    Promise.all([relogioDaInatividade(tenantId), pipelinesOcultos(tenantId, papel)]).then(
+      ([inatividade, ocultos]) => buscarLeadPorId(tenantId, leadId, { inatividade, ocultos }),
     ),
     obterSchemaDoPapel(tenantId, papel),
   ]);
@@ -121,11 +130,14 @@ export async function buscarLeadFormatado(tenantId, leadId, { papel } = {}) {
  * @param {string} [usuarioId] quem está criando — vira o responsável
  *   quando `input.usuarioResponsavelId` não vem (com a distribuição
  *   automática do M12 ligada, quem decide são as regras)
- * @param {{ papel?: string }} [acesso]  papel de quem cria (M13: campo que ele
- *   não edita no payload → 403; obrigatório que ele não edita não é exigido)
+ * @param {{ papel?: string, oportunidade?: { pipelineId: string, status: string } }} [acesso]
+ *   papel de quem cria (M13: campo que ele não edita no payload → 403; obrigatório
+ *   que ele não edita não é exigido); `oportunidade`: criar pelo quadro, onde a
+ *   pessoa nasce só naquele pipeline e coluna, com as regras daquela opção
  * @returns {Promise<{ id: string }>}
  */
-export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } = {}) {
+export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {}) {
+  const { papel, oportunidade } = acesso;
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
   const schema = await obterSchemaDoPapel(tenantId, papel);
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
@@ -149,9 +161,11 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
   await validarUsuariosDosCampos(tenantId, definicoes, input.customFields);
   // Criação exige todo campo obrigatório (nativo ou personalizado) do
   // formulário de criação — edição não (ver atualizarLeadExistente).
-  validarObrigatoriosNaCriacao(schema.campos, input);
-  // Regras do M8 (por status e condicionais) sobre o lead que vai nascer.
-  lancarErroDasRegras(errosDasRegras(schema, await regrasAplicaveis(tenantId, schema), input));
+  validarObrigatoriosNaCriacao(schema.campos, { ...input, ...oportunidade });
+  // Regras do M8 (por status e condicionais) sobre o lead que vai nascer. Pelo
+  // quadro, a categoria é a da coluna: conferidas ao gravar, na opção dela.
+  const regras = await regrasAplicaveis(tenantId, schema);
+  if (!oportunidade) lancarErroDasRegras(errosDasRegras(schema, regras, input));
   // Status/origem/motivo só com opção ativa; tags viram keys (M3).
   const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input);
 
@@ -192,6 +206,10 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
       autorId: usuarioId ?? null,
       detalhes: atribuicao ? detalhesDaAtribuicao(atribuicao) : undefined,
     },
+    oportunidade && {
+      ...oportunidade,
+      conferir: (opcao, opcoes) => garantirRegrasDaPessoaNova(regras, input, opcao, opcoes),
+    },
   );
   if (atribuicao) {
     await notificarAtribuicao(tenantId, {
@@ -221,7 +239,7 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, { papel } 
  * @returns {Promise<Lead>}
  */
 export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId, { papel } = {}) {
-  const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
+  const { ignorarDuplicados, expectedUpdatedAt, ...semFlagDeDuplicidade } = entrada;
   const schema = await obterSchemaDoPapel(tenantId, papel);
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
@@ -266,7 +284,13 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
       autorId: usuarioId ?? null,
       montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
     },
-    { inatividade: await relogioDaInatividade(tenantId) },
+    {
+      inatividade: await relogioDaInatividade(tenantId),
+      ocultos: await pipelinesOcultos(tenantId, papel),
+      conferir: expectedUpdatedAt
+        ? (lead) => garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel)
+        : undefined,
+    },
   );
 
   // UPDATE ... RETURNING sem linha = id não existe (ou não é deste
@@ -283,6 +307,28 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
   if (scores?.has(leadId)) leadAtualizado.lead_score = scores.get(leadId);
 
   return formatarLead(leadAtualizado, schema);
+}
+
+/**
+ * Editar com versão antiga é 409 com o estado atual (P8): a edição de outra
+ * pessoa não é sobrescrita. Sem `expectedUpdatedAt`, nada é conferido.
+ *
+ * @param {string} tenantId
+ * @param {string} leadId
+ * @param {{ updated_at: Date }} lead  a linha travada
+ * @param {string} expectedUpdatedAt
+ * @param {string | undefined} papel
+ */
+async function garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel) {
+  if (new Date(expectedUpdatedAt).getTime() === new Date(lead.updated_at).getTime()) return;
+  const mensagem = 'Este lead foi alterado por outra pessoa. Carregue a versão atual.';
+  throw new AppError({
+    statusCode: HTTP_STATUS.CONFLICT,
+    code: ERROR_CODES.RESOURCE_CONFLICT,
+    message: mensagem,
+    fields: { lead: [mensagem] },
+    details: { atual: await buscarLeadFormatado(tenantId, leadId, { papel }) },
+  });
 }
 
 /**
@@ -429,11 +475,12 @@ export async function pesquisarLeads(tenantId, input, acesso = {}) {
  * @param {{ papel?: string }} [acesso]  papel de quem busca (M13); sem ele (export, só gestão), tudo
  */
 export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel } = {}) {
-  const [schema, identificador, comArquivo, inatividade] = await Promise.all([
+  const [schema, identificador, comArquivo, inatividade, ocultos] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
     identificadorDaBusca(tenantId),
     featureAtiva(tenantId, CRM_FEATURES.ARQUIVO),
     relogioDaInatividade(tenantId),
+    pipelinesOcultos(tenantId, papel),
   ]);
   // Arquivados e lixeira só existem com o arquivo ligado (M5).
   if (!comArquivo && filtro.situacao && filtro.situacao !== SITUACOES_LEAD.ATIVOS) {
@@ -445,6 +492,13 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
   }
   // Faixa de score (M14): a chave da faixa vira os limites (exige `crm.score`).
   if (filtro.faixaScore) await garantirFeature(tenantId, CRM_FEATURES.SCORE);
+  // M13: filtrar por faixa de valor revelaria o valor oculto para o papel.
+  if (
+    (filtro.valorMin !== undefined || filtro.valorMax !== undefined) &&
+    !schema.campos.some((campo) => campo.chave === CHAVE_VALOR)
+  ) {
+    throw erroDeFiltro(CHAVE_VALOR, 'Campo desconhecido');
+  }
   const faixaDoScore = filtro.faixaScore
     ? await limitesDaFaixa(tenantId, filtro.faixaScore)
     : undefined;
@@ -454,10 +508,12 @@ export async function buscarLeadsFiltrados(tenantId, filtro, paginacao, { papel 
     contato: contatoNaBusca(schema),
     comArquivo,
     agora: inatividade ?? undefined,
+    pipelinesOcultos: ocultos,
   });
   const { itens, total } = await buscarLeadsComFiltro(tenantId, condicoes, {
     ...paginacao,
     inatividade,
+    ocultos,
   });
 
   return {

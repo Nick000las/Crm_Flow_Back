@@ -41,6 +41,11 @@ export const oportunidadeParamSchema = z.object({
   id: z.string({ required_error: 'Informe a oportunidade' }).uuid('Id de oportunidade inválido'),
 });
 
+// GET /crm/leads/:id/oportunidades — sem filtro, fora da lixeira.
+export const listarOportunidadesQuerySchema = z.object({
+  situacao: z.enum(['lixeira'], { errorMap: () => ({ message: 'Situação inválida' }) }).optional(),
+});
+
 // POST /crm/leads/:id/oportunidades — sem pipeline, o padrão; sem status, o primeiro aberto.
 export const criarOportunidadeBodySchema = z
   .object({

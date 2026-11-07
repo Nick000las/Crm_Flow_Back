@@ -1,6 +1,7 @@
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
 import { garantirFeature } from '#core/tenant/feature-flags.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 import { listarEventosDoLead } from '../adapters/crm-lead-events.repository.js';
 import { buscarNomesDeUsuarios } from '../adapters/usuarios.repository.js';
 import {
@@ -73,15 +74,7 @@ export function diffDoLead(antes, depois, { ignorar = [] } = {}) {
   }
 
   for (const propriedade of PROPRIEDADES_NO_HISTORICO) {
-    const tamanhoAntes = diff.length;
     comparar({ campo: propriedade.campo }, antes[propriedade.coluna], depois[propriedade.coluna]);
-    // Estágio guarda também o nome do momento (o estágio pode sumir depois).
-    if (propriedade.colunaNome && diff.length > tamanhoAntes) {
-      Object.assign(diff[diff.length - 1], {
-        antesNome: antes[propriedade.colunaNome] ?? null,
-        depoisNome: depois[propriedade.colunaNome] ?? null,
-      });
-    }
   }
 
   const customAntes = antes.custom_fields ?? {};
@@ -125,9 +118,10 @@ export async function listarHistorico(
   { papel } = {},
 ) {
   if (categorias.length > 0) await garantirFeature(tenantId, CRM_FEATURES.TIMELINE);
-  const [lead, schema] = await Promise.all([
+  const [lead, schema, ocultos] = await Promise.all([
     buscarLeadPorId(tenantId, leadId),
     obterSchemaDoPapel(tenantId, papel),
+    pipelinesOcultos(tenantId, papel),
   ]);
   if (!lead) throw erroNaoEncontrado('Lead não encontrado');
 
@@ -136,6 +130,7 @@ export async function listarHistorico(
     offset: (pagina - 1) * tamanho,
     categorias,
     visiveis: visiveisDoSchema(schema),
+    ocultos,
   });
   const descrever = descritorDoDiff(schema);
   const cnpjVisivel = schema.campos.some((campo) => campo.chave === 'cnpj');

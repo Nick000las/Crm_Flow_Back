@@ -259,7 +259,9 @@ Regras de `ProvedorDeEntidade`:
 - `idAtual` informa que o registro passou para outro (mesclagem). A tela já
   mostra e abre o atual, antes de a varredura trocar o id gravado;
 - `resolverVinculos` roda sem usuário, no `pnpm worker:kanban`: id → id atual,
-  ou `null` para remover o vínculo. Id que não voltar fica como está.
+  ou `null` para remover o vínculo. Id que não voltar fica como está;
+- `vinculavel: false` tira o tipo do vínculo de card de projeto. O registro
+  continua descrito no quadro dele, mas `card.link` recusa esse tipo.
 
 ## 8. Testes esperados
 

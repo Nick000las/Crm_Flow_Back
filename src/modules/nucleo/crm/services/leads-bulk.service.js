@@ -4,6 +4,7 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
 import { atualizarLeadExistente } from './leads.service.js';
+import { garantirPessoaVisivel } from './visibilidade-pipeline.service.js';
 import { buscadorDeTags } from './listas.service.js';
 import { TIPOS_LISTA } from '../constants.js';
 
@@ -52,6 +53,7 @@ export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioI
   const resultados = [];
   for (const id of ids) {
     try {
+      await garantirPessoaVisivel(tenantId, id, acesso.papel);
       const atual = await buscarLeadPorId(tenantId, id);
       if (!atual) throw erroNaoEncontrado('Lead não encontrado');
 

@@ -37,8 +37,8 @@ export function registrarRotasPipelines(app) {
   const apenasGestao = { preHandler: requireRole(PAPEIS_GESTAO) };
 
   app.get('/crm/configuracoes/pipelines', async (req, reply) => {
-    const { tenantId } = req.tenantContext;
-    return sendSuccess(reply, await listarPipelines(tenantId));
+    const { tenantId, role } = req.tenantContext;
+    return sendSuccess(reply, await listarPipelines(tenantId, { papel: role }));
   });
 
   app.post('/crm/configuracoes/pipelines', apenasGestao, async (req, reply) => {

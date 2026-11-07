@@ -39,6 +39,7 @@ export const atualizarPipelineBodySchema = z
   .object({
     nome: nome.optional(),
     ativo: z.boolean({ invalid_type_error: 'Informe verdadeiro ou falso' }).optional(),
+    visivelOperador: z.boolean({ invalid_type_error: 'Informe verdadeiro ou falso' }).optional(),
     automacao: z
       .object({
         ativa: z.boolean({ invalid_type_error: 'Informe verdadeiro ou falso' }).optional(),

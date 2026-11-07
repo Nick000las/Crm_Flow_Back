@@ -163,8 +163,7 @@ async function colunasPadrao(tenantId, usuarioId) {
  */
 export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}) {
   let valor;
-  if (campo.chave === 'valor') valor = lead.valor;
-  else if (campo.chave === 'funilEstagio') valor = lead.estagio_nome;
+  if (campo.chave === 'funilEstagio') valor = lead.estagio_nome;
   else if (campo.chave === 'usuarioResponsavelId')
     valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
   else if (campo.chave === 'createdAt') valor = lead.created_at;

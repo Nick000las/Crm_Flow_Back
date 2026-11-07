@@ -12,6 +12,7 @@ import {
   CONTEXTOS_VISIBILIDADE,
   IDENTIFICADORES_DO_SISTEMA,
   LAYOUT_INICIAL,
+  CAMPOS_SISTEMA,
   LIMITES_LAYOUT,
   LISTAS_MESCLADAS,
   NOME_SECAO_OUTROS,
@@ -62,6 +63,19 @@ const LIMITE_DA_LISTA = Object.freeze({
 
 /** @param {string} tenantId */
 const chaveCache = (tenantId) => `crm:layout:${tenantId}`;
+
+const CHAVES_DAS_FIXAS = new Set(Object.values(REFERENCIAS_FIXAS).map((fixa) => fixa.chave));
+const CHAVES_DO_SISTEMA = new Set(CAMPOS_SISTEMA.map((campo) => campo.systemKey));
+
+/**
+ * Referência fixa que é um campo configurável, oculto para o papel (`valor`).
+ *
+ * @param {{ chave: string }} fixa
+ * @param {{ chave: string }[]} campos
+ */
+function referenciaOculta(fixa, campos) {
+  return CHAVES_DO_SISTEMA.has(fixa.chave) && !campos.some((campo) => campo.chave === fixa.chave);
+}
 
 // ---------------------------------------------------------------------------
 // Leitura e escrita
@@ -252,7 +266,8 @@ export function resolverLayout(layout, campos) {
    * @returns {ItemLayout | undefined}
    */
   const item = (visiveis, ref) => {
-    if (REFERENCIAS_FIXAS[ref]) return { ref, ...REFERENCIAS_FIXAS[ref] };
+    const fixa = REFERENCIAS_FIXAS[ref];
+    if (fixa) return referenciaOculta(fixa, campos) ? undefined : { ref, ...fixa };
     const campo = visiveis.get(ref);
     if (!campo) return undefined;
     return {
@@ -309,17 +324,20 @@ async function catalogo(tenantId) {
 
 /**
  * Referências aceitas: todo campo ativo (mesmo oculto agora — a
- * visibilidade pode mudar depois) e as fixas.
+ * visibilidade pode mudar depois) e as fixas. O campo de uma referência fixa
+ * (`valor`) não entra: seria o mesmo dado duas vezes na tela.
  *
  * @param {CampoConfigurado[]} camposConfig
  * @returns {Map<string, { systemKey: string | null, tipo: string, camada: number } | null>}
  */
 function catalogoDe(camposConfig) {
   return new Map([
-    ...camposConfig.map((campo) => [
-      campo.id,
-      { systemKey: campo.systemKey, tipo: campo.tipo, camada: campo.camada },
-    ]),
+    ...camposConfig
+      .filter((campo) => !CHAVES_DAS_FIXAS.has(campo.systemKey))
+      .map((campo) => [
+        campo.id,
+        { systemKey: campo.systemKey, tipo: campo.tipo, camada: campo.camada },
+      ]),
     ...Object.keys(REFERENCIAS_FIXAS).map((ref) => [ref, null]),
   ]);
 }

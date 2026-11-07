@@ -27,6 +27,7 @@ const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
   { chave: 'tags', label: 'Tags', tipo: 'selecao_multipla', camada: CAMADA.CAMADA_1 },
   { chave: 'segmento', label: 'Segmento', tipo: 'selecao', camada: CAMADA.CAMADA_3 },
+  { chave: 'valor', label: 'Valor', tipo: 'monetario', camada: CAMADA.CAMADA_1 },
   { chave: 'vip', label: 'VIP', tipo: 'booleano', camada: CAMADA.CAMADA_3 },
 ];
 

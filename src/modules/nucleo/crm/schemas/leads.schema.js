@@ -144,6 +144,11 @@ export const criarLeadBodySchema = z
 // lead atual ("sobra e-mail ou telefone", campo obrigatório não pode ser
 // limpo) ficam no service.
 export const atualizarLeadBodySchema = z.object({
+  // P8: com a versão lida, editar uma versão antiga dá 409 com o estado atual.
+  expectedUpdatedAt: z
+    .string({ invalid_type_error: 'Informe uma versão válida' })
+    .datetime({ message: 'Informe uma versão válida', offset: true })
+    .optional(),
   nome: z
     .string({ invalid_type_error: 'Informe um nome válido' })
     .trim()

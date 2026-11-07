@@ -24,6 +24,7 @@ import {
   TIPOS_PIPELINE,
 } from '../constants.js';
 import { atualizarOpcao, criarOpcao, excluirOpcao, reordenarLista } from './listas.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: pipelines comerciais (M2.5). Todo tenant nasce com Vendas (padrão)
@@ -82,23 +83,31 @@ function formatarPipeline(pipeline) {
     automacao_status_inicial: statusInicial,
     automacao_regra_dono: regraDoDono,
     automacao_dono_id: donoId,
+    visivel_operador: visivelOperador,
     ...dados
   } = pipeline;
-  return { ...dados, automacao: { ativa, origemId, statusInicial, regraDoDono, donoId } };
+  return {
+    ...dados,
+    visivelOperador,
+    automacao: { ativa, origemId, statusInicial, regraDoDono, donoId },
+  };
 }
 
 /**
  * Configurações → Pipelines: cada pipeline com os status, os usos e a automação.
  *
  * @param {string} tenantId
+ * @param {{ papel?: string }} [acesso]  pipeline oculto para o papel não aparece (D4)
  */
-export async function listarPipelines(tenantId) {
-  const [pipelines, oportunidades] = await Promise.all([
+export async function listarPipelines(tenantId, { papel } = {}) {
+  const [pipelines, oportunidades, ocultos] = await Promise.all([
     buscarPipelines(tenantId),
     contarOportunidadesPorPipeline(tenantId),
+    pipelinesOcultos(tenantId, papel),
   ]);
+  const visiveis = pipelines.filter((pipeline) => !ocultos.includes(pipeline.id));
   return Promise.all(
-    pipelines.map(async (pipeline) => {
+    visiveis.map(async (pipeline) => {
       const [status, usos] = await Promise.all([
         buscarStatusDoPipeline(tenantId, pipeline.id),
         contarUsos(tenantId, TIPOS_LISTA.STATUS, pipeline.id),
@@ -178,11 +187,15 @@ async function validarAutomacao(tenantId, id, pipelines, automacao) {
  * @param {string} tenantId
  * @param {string} id
  * @param {{
- *   nome?: string, ativo?: boolean,
+ *   nome?: string, ativo?: boolean, visivelOperador?: boolean,
  *   automacao?: { ativa?: boolean, origemId?: string | null, statusInicial?: string | null, regraDoDono?: string, donoId?: string | null },
  * }} mudancas
  */
-export async function atualizarPipeline(tenantId, id, { nome, ativo, automacao = {} }) {
+export async function atualizarPipeline(
+  tenantId,
+  id,
+  { nome, ativo, visivelOperador, automacao = {} },
+) {
   const { pipeline, pipelines } = await pipelineExistente(tenantId, id);
   if (pipeline.padrao && ativo === false) {
     throw erroDeConflito('ativo', 'O pipeline padrão não pode ser desativado');
@@ -198,6 +211,7 @@ export async function atualizarPipeline(tenantId, id, { nome, ativo, automacao =
   const salvo = await salvarPipeline(tenantId, id, {
     nome: nome ?? pipeline.nome,
     ativo: ativo ?? pipeline.ativo,
+    visivelOperador: visivelOperador ?? pipeline.visivel_operador,
     automacaoAtiva: final.ativa,
     origemId: final.origemId,
     statusInicial: final.statusInicial,

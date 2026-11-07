@@ -43,6 +43,7 @@
  *
  * @typedef {object} ProvedorDeEntidade
  * @property {string} tipo
+ * @property {boolean} [vinculavel]  `false`: é só card de quadro; card nativo não aponta para ele
  * @property {(ctx: TenantContext, ids: string[]) => Promise<{ id: string, idAtual?: string }[]>} descrever  o
  *   que este usuário pode ver; id ausente da resposta sai como restrito.
  *   `idAtual` difere de `id` quando o registro passou para outro (mesclagem)

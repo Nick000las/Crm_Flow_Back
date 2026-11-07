@@ -220,6 +220,8 @@ export const CAMPOS_CAMADA_1 = Object.freeze([
   // M10: derivado do Nome (primeira palavra) e editável — personaliza
   // mensagens. No fim da lista pra não mexer na ordem padrão dos outros.
   { chave: 'primeiroNome', label: 'Primeiro nome', tipo: 'texto', obrigatorio: false, ordem: 7 },
+  // M3: campo do sistema para ter permissão por papel. Mora na oportunidade.
+  { chave: 'valor', label: 'Valor', tipo: TIPOS_CAMPO.MONETARIO, obrigatorio: false, ordem: 8 },
 ]);
 
 /**
@@ -236,6 +238,7 @@ export const CAMADA_1_CAMPOS = Object.freeze({
   tags: 'tags',
   ultimaInteracaoEm: 'ultima_interacao_em',
   primeiroNome: 'primeiro_nome',
+  valor: 'valor',
 });
 
 /**
@@ -256,6 +259,7 @@ const CAPACIDADES_CAMADA_1 = Object.freeze({
   tags: { canHide: true, canMakeOptional: true, canRename: true },
   ultimaInteracaoEm: { canHide: true, canMakeOptional: true, canRename: true },
   primeiroNome: { canHide: true, canMakeOptional: true, canRename: true },
+  valor: { canHide: true, canMakeOptional: true, canRename: true },
 });
 
 /** Personalizado: o tenant criou, o tenant decide tudo. */

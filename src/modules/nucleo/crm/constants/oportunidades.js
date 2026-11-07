@@ -18,6 +18,19 @@ export const EVENTOS_OPORTUNIDADE = Object.freeze({
   RESTAURADA: 'deal.restored',
 });
 
+/** O que o CRM publica no motor do Kanban (M3). */
+export const ROTULOS_DO_QUADRO = Object.freeze({
+  BOARD_TYPE: 'crm_oportunidades',
+  ENTIDADE: 'oportunidade',
+  MOVER: 'mover',
+});
+
+/** Selos derivados do CRM a cada leitura; nada fica guardado no Kanban. */
+export const SELOS_DO_CARD = Object.freeze({
+  ESFRIANDO: 'esfriando',
+  ORIGEM_REABERTA: 'origem_reaberta',
+});
+
 /**
  * Chaves do lead que moram na oportunidade principal (M2.5, F4). `/crm/leads`
  * continua aceitando e devolvendo todas; a gravação vai para `crm_deal`.
@@ -46,6 +59,7 @@ export const LIMITES_OPORTUNIDADE = Object.freeze({
  */
 export const SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE = Object.freeze({
   status: Object.freeze(['status', 'categoria', 'ganhaEm', 'perdidaEm']),
+  valor: Object.freeze(['valor']),
   motivoPerda: Object.freeze(['motivoPerda']),
   probabilidadeFechamento: Object.freeze(['probabilidadeFechamento']),
   dataPrevistaFechamento: Object.freeze(['dataPrevistaFechamento']),

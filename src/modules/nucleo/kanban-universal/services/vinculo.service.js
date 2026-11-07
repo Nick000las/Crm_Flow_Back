@@ -25,7 +25,12 @@ const CARD_COM_VINCULO = new Set(['card.get', 'card.link']);
  */
 async function provedorAcessivel(context, tipo) {
   const provedor = provedorDaEntidade(tipo);
-  if (!provedor || !(await moduloAtivo(context.tenantId, provedor.modulo))) {
+  // D3: quem publica um registro decide se card de projeto pode apontar para ele.
+  if (
+    !provedor ||
+    provedor.vinculavel === false ||
+    !(await moduloAtivo(context.tenantId, provedor.modulo))
+  ) {
     return undefined;
   }
   return provedor;
