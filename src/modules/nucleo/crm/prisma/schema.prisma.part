@@ -126,6 +126,7 @@ CREATE TABLE modulo_crm.crm_field (
   position INTEGER NOT NULL DEFAULT 0,
   is_required BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  is_sensitive BOOLEAN NOT NULL DEFAULT false, -- FM1: oculto para o OPERADOR por padrão (0042)
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

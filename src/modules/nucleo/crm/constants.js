@@ -18,7 +18,8 @@
  * - `constants/distribuicao.js`: distribuição automática (regras, rodízio);
  * - `constants/permissoes.js`: permissão por campo (acessos, papéis);
  * - `constants/score.js`: pontuação de leads (faixas padrão, limites);
- * - `constants/lgpd.js`: base legal, origem do registro e anonimização.
+ * - `constants/lgpd.js`: base legal, origem do registro e anonimização;
+ * - `constants/formularios.js`: campos elegíveis, política de escrita e limites.
  */
 export * from './constants/arquivo.js';
 export * from './constants/pipelines.js';
@@ -37,3 +38,4 @@ export * from './constants/distribuicao.js';
 export * from './constants/permissoes.js';
 export * from './constants/score.js';
 export * from './constants/lgpd.js';
+export * from './constants/formularios.js';

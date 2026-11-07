@@ -23,7 +23,9 @@ import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service
  * (`garantirEscritaPermitida`): campo "só ver" ou oculto no payload → 403.
  *
  * DONO e MASTER ignoram (veem e editam tudo); sem a flag `crm.permissoes`,
- * ninguém é restringido. Import, export e mesclagem já são só de gestão.
+ * ninguém é restringido, exceto pelo campo sensível (FM1): sem linha, ele é
+ * oculto para o papel, com ou sem a flag. Com a flag, o dono pode liberá-lo.
+ * Import, export e mesclagem já são só de gestão.
  *
  * @typedef {import('./field-schema.service.js').SchemaCampos} SchemaCampos
  * @typedef {{ acesso: string, label: string, camada: number }} Restricao
@@ -32,6 +34,16 @@ import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service
  */
 
 const MENSAGEM_SEM_PERMISSAO = 'Você não tem permissão para alterar este campo';
+
+/**
+ * Acesso de um campo sem linha de permissão: sensível nasce oculto (FM1).
+ *
+ * @param {{ chave: string, sensivel?: boolean }} campo
+ */
+export function acessoPadrao(campo) {
+  if (CHAVES_SEM_RESTRICAO.includes(campo.chave)) return ACESSOS_CAMPO.EDITAR;
+  return campo.sensivel ? ACESSOS_CAMPO.OCULTO : ACESSOS_CAMPO.EDITAR;
+}
 
 /**
  * O schema como o papel o enxerga (puro). Papel sem permissão
@@ -54,11 +66,11 @@ export function schemaDoPapel(schema, papel) {
       .filter((linha) => linha.role === papel)
       .map((linha) => [linha.field_id, linha.access]),
   );
-  /** @param {{ id?: string | null, chave: string }} campo */
+  /** @param {{ id?: string | null, chave: string, sensivel?: boolean }} campo */
   const acessoDe = (campo) =>
     CHAVES_SEM_RESTRICAO.includes(campo.chave)
       ? ACESSOS_CAMPO.EDITAR
-      : (acessoPorId.get(campo.id ?? '') ?? ACESSOS_CAMPO.EDITAR);
+      : (acessoPorId.get(campo.id ?? '') ?? acessoPadrao(campo));
 
   /** @type {Map<string, Restricao>} */
   const restritos = new Map();
@@ -97,7 +109,11 @@ export function schemaDoPapel(schema, papel) {
 export async function obterSchemaDoPapel(tenantId, papel) {
   const schema = await obterSchemaCampos(tenantId);
   if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) return schema;
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.PERMISSOES))) return schema;
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.PERMISSOES))) {
+    // Sem a flag, as linhas não valem; o padrão do sensível, sim.
+    const temSensivel = schema.campos.some((campo) => campo.sensivel);
+    return temSensivel ? schemaDoPapel({ ...schema, permissoes: [] }, papel) : schema;
+  }
   return schemaDoPapel(schema, papel);
 }
 
@@ -166,7 +182,7 @@ export function contatoNaBusca(schema) {
 
 /**
  * GET /crm/configuracoes/permissoes: cada campo ativo com o acesso por
- * papel configurável (sem linha = `edit`).
+ * papel configurável (sem linha = `edit`, ou `hidden` se o campo é sensível).
  *
  * @param {string} tenantId
  */
@@ -184,11 +200,12 @@ export async function obterPermissoes(tenantId) {
         chave: campo.chave,
         label: campo.label,
         camada: campo.camada,
+        sensivel: campo.sensivel ?? false,
         podeRestringir: !CHAVES_SEM_RESTRICAO.includes(campo.chave),
         acessos: Object.fromEntries(
           PAPEIS_COM_PERMISSAO.map((papel) => [
             papel,
-            acesso.get(`${papel}:${campo.id}`) ?? ACESSOS_CAMPO.EDITAR,
+            acesso.get(`${papel}:${campo.id}`) ?? acessoPadrao(campo),
           ]),
         ),
       })),
@@ -197,7 +214,8 @@ export async function obterPermissoes(tenantId) {
 
 /**
  * PUT: por papel, o mapa inteiro `{ [campoId]: acesso }` (campo ausente =
- * `edit`). Papel que não veio no body fica como está.
+ * o padrão do campo). Grava só o que difere do padrão: liberar um campo
+ * sensível grava `edit`. Papel que não veio no body fica como está.
  *
  * @param {string} tenantId
  * @param {Record<string, Record<string, string>>} porPapel
@@ -211,7 +229,7 @@ export async function salvarPermissoes(tenantId, porPapel) {
     for (const [campoId, acesso] of Object.entries(acessos)) {
       const campo = campoPorId.get(campoId);
       if (!campo) throw erroDeValidacao(`${papel}.${campoId}`, 'Escolha um campo ativo');
-      if (acesso === ACESSOS_CAMPO.EDITAR) continue;
+      if (acesso === acessoPadrao(campo)) continue;
       if (CHAVES_SEM_RESTRICAO.includes(campo.chave)) {
         throw erroDeValidacao(`${papel}.${campoId}`, `"${campo.label}" é sempre editável`);
       }

@@ -94,7 +94,10 @@ export async function exportarLeads(
     ...CAMPOS_SO_EXPORTACAO,
   ];
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
-  colunas ??= await colunasPadrao(tenantId, usuarioId);
+  // Campo sensível (FM1) só sai se for pedido pelo nome, nunca no padrão.
+  colunas ??= (await colunasPadrao(tenantId, usuarioId)).filter(
+    (chave) => !(/** @type {{ sensivel?: boolean }} */ (campoPorChave.get(chave))?.sensivel),
+  );
 
   const desconhecidas = colunas.filter((chave) => !campoPorChave.has(chave));
   if (desconhecidas.length > 0) {

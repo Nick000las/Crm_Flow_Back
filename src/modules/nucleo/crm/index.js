@@ -18,6 +18,7 @@ import { registrarRotasDistribuicao } from './controllers/distribuicao.controlle
 import { registrarRotasPermissoes } from './controllers/permissoes.controller.js';
 import { registrarRotasScore } from './controllers/score.controller.js';
 import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
+import { registrarRotasFormularios } from './controllers/formularios.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { provedorDePessoa } from './services/pessoa-entidade.service.js';
 import { provedorComercial, provedorDeOportunidade } from './services/quadro-comercial.service.js';
@@ -54,6 +55,7 @@ export const crmModule = {
     registrarRotasPermissoes(app);
     registrarRotasScore(app);
     registrarRotasLgpd(app);
+    registrarRotasFormularios(app);
     await registrarRotasImportExport(app);
   },
 };

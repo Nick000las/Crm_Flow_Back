@@ -27,8 +27,8 @@ import {
  *   id: string, chave: string, systemKey: string | null, camada: 1 | 2 | 3,
  *   label: string, labelPadrao: string | null, tipo: string,
  *   opcoes: readonly string[] | null, lista: string | null, obrigatorio: boolean, ordem: number,
- *   visibilidade: Record<string, boolean>,
- *   capacidades: { canHide: boolean, canMakeOptional: boolean, canRename: boolean },
+ *   visibilidade: Record<string, boolean>, sensivel: boolean,
+ *   capacidades: { canHide: boolean, canMakeOptional: boolean, canRename: boolean, canBeSensitive: boolean },
  * }} CampoConfigurado
  */
 
@@ -59,13 +59,16 @@ export async function listarConfiguracaoCampos(tenantId) {
  */
 function paraCampoConfigurado(linha, listas) {
   const contrato = linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
-  const capacidades = contrato
-    ? {
-        canHide: contrato.canHide,
-        canMakeOptional: contrato.canMakeOptional,
-        canRename: contrato.canRename,
-      }
-    : { ...CAPACIDADES_PERSONALIZADO };
+  const capacidades = {
+    ...(contrato
+      ? {
+          canHide: contrato.canHide,
+          canMakeOptional: contrato.canMakeOptional,
+          canRename: contrato.canRename,
+        }
+      : { ...CAPACIDADES_PERSONALIZADO }),
+    canBeSensitive: podeSerSensivel(contrato),
+  };
 
   return {
     id: linha.id,
@@ -87,8 +90,20 @@ function paraCampoConfigurado(linha, listas) {
       contrato && !contrato.canMakeOptional ? contrato.obrigatorioPadrao : linha.is_required,
     ordem: linha.position,
     visibilidade: visibilidadeDaLinha(linha),
+    sensivel: linha.is_sensitive,
     capacidades,
   };
+}
+
+/**
+ * Sensível (FM1) esconde o campo do OPERADOR. Nome e contato (Camada 1)
+ * identificam a pessoa e não podem sumir; os carimbados pelo sistema (LGPD)
+ * não são resposta de ninguém.
+ *
+ * @param {import('../constants/campos.js').CampoSistema | undefined} contrato
+ */
+function podeSerSensivel(contrato) {
+  return !contrato || (contrato.camada === CAMADA.CAMADA_2 && !contrato.somenteLeitura);
 }
 
 /**
@@ -106,7 +121,7 @@ function opcoesAtivas(listas, kind) {
  *
  * @param {string} tenantId
  * @param {string} fieldId
- * @param {{ label?: string | null, obrigatorio?: boolean, visibilidade?: Record<string, boolean> }} mudancas
+ * @param {{ label?: string | null, obrigatorio?: boolean, visibilidade?: Record<string, boolean>, sensivel?: boolean }} mudancas
  * @returns {Promise<CampoConfigurado>}
  */
 export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
@@ -129,6 +144,10 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
     throw erroDeValidacao('visibilidade', `"${campo.label}" não pode ser ocultado`);
   }
 
+  if (mudancas.sensivel && !campo.capacidades.canBeSensitive) {
+    throw erroDeValidacao('sensivel', `"${campo.label}" não pode ser marcado como sensível`);
+  }
+
   const obrigatorio = mudancas.obrigatorio ?? campo.obrigatorio;
   if (obrigatorio && !visibilidade[CONTEXTOS_VISIBILIDADE.CRIACAO]) {
     throw erroDeValidacao(
@@ -140,6 +159,7 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
   await atualizarCampoConfigurado(tenantId, fieldId, {
     label,
     isRequired: mudancas.obrigatorio,
+    isSensitive: mudancas.sensivel,
     visibilidade: mudancas.visibilidade,
   });
   await invalidarSchemaCampos(tenantId);

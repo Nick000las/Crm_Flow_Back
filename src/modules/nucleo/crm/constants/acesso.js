@@ -37,4 +37,5 @@ export const CRM_FEATURES = Object.freeze({
   LGPD: 'crm.lgpd',
   TIMELINE: 'crm.timeline',
   QUADRO_COMERCIAL: 'crm.quadro_comercial',
+  FORMULARIOS: 'crm.formularios',
 });
