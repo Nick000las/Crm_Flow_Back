@@ -346,7 +346,7 @@ Passos adaptados ao código:
 
 **Aceite** (provado em `controllers/quadro-comercial.db.test.js`, 25 casos)
 
-- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. **Não vale no tenant padrão (achado em 07/11/2026):** `motivoPerda` nasce desligado, a regra sem campo some, e o Perdido passa sem motivo. O teste do M3 ligava o campo na preparação e escondia isso. Com o campo ligado, a recusa e o formulário funcionam na tela. Falta a decisão do dono.
+- [x] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. Em 07/11/2026 se achou que isso não valia no tenant padrão: `motivoPerda` nascia desligado e a regra sumia, e o teste escondia isso ligando o campo. Corrigido no P0 de `plano-execucao-formularios-forecast.md` (campo ligado por padrão, decisão do dono). Provado no teste sem configurar nada e na tela: arraste, formulário e "Salvar e mover".
 - [x] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
 - [x] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban; desativado some.
 - [x] Venda ganha gera card no quadro de atendimento com a auto-criação ligada, e não gera com ela desligada.
@@ -462,7 +462,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 3. M2 (feito).
 4. M6 (feito).
 5. M2.5 (feito).
-6. M3 (feito no back; falta a tela do aceite 1) → M4 (feito no back; faltam medir a API publicada e a tela) → M5 (feito, com a tela).
+6. M3 (feito, com a tela) → M4 (feito no back; faltam medir a API publicada e a tela) → M5 (feito, com a tela).
 7. Formulários do zero e segunda venda (D6).
 8. M7.
 

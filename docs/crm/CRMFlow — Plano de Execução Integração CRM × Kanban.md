@@ -217,7 +217,7 @@ O CRM implementa o contrato do M2: cada pipeline vira um quadro de pipeline, e c
 
 ### Aceite
 
-- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. _(API provada em 06/11/2026; falta a tela abrir o formulário.)_
+- [x] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. _(Provado na tela em 7/11/2026, depois de ligar "Motivo da perda" por padrão.)_
 - [x] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
 - [x] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban.
 - [x] Venda ganha gera card no quadro de atendimento (com a auto-criação ligada) e não gera com ela desligada.
