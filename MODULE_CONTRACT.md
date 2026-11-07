@@ -263,6 +263,16 @@ Regras de `ProvedorDeEntidade`:
 - `vinculavel: false` tira o tipo do vínculo de card de projeto. O registro
   continua descrito no quadro dele, mas `card.link` recusa esse tipo.
 
+Tempo real em `ProvedorDeQuadro`, opcional:
+
+- `drenarEventos(limite)` roda sem usuário e reserva as mudanças. Devolve `ids`,
+  para `confirmarEventos`, e `eventos` com `tenantId`, `quadroRef` e `entidadeId`.
+  Nunca dado pessoal: o motor publica só ids;
+- o motor emite antes de confirmar. Se a emissão falhar, o provedor deve devolver
+  o evento depois de um prazo, e entregar o mesmo evento duas vezes é aceitável;
+- `buscarCards(ctx, quadroRef, { ids, filtros })` relê os cards apontados, com as
+  permissões de quem pede. Quem faltar sai da tela.
+
 ## 8. Testes esperados
 
 No mínimo, todo `service` tem teste unitário mockando o próprio `adapter`

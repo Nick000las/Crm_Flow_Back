@@ -4,6 +4,7 @@ import { sendSuccess } from '#shared/http/response.js';
 import { KANBAN_FEATURES } from '../constants.js';
 import {
   buscarCardsBodySchema,
+  buscarCardsPorIdsBodySchema,
   cardParamsSchema,
   criarCardBodySchema,
   moverCardBodySchema,
@@ -14,6 +15,7 @@ import {
   criarCard,
   listarAcoes,
   listarCards,
+  listarCardsPorIds,
   listarColunas,
   moverCard,
   resumirColuna,
@@ -45,6 +47,12 @@ export function registrarRotasQuadros(app) {
     const quadro = quadroParamsSchema.parse(req.params);
     const body = buscarCardsBodySchema.parse(req.body);
     return sendSuccess(reply, await listarCards(req.tenantContext, quadro, body));
+  });
+
+  app.post(`${QUADRO}/cards/por-ids`, comFlag, async (req, reply) => {
+    const quadro = quadroParamsSchema.parse(req.params);
+    const body = buscarCardsPorIdsBodySchema.parse(req.body);
+    return sendSuccess(reply, await listarCardsPorIds(req.tenantContext, quadro, body));
   });
 
   app.post(`${QUADRO}/cards`, comFlag, async (req, reply) => {

@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
-import { ANONIMIZACAO, TIPOS_EVENTO_LEAD } from '../constants.js';
+import { ANONIMIZACAO, EVENTOS_PESSOA, TIPOS_EVENTO_LEAD } from '../constants.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
+import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
 
@@ -156,6 +157,9 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
     `;
 
     const resumo = { leads: ids.length, atividades, eventos };
+    for (const id of ids) {
+      await publicarEventoDaPessoa(tx, tenantId, id, EVENTOS_PESSOA.ANONIMIZADA);
+    }
     await inserirEvento(tx, tenantId, leadId, {
       tipo: TIPOS_EVENTO_LEAD.ANONIMIZADO,
       autorId,

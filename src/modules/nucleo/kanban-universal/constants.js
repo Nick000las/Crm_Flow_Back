@@ -33,6 +33,14 @@ export const QUADRO_ENTIDADE = Object.freeze({
   LIMITE_PADRAO: 50,
 });
 
+/** Despacho de mudanças para quem está com um quadro de entidade aberto (M5). */
+export const DESPACHO_DE_QUADROS = Object.freeze({
+  INTERVALO_MS: 1000,
+  LOTE: 200,
+  /** Por rodada: o que sobrar fica para a próxima, sem segurar o processo. */
+  MAX_LOTES: 5,
+});
+
 /** Vínculo de card de projeto com um registro de outro módulo (M6). */
 export const VINCULO = Object.freeze({ MAX_CARDS_NA_ABA: 100, LOTE_VARREDURA: 200 });
 

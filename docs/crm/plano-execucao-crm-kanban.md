@@ -346,7 +346,7 @@ Passos adaptados ao código:
 
 **Aceite** (provado em `controllers/quadro-comercial.db.test.js`, 25 casos)
 
-- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. **Falta a tela:** a API recusa com `CAMPOS_OBRIGATORIOS` e `fields` (provado); abrir o formulário é do front.
+- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. **Não vale no tenant padrão (achado em 07/11/2026):** `motivoPerda` nasce desligado, a regra sem campo some, e o Perdido passa sem motivo. O teste do M3 ligava o campo na preparação e escondia isso. Com o campo ligado, a recusa e o formulário funcionam na tela. Falta a decisão do dono.
 - [x] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
 - [x] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban; desativado some.
 - [x] Venda ganha gera card no quadro de atendimento com a auto-criação ligada, e não gera com ela desligada.
@@ -413,11 +413,36 @@ Passos adaptados ao código:
 
 ### M5. Tempo real
 
-- [ ] Criar um canal em `#core` (publicar por tipo de entidade), porque `publicarKanban` não é visível fora do módulo.
-- [ ] Definir a audiência sem `board_members`: permissão do CRM, por usuário.
-- [ ] Importação e distribuição rodam no worker, fora do processo do socket: o despacho do outbox precisa chegar ao HTTP (Redis pub/sub).
+O plano previa um canal em `#core` e Redis pub/sub. Nenhum dos dois foi preciso: o outbox está no banco, e o contrato de quadro já liga os módulos sem que um importe o outro.
 
-Aceite: os 3 itens do documento.
+- [x] Fonte única: o outbox `crm_event`. O provedor entrega as mudanças por `drenarEventos` e `confirmarEventos`, e o motor do Kanban emite. Nenhum módulo importa o outro.
+- [x] Audiência sem `board_members`: sala por quadro, `quadro:watch`. Entra quem consegue abrir o quadro, pela mesma regra das rotas (flag, módulo e D4).
+- [x] Importação e distribuição rodam no worker, mas gravam no mesmo outbox, e quem drena é o processo HTTP. Com mais de uma instância, `SKIP LOCKED` evita entrega dobrada, e o adapter do Redis leva o aviso às outras.
+- [x] `person.*` no outbox: contato editado, arquivar, mesclar e anonimizar. Antes só `deal.*` existia, e o nome no card nunca atualizaria.
+- [x] `POST /cards/por-ids`: relê só os cards do aviso, com o filtro da tela. `ausentes` diz o que tirar.
+- [x] Despacho sem custo ocioso: sem socket conectado, não consulta o banco, e o Neon pode dormir (provado: `attempts: 0` depois de 4 s). Evento com mais de 5 minutos é confirmado sem emitir.
+- [x] `constants/barril.test.js`: nome repetido entre arquivos de `constants/` impede o Node de subir, e o vitest não acusa. Isso aconteceu neste marco e só apareceu ao rodar fora do vitest.
+
+**Aceite** (provado em `controllers/quadro-tempo-real.db.test.js`, 18 casos com socket real)
+
+- [x] Editar a oportunidade na ficha atualiza o card em outro navegador sem recarregar a página. Provado em 07/11/2026 com dois navegadores e dois usuários, na tela: título e valor apareceram em 2,6 s, com 1 aviso, 1 `por-ids` e nenhuma recarga. Também provados pela tela: mudança de coluna e somas; e, com a gravação feita pela API e o quadro aberto: nome da pessoa, card novo e card que sai.
+- [x] Evento de socket não carrega dado pessoal: só `id`, `boardType`, `quadroRef` e `entidadeIds`.
+- [x] Usuário sem permissão não recebe o evento ou recebe e não consegue carregar o card: pipeline oculto recusa a sala, e a releitura dá 404, inclusive para quem já estava nela.
+- [x] Cobertura com socket real: ficha, contato, massa, ganho com auto-criação, arquivar, excluir, mesclar, anonimizar e gravação fora do processo HTTP.
+- [x] Duas instâncias com Redis: o aviso chega às conexões das duas.
+- [x] Boot real no Node, fora do vitest.
+- [x] Todos os gates verdes: 1058 de 1058 em 07/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
+- [x] 15 proteções quebradas uma a uma, todas detectadas. Uma passou na primeira rodada: o teste foi reforçado com oportunidade arquivada e excluída.
+
+**Limitações conhecidas:**
+
+- Quem perde o acesso continua na sala até sair ou reconectar, e recebe só ids que não consegue abrir. O `quadro:watch` seguinte é recusado.
+- Selo "esfriando" e score não geram aviso. Atualizam ao reler o card.
+- O despacho leva até 1.000 eventos por rodada. Se a fila passar de 5 minutos de atraso, o excedente é confirmado sem aviso, e a tela só o vê ao reler.
+- `crm_event` só cresce: não há limpeza dos eventos processados. Fica para o M7.
+- Um servidor local aberto com socket conectado no mesmo banco drena os eventos dos testes de tempo real e pode fazê-los falhar. Feche o front antes de rodar a bateria.
+
+**Handoff ao front:** instruções completas em `handoff-front-m5.md`.
 
 ### M7. Segunda etapa
 
@@ -437,7 +462,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 3. M2 (feito).
 4. M6 (feito).
 5. M2.5 (feito).
-6. M3 (feito no back; falta a tela do aceite 1) → M4 (feito no back; faltam medir a API publicada e a tela) → M5.
+6. M3 (feito no back; falta a tela do aceite 1) → M4 (feito no back; faltam medir a API publicada e a tela) → M5 (feito, com a tela).
 7. Formulários do zero e segunda venda (D6).
 8. M7.
 

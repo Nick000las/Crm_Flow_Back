@@ -109,6 +109,33 @@ export function listarCardsDaColuna(
 }
 
 /**
+ * Os cards pedidos que ainda estão neste quadro e atendem ao filtro: a tela
+ * relê só o que o evento apontou (M5).
+ *
+ * @param {string} tenantId
+ * @param {{ pipelineId: string, ids: string[], condicoes: Prisma.Sql[] }} consulta
+ * @returns {Promise<{ deal_id: string, deal_atualizada_em: Date, status: string }[]>}
+ */
+export function listarCardsPorIds(tenantId, { pipelineId, ids, condicoes }) {
+  const onde = Prisma.join(
+    [
+      Prisma.sql`l.tenant_id = ${tenantId}::uuid`,
+      Prisma.sql`l.pipeline_id = ${pipelineId}::uuid`,
+      Prisma.sql`l.deal_id = ANY(${ids}::uuid[])`,
+      NO_QUADRO,
+      ...condicoes,
+    ],
+    ' AND ',
+  );
+  return getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT l.deal_id, l.deal_atualizada_em, l.status FROM ${FONTE_CARDS} l WHERE ${onde}
+    `,
+  );
+}
+
+/**
  * Total e soma saem do banco, sobre o filtro inteiro, nunca da página.
  *
  * @param {string} tenantId

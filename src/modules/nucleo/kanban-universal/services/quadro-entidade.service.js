@@ -86,21 +86,47 @@ export async function listarColunas(context, { boardType, quadroRef }) {
 export async function listarCards(context, { boardType, quadroRef }, consulta) {
   const provedor = await provedorAcessivel(context, boardType);
   const { itens, proximoCursor } = await provedor.listarCards(context, quadroRef, consulta);
+  return {
+    itens: await comDescricao(context, provedor, itens),
+    proximoCursor: proximoCursor ?? null,
+  };
+}
 
+/**
+ * @param {TenantContext} context
+ * @param {{ entidadeTipo: string }} provedor
+ * @param {{ entidadeId: string }[]} itens
+ */
+async function comDescricao(context, provedor, itens) {
   const entidade = provedorDaEntidade(provedor.entidadeTipo);
   const descricoes = await entidade.descrever(
     context,
     itens.map((item) => item.entidadeId),
   );
   const porId = new Map(descricoes.map(({ id, ...descricao }) => [id, descricao]));
+  return itens.map((item) => ({
+    ...item,
+    ...(porId.get(item.entidadeId) ?? { restrito: true }),
+    rotaFicha: entidade.rotaFicha(item.entidadeId),
+  }));
+}
 
+/**
+ * Relê os cards apontados por um evento. `ausentes`: saíram do quadro, do filtro
+ * ou do alcance deste usuário. A tela só precisa tirá-los.
+ *
+ * @param {TenantContext} context
+ * @param {{ boardType: string, quadroRef: string }} quadro
+ * @param {{ ids: string[], filtros?: object }} consulta
+ */
+export async function listarCardsPorIds(context, { boardType, quadroRef }, consulta) {
+  const provedor = await provedorAcessivel(context, boardType);
+  if (!provedor.buscarCards) throw erroNaoEncontrado('Quadro não encontrado.');
+  const itens = await provedor.buscarCards(context, quadroRef, consulta);
+  const encontrados = new Set(itens.map((item) => item.entidadeId));
   return {
-    itens: itens.map((item) => ({
-      ...item,
-      ...(porId.get(item.entidadeId) ?? { restrito: true }),
-      rotaFicha: entidade.rotaFicha(item.entidadeId),
-    })),
-    proximoCursor: proximoCursor ?? null,
+    itens: await comDescricao(context, provedor, itens),
+    ausentes: consulta.ids.filter((id) => !encontrados.has(id)),
   };
 }
 

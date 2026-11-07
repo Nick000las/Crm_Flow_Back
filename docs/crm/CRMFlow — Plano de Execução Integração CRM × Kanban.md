@@ -268,9 +268,9 @@ Hoje o socket só publica mudanças do próprio Kanban; edições na ficha, impo
 
 **Aceite**
 
-- [ ] Editar a oportunidade na ficha atualiza o card em outro navegador sem recarregar a página.
-- [ ] Evento de socket não carrega dado pessoal (só IDs).
-- [ ] Usuário sem permissão para ver a oportunidade não recebe o evento ou recebe e não consegue carregar o card.
+- [x] Editar a oportunidade na ficha atualiza o card em outro navegador sem recarregar a página. _(Provado na tela em 7/11/2026, com dois navegadores: 2,6 s, sem recarga.)_
+- [x] Evento de socket não carrega dado pessoal (só IDs).
+- [x] Usuário sem permissão para ver a oportunidade não recebe o evento ou recebe e não consegue carregar o card.
 
 ## M6 — Quadros de projeto com vínculo opcional
 
