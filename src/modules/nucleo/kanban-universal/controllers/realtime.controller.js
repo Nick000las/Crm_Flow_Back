@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout, clearTimeout } from 'node:timers';
-import { socketIdentitySchema, watchSchema } from '../schemas/realtime.schema.js';
+import { setInterval, clearInterval } from 'node:timers';
+import { DESPACHO_DE_QUADROS } from '../constants.js';
+import {
+  quadroWatchSchema,
+  socketIdentitySchema,
+  watchSchema,
+} from '../schemas/realtime.schema.js';
+import { autorizarQuadro, despacharEventos } from '../services/quadro-eventos.service.js';
 import {
   autenticarConexao,
   autorizarSala,
@@ -11,11 +18,50 @@ const MILLISECONDS_PER_SECOND = 1000;
 const userRoom = (tenantId, userId) => `tenant:${tenantId}:user:${userId}`;
 const boardRoom = (tenantId, boardId) => `tenant:${tenantId}:board:${boardId}`;
 const cardRoom = (tenantId, cardId) => `tenant:${tenantId}:card:${cardId}`;
+const quadroRoom = (tenantId, boardType, quadroRef) =>
+  `tenant:${tenantId}:quadro:${boardType}:${quadroRef}`;
 
 function socketError(code, message) {
   const error = new Error(message);
   error.data = { code };
   return error;
+}
+
+/**
+ * Leva as mudanças dos provedores a quem está com o quadro aberto. Só ids: a
+ * tela relê por `/cards/por-ids`, com as permissões de quem pede. Sem socket
+ * conectado nesta instância, não consulta nada: o banco pode dormir, e uma
+ * instância que emite já alcança as outras pelo adapter.
+ *
+ * @param {import('fastify').FastifyInstance} app
+ * @param {import('socket.io').Namespace} namespace
+ */
+function iniciarDespachoDeQuadros(app, namespace) {
+  let rodando = false;
+  const rodada = async () => {
+    if (rodando || namespace.sockets.size === 0 || !app.realtime.isReady()) {
+      return;
+    }
+    rodando = true;
+    try {
+      await despacharEventos(({ tenantId, boardType, quadroRef, entidadeIds }) => {
+        namespace.to(quadroRoom(tenantId, boardType, quadroRef)).emit('quadro:changed', {
+          id: randomUUID(),
+          boardType,
+          quadroRef,
+          entidadeIds,
+        });
+      });
+    } catch (error) {
+      // Sem confirmação, o evento volta depois da reserva. A gravação já aconteceu.
+      app.log.error({ err: error }, 'Falha ao despachar eventos de quadro.');
+    } finally {
+      rodando = false;
+    }
+  };
+  const relogio = setInterval(rodada, DESPACHO_DE_QUADROS.INTERVALO_MS);
+  relogio.unref();
+  app.addHook('onClose', async () => clearInterval(relogio));
 }
 
 export function registrarSocketsKanban(app) {
@@ -82,6 +128,33 @@ export function registrarSocketsKanban(app) {
         acknowledge({ ok: false, code: error.code ?? 'REALTIME_UNAVAILABLE' });
       }
     });
+    socket.on('quadro:watch', async (input, acknowledge) => {
+      if (typeof acknowledge !== 'function') {
+        return;
+      }
+      const parsed = quadroWatchSchema.safeParse(input);
+      if (!parsed.success) {
+        return acknowledge({ ok: false, code: 'VALIDATION_ERROR' });
+      }
+      try {
+        await autorizarQuadro(await autenticarConexao(context), parsed.data);
+        if (!socket.connected) {
+          return;
+        }
+        const { boardType, quadroRef } = parsed.data;
+        await socket.join(quadroRoom(context.tenantId, boardType, quadroRef));
+        acknowledge({ ok: true });
+      } catch (error) {
+        acknowledge({ ok: false, code: error.code ?? 'REALTIME_UNAVAILABLE' });
+      }
+    });
+    socket.on('quadro:unwatch', (input) => {
+      const parsed = quadroWatchSchema.safeParse(input);
+      if (parsed.success) {
+        const { boardType, quadroRef } = parsed.data;
+        socket.leave(quadroRoom(context.tenantId, boardType, quadroRef));
+      }
+    });
     socket.on('kanban:unwatch', (input) => {
       const parsed = watchSchema.safeParse(input);
       if (!parsed.success) {
@@ -93,6 +166,8 @@ export function registrarSocketsKanban(app) {
       }
     });
   });
+
+  iniciarDespachoDeQuadros(app, namespace);
 
   app.decorate('publicarKanban', async (event) => {
     try {

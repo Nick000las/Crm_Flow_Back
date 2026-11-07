@@ -36,6 +36,11 @@
  * @property {(ctx: TenantContext, entidadeId: string) => Promise<string[]>} acoesPermitidas
  * @property {(ctx: TenantContext, movimento: { quadroRef: string, entidadeId: string, colunaDestino: string, expectedUpdatedAt?: string, filtros?: object, campos?: object }) => Promise<unknown>} mover
  * @property {(ctx: TenantContext, novo: { quadroRef: string, colunaRef: string, dados: object }) => Promise<unknown>} criar
+ * @property {(ctx: TenantContext, quadroRef: string, consulta: { ids: string[], filtros?: object }) => Promise<{ entidadeId: string, colunaRef: string }[]>} [buscarCards]
+ *   tempo real: relê os cards apontados por um evento; quem falta saiu do quadro ou do filtro
+ * @property {(limite: number) => Promise<{ ids: string[], eventos: { tenantId: string, quadroRef: string, entidadeId: string }[] }>} [drenarEventos]
+ *   tempo real, sem usuário: reserva até `limite` mudanças. `ids` volta em `confirmarEventos`
+ * @property {(ids: string[]) => Promise<unknown>} [confirmarEventos]
  */
 
 /**

@@ -14,6 +14,7 @@ import {
   buscarIdsDeOportunidades,
   cardAtendeAoFiltro,
   listarCardsDaColuna,
+  listarCardsPorIds,
   RESPONSAVEL_DO_CARD,
   resumirColuna,
 } from '../adapters/crm-quadro.repository.js';
@@ -38,6 +39,7 @@ import { prepararFiltro, registrarNovoLead } from './leads.service.js';
 import { criarOportunidade, mudarStatusDaOportunidade } from './oportunidades.service.js';
 import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
 import { tituloDaPessoa } from './pessoa-entidade.service.js';
+import { confirmarEventos, drenarEventos } from './quadro-eventos.service.js';
 import { papelComPipelinesOcultos } from './visibilidade-pipeline.service.js';
 
 /**
@@ -221,6 +223,30 @@ async function listarCards(context, quadroRef, { colunaRef, filtros, ordem, curs
     })),
     proximoCursor: linhas.length > limite ? escreverCursor(ordenacao, ultima) : null,
   };
+}
+
+/**
+ * Releitura de cards apontados por um evento. O que não vier saiu deste quadro,
+ * do filtro ou do alcance de quem pede: a tela só precisa tirá-lo.
+ *
+ * @param {TenantContext} context
+ * @param {string} quadroRef
+ * @param {{ ids: string[], filtros?: object }} consulta
+ */
+async function buscarCards(context, quadroRef, { ids, filtros }) {
+  if (!ids.every((id) => PADRAO_UUID.test(id))) {
+    throw erroDeValidacao('ids', 'Id de card inválido');
+  }
+  const [{ id }, condicoes] = await Promise.all([
+    pipelineDoQuadro(context, quadroRef),
+    condicoesDoQuadro(context.tenantId, filtros, context.role),
+  ]);
+  const linhas = await listarCardsPorIds(context.tenantId, { pipelineId: id, ids, condicoes });
+  return linhas.map((linha) => ({
+    entidadeId: linha.deal_id,
+    atualizadoEm: linha.deal_atualizada_em,
+    colunaRef: linha.status,
+  }));
 }
 
 /**
@@ -444,6 +470,9 @@ export const provedorComercial = Object.freeze({
   listarQuadros,
   listarColunas,
   listarCards,
+  buscarCards,
+  drenarEventos,
+  confirmarEventos,
   resumoColuna,
   acoesPermitidas,
   mover,

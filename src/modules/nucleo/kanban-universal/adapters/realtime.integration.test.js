@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { setTimeout, clearTimeout } from 'node:timers';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -6,6 +6,12 @@ import { io } from 'socket.io-client';
 import { buildApp } from '#api/app.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
+// Com socket aberto, esta instância drenaria o outbox dos testes do CRM, que rodam em paralelo.
+vi.mock('../services/quadro-eventos.service.js', () => ({
+  autorizarQuadro: vi.fn(),
+  despacharEventos: vi.fn(),
+}));
 
 const EVENT_TIMEOUT_MS = 5000;
 const QUIET_WINDOW_MS = 100;

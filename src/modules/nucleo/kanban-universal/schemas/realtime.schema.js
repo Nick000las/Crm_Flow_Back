@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QUADRO_ENTIDADE } from '../constants.js';
 
 export const socketIdentitySchema = z.object({
   tenantId: z.string().uuid(),
@@ -6,6 +7,13 @@ export const socketIdentitySchema = z.object({
   role: z.enum(['MASTER', 'DONO', 'OPERADOR']),
   exp: z.number().int().positive(),
 });
+
+export const quadroWatchSchema = z
+  .object({
+    boardType: z.string().regex(/^[a-z0-9_]+$/),
+    quadroRef: z.string().trim().min(1).max(QUADRO_ENTIDADE.MAX_REFERENCIA),
+  })
+  .strict();
 
 export const watchSchema = z
   .object({

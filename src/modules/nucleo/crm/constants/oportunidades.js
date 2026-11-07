@@ -18,6 +18,28 @@ export const EVENTOS_OPORTUNIDADE = Object.freeze({
   RESTAURADA: 'deal.restored',
 });
 
+/** `crm_event.entidade` do que muda na pessoa e aparece nos cards dela. */
+export const ENTIDADE_DO_EVENTO_DA_PESSOA = 'person';
+
+/** `crm_event.tipo`. O payload leva só o id: quem recebe relê pela API. */
+export const EVENTOS_PESSOA = Object.freeze({
+  ATUALIZADA: 'person.updated',
+  ARQUIVADA: 'person.archived',
+  DESARQUIVADA: 'person.unarchived',
+  MESCLADA: 'person.merged',
+  ANONIMIZADA: 'person.anonymized',
+});
+
+/** Despacho do outbox para quem está com o quadro aberto (M5). */
+export const DESPACHO_DE_EVENTOS = Object.freeze({
+  /** Sem confirmação nesse prazo, outra instância pode pegar o evento. */
+  RESERVA_SEGUNDOS: 30,
+  /** A entrega é só um aviso: desiste depois disso, sem travar a fila. */
+  MAX_TENTATIVAS: 5,
+  /** Mais antigo que isso não é emitido: quem abre o quadro já lê o estado atual. */
+  VALIDADE_SEGUNDOS: 300,
+});
+
 /** O que o CRM publica no motor do Kanban (M3). */
 export const ROTULOS_DO_QUADRO = Object.freeze({
   BOARD_TYPE: 'crm_oportunidades',

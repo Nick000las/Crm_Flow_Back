@@ -29,6 +29,13 @@ export const buscarCardsBodySchema = z
   })
   .strict();
 
+export const buscarCardsPorIdsBodySchema = z
+  .object({
+    ids: z.array(referencia).min(QUADRO_ENTIDADE.MIN_LIMITE).max(QUADRO_ENTIDADE.MAX_LIMITE),
+    filtros,
+  })
+  .strict();
+
 export const resumoColunaBodySchema = z.object({ colunaRef: referencia, filtros }).strict();
 
 export const criarCardBodySchema = z

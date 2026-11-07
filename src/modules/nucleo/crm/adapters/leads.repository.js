@@ -5,9 +5,11 @@ import {
   CAMADA_2_CAMPOS,
   CAMPOS_COMERCIAIS,
   TIPOS_EVENTO_LEAD,
+  EVENTOS_PESSOA,
 } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
+import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 import { condicaoPessoaVisivel, fonteLeadsVisivel } from './crm-lead-read-model.js';
 import {
   criarOportunidadeDoLead,
@@ -295,6 +297,7 @@ export function atualizarLead(
       );
     }
     const depois = await lerLead(tx, tenantId, leadId, { inatividade, ocultos });
+    await publicarEventoDaPessoa(tx, tenantId, leadId, EVENTOS_PESSOA.ATUALIZADA);
 
     if (historico) {
       const diff = historico.montarDiff(antes, depois);
@@ -413,6 +416,12 @@ export function definirArquivamento(tenantId, leadId, arquivar, historico) {
       SET archived_at = ${valor}, updated_at = now()
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+    await publicarEventoDaPessoa(
+      tx,
+      tenantId,
+      leadId,
+      arquivar ? EVENTOS_PESSOA.ARQUIVADA : EVENTOS_PESSOA.DESARQUIVADA,
+    );
     if (historico) {
       const tipo = arquivar ? TIPOS_EVENTO_LEAD.ARQUIVADO : TIPOS_EVENTO_LEAD.DESARQUIVADO;
       await inserirEvento(tx, tenantId, leadId, { tipo, autorId: historico.autorId });
@@ -530,6 +539,7 @@ export function mesclarLeads(
     `;
     await moverOportunidades(tx, tenantId, { principalId, secundarioId }, autorId);
     const depois = await lerLead(tx, tenantId, principalId);
+    await publicarEventoDaPessoa(tx, tenantId, principalId, EVENTOS_PESSOA.MESCLADA);
     await inserirEvento(tx, tenantId, principalId, {
       tipo: TIPOS_EVENTO_LEAD.MESCLADO,
       autorId,
