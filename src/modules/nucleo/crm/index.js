@@ -8,6 +8,7 @@ import { registrarRotasLayout } from './controllers/layout.controller.js';
 import { registrarRotasListas } from './controllers/listas.controller.js';
 import { registrarRotasOportunidades } from './controllers/oportunidades.controller.js';
 import { registrarRotasPipelines } from './controllers/pipelines.controller.js';
+import { exigirVisibilidade } from './controllers/visibilidade.hook.js';
 import { registrarRotasAtividades } from './controllers/atividades.controller.js';
 import { registrarRotasDuplicidade } from './controllers/duplicidade.controller.js';
 import { registrarRotasRegras } from './controllers/regras.controller.js';
@@ -19,6 +20,7 @@ import { registrarRotasScore } from './controllers/score.controller.js';
 import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { provedorDePessoa } from './services/pessoa-entidade.service.js';
+import { provedorComercial, provedorDeOportunidade } from './services/quadro-comercial.service.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
 
 /** @type {import('#core/types/module.js').Module} */
@@ -27,10 +29,13 @@ export const crmModule = {
   name: 'CRM de Vendas',
   featureFlags: Object.values(CRM_FEATURES),
   reconciliar: reconciliarTenant,
-  entidades: [provedorDePessoa],
+  entidades: [provedorDePessoa, provedorDeOportunidade],
+  quadros: [provedorComercial],
   // Autenticação e módulo contratado já são aplicados por `#api/app.js`
   // a todo módulo, antes destas rotas.
   async registerRoutes(app) {
+    // Antes das rotas: hook só vale para as registradas depois dele.
+    app.addHook('preHandler', exigirVisibilidade);
     registrarRotasLeads(app);
     registrarRotasDefinicoes(app);
     registrarRotasViews(app);

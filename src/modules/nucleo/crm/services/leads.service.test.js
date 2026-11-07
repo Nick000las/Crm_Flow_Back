@@ -221,6 +221,7 @@ describe('registrarNovoLead', () => {
       expect.objectContaining({ customFields: { [ID_PRIORIDADE]: 'alta' } }),
       { autorId: null }, // evento "criado" do histórico (M6)
       expect.any(Function), // a oportunidade que nasce com o lead
+      undefined, // pelo formulário, no pipeline padrão
     );
   });
 });
@@ -286,7 +287,7 @@ describe('pesquisarLeads', () => {
     // 1ª condição é a situação (M5); o filtro vem depois.
     expect(condicoes[0].sql).toContain('l.deleted_at IS NULL');
     expect(condicoes[1].sql).toContain('l.empresa ILIKE');
-    expect(paginacao).toEqual({ limite: TAMANHO, offset: TAMANHO, inatividade: null });
+    expect(paginacao).toEqual({ limite: TAMANHO, offset: TAMANHO, inatividade: null, ocultos: [] });
     expect(resultado).toMatchObject({ total: TOTAL, pagina: PAGINA, tamanho: TAMANHO });
     expect(resultado.itens[0]).not.toHaveProperty('cpf');
     expect(resultado.itens[0].empresa).toBe('ACME');
@@ -862,11 +863,12 @@ describe('lead esfriando (M9)', () => {
     await buscarLeadFormatado('tenant-1', 'lead-1');
     expect(buscarLeadPorId).toHaveBeenCalledWith('tenant-1', 'lead-1', {
       inatividade: expect.any(Date),
+      ocultos: [],
     });
 
     atualizarLead.mockResolvedValue({ id: 'lead-1', nome: 'Ana', telefone: null });
     await atualizarLeadExistente('tenant-1', 'lead-1', { nome: 'Ana B' });
-    expect(atualizarLead.mock.calls[0][4]).toEqual({ inatividade: expect.any(Date) });
+    expect(atualizarLead.mock.calls[0][4]).toMatchObject({ inatividade: expect.any(Date) });
   });
 });
 

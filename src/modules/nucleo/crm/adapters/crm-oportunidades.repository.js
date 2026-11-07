@@ -198,16 +198,17 @@ export function buscarOportunidade(tenantId, id, { incluirExcluidas = false } = 
 /**
  * @param {string} tenantId
  * @param {string} leadId
+ * @param {{ daLixeira?: boolean }} [opcoes]  `true`: só as excluídas, sem as outras
  * @returns {Promise<LinhaOportunidade[]>} mais nova primeiro
  */
-export function buscarOportunidadesDaPessoa(tenantId, leadId) {
+export function buscarOportunidadesDaPessoa(tenantId, leadId, { daLixeira = false } = {}) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
       SELECT d.*, d.id::text, d.lead_id::text, d.pipeline_id::text
       FROM modulo_crm.crm_deal d
       WHERE d.tenant_id = ${tenantId}::uuid AND d.lead_id = ${leadId}::uuid
-        AND d.deleted_at IS NULL
+        AND (d.deleted_at IS NOT NULL) = ${daLixeira}
       ORDER BY d.created_at DESC, d.id DESC
     `,
   );
@@ -261,11 +262,14 @@ async function inserirOportunidade(tx, tenantId, lead, pipelineId, nova, opcoes)
  * @param {{ id: string, usuario_responsavel_id: string | null }} lead
  * @param {ComercialDoLead['nova']} montar
  * @param {string | null} autorId
+ * @param {string} [pipelineId]  sem ele, o padrão
  */
-export async function criarOportunidadeDoLead(tx, tenantId, lead, montar, autorId) {
-  const [padrao] = await tx.$queryRaw`SELECT ${pipelinePadraoSql(tenantId)}::text AS id`;
-  const opcoes = padrao.id ? await statusDoPipeline(tx, tenantId, padrao.id) : [];
-  return inserirOportunidade(tx, tenantId, lead, padrao.id, montar(opcoes), { autorId });
+export async function criarOportunidadeDoLead(tx, tenantId, lead, montar, autorId, pipelineId) {
+  const [destino] = await tx.$queryRaw`
+    SELECT COALESCE(${pipelineId ?? null}::uuid, ${pipelinePadraoSql(tenantId)})::text AS id
+  `;
+  const opcoes = destino.id ? await statusDoPipeline(tx, tenantId, destino.id) : [];
+  return inserirOportunidade(tx, tenantId, lead, destino.id, montar(opcoes), { autorId });
 }
 
 /**
@@ -278,13 +282,14 @@ export async function criarOportunidadeDoLead(tx, tenantId, lead, montar, autorI
  * @param {{ id: string, usuario_responsavel_id: string | null, principal_deal_id: string | null }} lead
  * @param {ComercialDoLead} comercial
  * @param {{ autorId: string | null, contaInteracao: boolean }} opcoes
+ * @returns {Promise<string | null>} o pipeline da oportunidade alterada, se houve alteração
  */
 export async function gravarComercialDoLead(tx, tenantId, lead, comercial, opcoes) {
   const { autorId, contaInteracao } = opcoes;
   if (!lead.principal_deal_id) {
-    if (!comercial.exigeOportunidade) return;
-    await criarOportunidadeDoLead(tx, tenantId, lead, comercial.nova, autorId);
-    return;
+    if (!comercial.exigeOportunidade) return null;
+    const criada = await criarOportunidadeDoLead(tx, tenantId, lead, comercial.nova, autorId);
+    return criada.pipeline_id;
   }
   const [deal] = await tx.$queryRaw`
     SELECT *, id::text, lead_id::text, pipeline_id::text FROM modulo_crm.crm_deal
@@ -292,13 +297,14 @@ export async function gravarComercialDoLead(tx, tenantId, lead, comercial, opcoe
     FOR UPDATE
   `;
   const plano = comercial.planejar(deal, await statusDoPipeline(tx, tenantId, deal.pipeline_id));
-  if (!plano) return;
+  if (!plano) return null;
   await aplicarPlano(tx, tenantId, deal, plano, {
     responsavelDaPessoa: lead.usuario_responsavel_id,
     autorId,
     contaInteracao,
     comHistorico: false,
   });
+  return deal.pipeline_id;
 }
 
 /**

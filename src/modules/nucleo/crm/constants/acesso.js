@@ -6,6 +6,9 @@ export const MODULO_CRM = 'crm';
 /** `tipo` da pessoa em `Module.entidades`: a referência usada por outros módulos. */
 export const ENTIDADE_PESSOA = 'pessoa';
 
+/** Id de rota (uuid), para conferências que rodam antes da validação da rota. */
+export const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Papéis que podem mexer na configuração do CRM (campos customizados,
  * visibilidade da Camada 2) e em import/export. OPERADOR fica com o CRUD de
@@ -33,4 +36,5 @@ export const CRM_FEATURES = Object.freeze({
   SCORE: 'crm.score',
   LGPD: 'crm.lgpd',
   TIMELINE: 'crm.timeline',
+  QUADRO_COMERCIAL: 'crm.quadro_comercial',
 });

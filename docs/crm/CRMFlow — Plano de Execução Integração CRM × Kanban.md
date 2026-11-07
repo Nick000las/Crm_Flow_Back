@@ -217,12 +217,12 @@ O CRM implementa o contrato do M2: cada pipeline vira um quadro de pipeline, e c
 
 ### Aceite
 
-- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário.
-- [ ] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
-- [ ] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban.
-- [ ] Venda ganha gera card no quadro de atendimento (com a auto-criação ligada) e não gera com ela desligada.
-- [ ] OPERADOR sem acesso a Valor não recebe valor nem soma.
-- [ ] Nenhuma tabela do Kanban guarda dado pessoal do CRM.
+- [ ] Arrastar para "Perdido" sem motivo é recusado com a lista de campos e abre o formulário. _(API provada em 06/11/2026; falta a tela abrir o formulário.)_
+- [x] A oportunidade movida aparece igual na tabela, no quadro e na timeline.
+- [x] Pipeline criado pelo dono aparece como quadro sem nenhuma ação no Kanban.
+- [x] Venda ganha gera card no quadro de atendimento (com a auto-criação ligada) e não gera com ela desligada.
+- [x] OPERADOR sem acesso a Valor não recebe valor nem soma.
+- [x] Nenhuma tabela do Kanban guarda dado pessoal do CRM.
 
 ## M4 — Ordem, filtros e escala
 

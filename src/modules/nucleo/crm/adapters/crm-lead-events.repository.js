@@ -60,13 +60,13 @@ const PREDICADO_DA_CATEGORIA = Object.freeze({
  * @param {string} leadId
  * @param {{
  *   limite: number, offset: number, categorias?: string[],
- *   visiveis?: { chaves: string[], campoIds: string[] },
- * }} opcoes
+ *   visiveis?: { chaves: string[], campoIds: string[] }, ocultos?: string[],
+ * }} opcoes  `ocultos`: pipelines que quem lê não vê (D4)
  */
 export function listarEventosDoLead(
   tenantId,
   leadId,
-  { limite, offset, categorias = [], visiveis },
+  { limite, offset, categorias = [], visiveis, ocultos = [] },
 ) {
   const condicoes = [Prisma.sql`e.tenant_id = ${tenantId}::uuid AND e.lead_id = ${leadId}::uuid`];
   if (visiveis) {
@@ -78,6 +78,11 @@ export function listarEventosDoLead(
           OR (d.item->>'campo' = ${CAMPO_PERSONALIZADO_NO_DIFF} AND d.item->>'campoId' = ANY(${visiveis.campoIds}::text[]))
       )
     )`);
+  }
+  if (ocultos.length > 0) {
+    condicoes.push(
+      Prisma.sql`COALESCE(NOT (e.detalhes->>'pipelineId' = ANY(${ocultos}::text[])), true)`,
+    );
   }
   const predicados = categorias
     .map((categoria) => PREDICADO_DA_CATEGORIA[categoria])

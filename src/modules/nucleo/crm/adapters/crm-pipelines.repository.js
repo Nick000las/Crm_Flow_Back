@@ -8,7 +8,7 @@ import { getTenantClient } from '#core/db/tenantClient.js';
  *   id: string, nome: string, tipo: string, position: number,
  *   padrao: boolean, ativo: boolean, automacao_ativa: boolean,
  *   automacao_origem_id: string | null, automacao_status_inicial: string | null,
- *   automacao_regra_dono: string, automacao_dono_id: string | null,
+ *   automacao_regra_dono: string, automacao_dono_id: string | null, visivel_operador: boolean,
  * }} Pipeline
  */
 
@@ -16,7 +16,8 @@ const RETORNO_PIPELINE_SQL = Prisma.raw(
   `id::text, name AS nome, type AS tipo, position, is_default AS padrao, is_active AS ativo,
    auto_create_enabled AS automacao_ativa, auto_create_from_pipeline_id::text AS automacao_origem_id,
    auto_create_initial_status AS automacao_status_inicial,
-   auto_create_owner_rule AS automacao_regra_dono, auto_create_owner_id::text AS automacao_dono_id`,
+   auto_create_owner_rule AS automacao_regra_dono, auto_create_owner_id::text AS automacao_dono_id,
+   operator_visible AS visivel_operador`,
 );
 
 /**
@@ -136,6 +137,21 @@ function travarPipelines(tx, tenantId) {
 }
 
 /**
+ * @param {string} tenantId
+ * @returns {Promise<string[]>} ids dos pipelines ocultos para o OPERADOR (D4)
+ */
+export async function buscarPipelinesOcultos(tenantId) {
+  const linhas = await getTenantClient(
+    tenantId,
+    (tx) => tx.$queryRaw`
+      SELECT id::text FROM modulo_crm.crm_pipeline
+      WHERE tenant_id = ${tenantId}::uuid AND NOT operator_visible
+    `,
+  );
+  return linhas.map((linha) => linha.id);
+}
+
+/**
  * Oportunidades por pipeline, inclusive as arquivadas e as da lixeira.
  *
  * @param {string} tenantId
@@ -157,7 +173,7 @@ export async function contarOportunidadesPorPipeline(tenantId) {
  * @param {string} tenantId
  * @param {string} id
  * @param {{
- *   nome: string, ativo: boolean, automacaoAtiva: boolean, origemId: string | null,
+ *   nome: string, ativo: boolean, visivelOperador: boolean, automacaoAtiva: boolean, origemId: string | null,
  *   statusInicial: string | null, regraDoDono: string, donoId: string | null,
  * }} dados  o estado final, já validado pelo service
  * @returns {Promise<Pipeline | undefined>}
@@ -167,6 +183,7 @@ export function salvarPipeline(tenantId, id, dados) {
     const [salvo] = await tx.$queryRaw`
       UPDATE modulo_crm.crm_pipeline
       SET name = ${dados.nome}, is_active = ${dados.ativo},
+          operator_visible = ${dados.visivelOperador},
           auto_create_enabled = ${dados.automacaoAtiva},
           auto_create_from_pipeline_id = ${dados.origemId}::uuid,
           auto_create_initial_status = ${dados.statusInicial},

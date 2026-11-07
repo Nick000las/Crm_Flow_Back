@@ -7,6 +7,9 @@ import { identificadorDoLayout } from './layout.service.js';
 import { obterSchemaDoPapel } from './permissoes.service.js';
 import { provedorDePessoa, tituloDaPessoa } from './pessoa-entidade.service.js';
 
+vi.mock('./visibilidade-pipeline.service.js', () => ({
+  pessoasVisiveis: vi.fn(async (_tenantId, ids) => new Set(ids)),
+}));
 vi.mock('../adapters/crm-pessoa-entidade.repository.js', () => ({
   buscarPessoasPorIds: vi.fn(),
   buscarSituacaoDasPessoas: vi.fn(),

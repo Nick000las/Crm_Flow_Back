@@ -17,7 +17,7 @@ import {
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
 import { atualizarLead, buscarLeadPorId, criarLead } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
-import { CAMPOS_SISTEMA, TIPOS_EVENTO_LEAD } from '../constants.js';
+import { CAMPOS_SISTEMA, CATEGORIAS_STATUS, TIPOS_EVENTO_LEAD } from '../constants.js';
 import {
   EVENTOS_OPORTUNIDADE,
   SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE,
@@ -37,6 +37,7 @@ import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.servi
 import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 import { validarRegras } from './regras-campos.service.js';
 import { recalcularScoreDosLeads } from './score.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: a única porta para mudar uma oportunidade (M2.5, F3). Ficha,
@@ -121,18 +122,62 @@ function oportunidadeParaOPapel(linha, { campos }) {
 
 /**
  * Cria o lead com a oportunidade dele (decisão F-1). Os campos comerciais vão
- * para ela; a resposta de `/crm/leads` continua igual.
+ * para ela; a resposta de `/crm/leads` continua igual. Quem cria pelo quadro
+ * escolhe pipeline e status em `destino`, e `conferir` aplica as regras com a
+ * opção daquele pipeline, dentro da transação.
  *
  * @param {string} tenantId
  * @param {Record<string, any>} dados
  * @param {Parameters<typeof criarLead>[2]} historico
+ * @param {{ pipelineId?: string, status?: string, conferir?: (opcao: OpcaoDeStatus, opcoes: OpcaoDeStatus[]) => void }} [destino]
  */
-export async function criarLeadComOportunidade(tenantId, dados, historico) {
+export async function criarLeadComOportunidade(tenantId, dados, historico, destino = {}) {
   const { comerciais, contato } = separarComerciais(dados);
   validarComerciais(comerciais);
-  return criarLead(tenantId, contato, historico, (opcoes) =>
-    novaOportunidadeDoLead(opcoes, comerciais),
+  const completos = { ...comerciais, ...(destino.status && { status: destino.status }) };
+  return criarLead(
+    tenantId,
+    contato,
+    historico,
+    (opcoes) => {
+      const nova = novaOportunidadeDoLead(opcoes, completos);
+      const opcao = opcoes.find((item) => item.key === nova.status);
+      destino.conferir?.(/** @type {OpcaoDeStatus} */ (opcao), opcoes);
+      return nova;
+    },
+    destino.pipelineId,
   );
+}
+
+/**
+ * Regras (M8) de uma pessoa ainda sem linha: no formato da API, com a categoria
+ * da opção do pipeline certo.
+ *
+ * @param {import('./regras-campos.service.js').Regra[]} regras
+ * @param {Record<string, any>} pessoa  formato da API
+ * @param {OpcaoDeStatus} opcao
+ * @param {OpcaoDeStatus[]} opcoes
+ */
+export function garantirRegrasDaPessoaNova(regras, pessoa, opcao, opcoes) {
+  lancarErrosDasRegras(
+    validarRegras(
+      regras,
+      { ...pessoa, status: opcao.key },
+      {
+        categoriaDoStatus: opcao.category,
+        labelDoStatus: Object.fromEntries(opcoes.map((item) => [item.key, item.label])),
+      },
+    ),
+  );
+}
+
+/** @param {{ campo: string, mensagem: string }[]} erros */
+function lancarErrosDasRegras(erros) {
+  if (erros.length > 0) {
+    throw erroCamposObrigatorios(
+      Object.fromEntries(erros.map(({ campo, mensagem }) => [campo, mensagem])),
+    );
+  }
 }
 
 /**
@@ -143,9 +188,15 @@ export async function criarLeadComOportunidade(tenantId, dados, historico) {
  * @param {string} leadId
  * @param {Record<string, any>} dados
  * @param {Parameters<typeof atualizarLead>[3]} historico
- * @param {{ inatividade?: Date | null }} [opcoes]
+ * @param {Parameters<typeof atualizarLead>[4]} [opcoes]
  */
-export async function atualizarLeadComOportunidade(tenantId, leadId, dados, historico, opcoes) {
+export async function atualizarLeadComOportunidade(
+  tenantId,
+  leadId,
+  dados,
+  historico,
+  opcoes = {},
+) {
   const { comerciais, contato } = separarComerciais(dados);
   validarComerciais(comerciais);
   const exigeOportunidade = Object.keys(comerciais).length > 0;
@@ -155,8 +206,19 @@ export async function atualizarLeadComOportunidade(tenantId, leadId, dados, hist
       ? {
           exigeOportunidade,
           nova: (status) => novaOportunidadeDoLead(status, comerciais),
-          planejar: (deal, status) =>
-            planejarEdicaoDoLead(deal, status, { ...comerciais, usuarioResponsavelId }, new Date()),
+          planejar: (deal, status) => {
+            // D4: o OPERADOR edita o contato, mas não alcança uma principal oculta.
+            if (opcoes.ocultos?.includes(deal.pipeline_id)) {
+              if (!exigeOportunidade) return null;
+              throw erroDeConflito('oportunidade', 'A oportunidade desta pessoa não está visível');
+            }
+            return planejarEdicaoDoLead(
+              deal,
+              status,
+              { ...comerciais, usuarioResponsavelId },
+              new Date(),
+            );
+          },
         }
       : undefined;
   return atualizarLead(tenantId, leadId, contato, historico, { ...opcoes, oportunidade });
@@ -168,31 +230,36 @@ export async function atualizarLeadComOportunidade(tenantId, leadId, dados, hist
  *
  * @param {import('./field-schema.service.js').SchemaCampos} schema
  * @param {import('./regras-campos.service.js').Regra[]} regras
- * @param {Record<string, any>} lead
- * @param {Record<string, unknown>} comerciais
+ * @param {Record<string, any>} lead  a linha de `leads`, só com o contato
+ * @param {Record<string, unknown>} comerciais  todos os da oportunidade: a pessoa não os tem
  * @param {OpcaoDeStatus} opcao
  * @param {OpcaoDeStatus[]} opcoes
  */
 function garantirRegras(schema, regras, lead, comerciais, opcao, opcoes) {
   if (regras.length === 0) return;
-  const erros = validarRegras(
-    regras,
-    { ...leadParaApi(lead, schema), ...comerciais },
-    {
-      categoriaDoStatus: opcao.category,
-      labelDoStatus: Object.fromEntries(opcoes.map((item) => [item.key, item.label])),
-    },
+  lancarErrosDasRegras(
+    validarRegras(
+      regras,
+      { ...leadParaApi(lead, schema), ...comerciais },
+      {
+        categoriaDoStatus: opcao.category,
+        labelDoStatus: Object.fromEntries(opcoes.map((item) => [item.key, item.label])),
+      },
+    ),
   );
-  if (erros.length > 0) {
-    throw erroCamposObrigatorios(
-      Object.fromEntries(erros.map(({ campo, mensagem }) => [campo, mensagem])),
-    );
-  }
 }
 
-/** @param {string} tenantId @param {string} [pipelineId] */
-async function pipelineDeDestino(tenantId, pipelineId) {
-  const pipelines = await buscarPipelines(tenantId);
+/**
+ * @param {string} tenantId
+ * @param {string} [pipelineId]
+ * @param {string | undefined} papel  pipeline oculto para o papel não é destino (D4)
+ */
+async function pipelineDeDestino(tenantId, pipelineId, papel) {
+  const [todos, ocultos] = await Promise.all([
+    buscarPipelines(tenantId),
+    pipelinesOcultos(tenantId, papel),
+  ]);
+  const pipelines = todos.filter((item) => !ocultos.includes(item.id));
   const pipeline = pipelineId
     ? pipelines.find((item) => item.id === pipelineId)
     : pipelines.find((item) => item.padrao);
@@ -224,7 +291,7 @@ async function validarResponsavel(tenantId, usuarioId) {
  */
 export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { papel } = {}) {
   validarComerciais(dados);
-  const pipeline = await pipelineDeDestino(tenantId, dados.pipelineId);
+  const pipeline = await pipelineDeDestino(tenantId, dados.pipelineId, papel);
   const [schema, opcoes] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
     buscarStatusDoPipeline(tenantId, pipeline.id),
@@ -261,7 +328,14 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
         schema,
         regras,
         lead,
-        { status: opcao.key, valor: dados.valor ?? null, motivoPerda: dados.motivoPerda ?? null },
+        {
+          status: opcao.key,
+          valor: dados.valor ?? null,
+          motivoPerda: dados.motivoPerda ?? null,
+          probabilidadeFechamento: dados.probabilidadeFechamento ?? null,
+          dataPrevistaFechamento: dados.dataPrevistaFechamento ?? null,
+          dataConversao: opcao.category === CATEGORIAS_STATUS.GANHO ? new Date() : null,
+        },
         opcao,
         opcoes,
       );
@@ -311,6 +385,9 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
           status: opcao.key,
           motivoPerda: plano.mudancas.lost_reason,
           valor: deal.amount === null ? null : Number(deal.amount),
+          probabilidadeFechamento: deal.probability_override,
+          dataPrevistaFechamento: deal.expected_close_date,
+          dataConversao: plano.mudancas.won_at,
         },
         opcao,
         opcoes,
@@ -409,8 +486,10 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
  * @param {string} id
  * @param {(deal: Record<string, any>) => { mudancas: Record<string, unknown>, historico: string, evento: string }} planejar
  * @param {string | null | undefined} usuarioId
+ * @param {Acesso} acesso
  */
-async function mudarSituacao(tenantId, id, planejar, usuarioId) {
+async function mudarSituacao(tenantId, id, planejar, usuarioId, { papel }) {
+  const schema = await obterSchemaDoPapel(tenantId, papel);
   const depois = await alterarOportunidade(
     tenantId,
     id,
@@ -422,7 +501,7 @@ async function mudarSituacao(tenantId, id, planejar, usuarioId) {
     { autorId: usuarioId ?? null },
   );
   if (!depois) throw naoEncontrada();
-  return formatarOportunidade(depois);
+  return oportunidadeParaOPapel(depois, schema);
 }
 
 /**
@@ -430,8 +509,9 @@ async function mudarSituacao(tenantId, id, planejar, usuarioId) {
  * @param {string} id
  * @param {boolean} arquivar
  * @param {string | null | undefined} usuarioId
+ * @param {Acesso} [acesso]
  */
-export function definirArquivamentoDaOportunidade(tenantId, id, arquivar, usuarioId) {
+export function definirArquivamentoDaOportunidade(tenantId, id, arquivar, usuarioId, acesso = {}) {
   return mudarSituacao(
     tenantId,
     id,
@@ -446,6 +526,7 @@ export function definirArquivamentoDaOportunidade(tenantId, id, arquivar, usuari
       };
     },
     usuarioId,
+    acesso,
   );
 }
 
@@ -454,8 +535,9 @@ export function definirArquivamentoDaOportunidade(tenantId, id, arquivar, usuari
  * @param {string} id
  * @param {boolean} excluir  `false` restaura
  * @param {string | null | undefined} usuarioId
+ * @param {Acesso} [acesso]
  */
-export function definirLixeiraDaOportunidade(tenantId, id, excluir, usuarioId) {
+export function definirLixeiraDaOportunidade(tenantId, id, excluir, usuarioId, acesso = {}) {
   return mudarSituacao(
     tenantId,
     id,
@@ -467,20 +549,28 @@ export function definirLixeiraDaOportunidade(tenantId, id, excluir, usuarioId) {
       evento: excluir ? EVENTOS_OPORTUNIDADE.EXCLUIDA : EVENTOS_OPORTUNIDADE.RESTAURADA,
     }),
     usuarioId,
+    acesso,
   );
 }
 
 /**
  * @param {string} tenantId
  * @param {string} leadId
- * @param {Acesso} [acesso]
+ * @param {Acesso & { daLixeira?: boolean }} [opcoes]  `daLixeira`: só as excluídas
  */
-export async function listarOportunidadesDaPessoa(tenantId, leadId, { papel } = {}) {
-  const [lead, schema, linhas] = await Promise.all([
+export async function listarOportunidadesDaPessoa(
+  tenantId,
+  leadId,
+  { papel, daLixeira = false } = {},
+) {
+  const [lead, schema, linhas, ocultos] = await Promise.all([
     buscarLeadPorId(tenantId, leadId),
     obterSchemaDoPapel(tenantId, papel),
-    buscarOportunidadesDaPessoa(tenantId, leadId),
+    buscarOportunidadesDaPessoa(tenantId, leadId, { daLixeira }),
+    pipelinesOcultos(tenantId, papel),
   ]);
   if (!lead) throw erroNaoEncontrado('Lead não encontrado');
-  return linhas.map((linha) => oportunidadeParaOPapel(linha, schema));
+  return linhas
+    .filter((linha) => !ocultos.includes(linha.pipeline_id))
+    .map((linha) => oportunidadeParaOPapel(linha, schema));
 }

@@ -14,6 +14,7 @@ import {
   TIPOS_CAMPO,
 } from '../constants.js';
 import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
+import { condicaoPessoaVisivel } from '../adapters/crm-lead-read-model.js';
 import {
   chaveDocumento,
   normalizarHora,
@@ -134,9 +135,12 @@ export function montarCondicoes(
     comArquivo = true,
     agora,
     contato = { email: true, telefone: true },
+    pipelinesOcultos = [],
   } = {},
 ) {
   const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
+  // D4: condição central, vale para busca, total e exportação.
+  if (pipelinesOcultos.length > 0) condicoes.push(condicaoPessoaVisivel(pipelinesOcultos));
 
   if (filtro.busca) {
     const padrao = `%${escaparLike(filtro.busca)}%`;

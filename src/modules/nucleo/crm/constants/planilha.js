@@ -1,11 +1,10 @@
 /**
  * Colunas de planilha que não são "campos" do formulário (não estão em
- * `GET /crm/leads/fields`) mas fazem sentido em import/export: `valor` e
- * o estágio do funil pelo nome (no import, casado contra o nome dos status
+ * `GET /crm/leads/fields`) mas fazem sentido em import/export: o estágio do
+ * funil pelo nome (no import, casado contra o nome dos status
  * ativos do pipeline padrão).
  */
 export const CAMPOS_EXTRAS_PLANILHA = Object.freeze([
-  { chave: 'valor', label: 'Valor', tipo: 'numero', obrigatorio: false },
   { chave: 'funilEstagio', label: 'Estágio do funil', tipo: 'texto', obrigatorio: false },
   // Pelo nome do usuário ativo (M12): linha com responsável não entra na distribuição automática.
   { chave: 'usuarioResponsavelId', label: 'Responsável', tipo: 'usuario', obrigatorio: false },

@@ -81,7 +81,6 @@ export const CAMPO_RESPONSAVEL_NO_DIFF = 'usuarioResponsavelId';
  * A referência do layout (M4) é a mesma de `REFERENCIAS_FIXAS`.
  */
 export const PROPRIEDADES_NO_HISTORICO = Object.freeze([
-  { campo: 'valor', coluna: 'valor', ref: 'lead.valor' },
   { campo: 'usuarioResponsavelId', coluna: 'usuario_responsavel_id', ref: 'lead.responsavel' },
 ]);
 

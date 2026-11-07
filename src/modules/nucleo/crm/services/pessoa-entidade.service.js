@@ -6,6 +6,7 @@ import { ENTIDADE_PESSOA } from '../constants.js';
 import { customFieldsParaApi } from './field-schema.service.js';
 import { identificadorDoLayout } from './layout.service.js';
 import { identificadorVisivel, obterSchemaDoPapel } from './permissoes.service.js';
+import { pessoasVisiveis } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: a pessoa como entidade que outro módulo referencia sem copiar dado
@@ -41,7 +42,13 @@ export function tituloDaPessoa(lead, identificador, schema) {
  */
 async function descreverPessoas({ tenantId, role }, ids) {
   const situacoes = await buscarSituacaoDasPessoas(tenantId, ids);
-  const visiveis = situacoes.filter((situacao) => !situacao.anonimizado && !situacao.excluido);
+  const ativas = situacoes.filter((situacao) => !situacao.anonimizado && !situacao.excluido);
+  const permitidas = await pessoasVisiveis(
+    tenantId,
+    ativas.map((situacao) => situacao.atual),
+    role,
+  );
+  const visiveis = ativas.filter((situacao) => permitidas.has(situacao.atual));
   if (visiveis.length === 0) {
     return [];
   }

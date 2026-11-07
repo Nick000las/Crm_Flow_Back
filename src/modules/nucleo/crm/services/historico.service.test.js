@@ -69,12 +69,12 @@ describe('diffDoLead', () => {
     expect(diffDoLead(LEAD, depois)).toEqual([
       { campo: 'status', antes: 'novo', depois: 'ganho' },
       { campo: 'tags', antes: ['vip'], depois: ['vip', 'b2b'] },
+      { campo: 'valor', antes: VALOR_ANTES, depois: VALOR_DEPOIS },
       {
         campo: 'dataConversao',
         antes: '2026-10-01T00:00:00.000Z',
         depois: '2026-10-16T00:00:00.000Z',
       },
-      { campo: 'valor', antes: VALOR_ANTES, depois: VALOR_DEPOIS },
     ]);
   });
 
@@ -116,6 +116,7 @@ describe('listarHistorico', () => {
           camada: CAMADA.CAMADA_1,
           opcoesLista: [{ key: 'ganho' }],
         },
+        { chave: 'valor', label: 'Valor', tipo: 'monetario', camada: CAMADA.CAMADA_1 },
         { chave: 'segmento', label: 'Segmento', tipo: 'texto', camada: CAMADA.CAMADA_3 },
       ],
       definicoes: [
@@ -256,7 +257,7 @@ describe('timeline (M16): funções puras', () => {
         { id: ID_EXCLUIDO, chave: 'oculto' },
       ],
     });
-    expect(visiveis.chaves).toEqual(['status', 'valor', 'usuarioResponsavelId']);
+    expect(visiveis.chaves).toEqual(['status', 'usuarioResponsavelId']);
     expect(visiveis.campoIds).toEqual([ID_SEGMENTO]);
   });
 });
