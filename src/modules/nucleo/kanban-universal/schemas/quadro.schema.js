@@ -5,6 +5,7 @@ import { QUADRO_ENTIDADE } from '../constants.js';
 // que é um `quadroRef`, uma coluna ou um filtro é o provedor.
 const referencia = z.string().trim().min(1).max(QUADRO_ENTIDADE.MAX_REFERENCIA);
 const filtros = z.record(z.unknown()).optional();
+const ordem = z.record(z.unknown()).optional();
 
 export const quadroParamsSchema = z.object({
   boardType: z.string().regex(/^[a-z0-9_]+$/),
@@ -17,6 +18,7 @@ export const buscarCardsBodySchema = z
   .object({
     colunaRef: referencia,
     filtros,
+    ordem,
     cursor: z.string().min(1).max(QUADRO_ENTIDADE.MAX_CURSOR).optional(),
     limite: z
       .number()
@@ -34,5 +36,10 @@ export const criarCardBodySchema = z
   .strict();
 
 export const moverCardBodySchema = z
-  .object({ colunaDestino: referencia, expectedUpdatedAt: z.string().datetime().optional() })
+  .object({
+    colunaDestino: referencia,
+    expectedUpdatedAt: z.string().datetime().optional(),
+    filtros,
+    campos: z.record(z.unknown()).optional(),
+  })
   .strict();

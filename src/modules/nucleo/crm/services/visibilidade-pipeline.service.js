@@ -14,12 +14,18 @@ import { buscarPessoasVisiveis } from '../adapters/leads.repository.js';
  */
 
 /**
- * @param {string} tenantId
  * @param {string | undefined} papel  sem papel (job, chamada interna): nada oculto
+ * @returns {boolean}
+ */
+export const papelComPipelinesOcultos = (papel) => papel === ROLES.OPERADOR;
+
+/**
+ * @param {string} tenantId
+ * @param {string | undefined} papel
  * @returns {Promise<string[]>} ids dos pipelines que este papel não vê
  */
 export async function pipelinesOcultos(tenantId, papel) {
-  if (papel !== ROLES.OPERADOR) return [];
+  if (!papelComPipelinesOcultos(papel)) return [];
   return buscarPipelinesOcultos(tenantId);
 }
 

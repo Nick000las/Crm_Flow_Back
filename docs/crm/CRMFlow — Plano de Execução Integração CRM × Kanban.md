@@ -242,18 +242,18 @@ Como o quadro de pipeline é a visão mais usada do CRM, busca, filtros e volume
 
 **Ordem**
 
-- **Seletor de ordenação** no quadro, com os mesmos campos ordenáveis da tabela de leads, crescente ou decrescente.
+- **Seletor de ordenação** no quadro, crescente ou decrescente: última atualização, criação, nome, valor, data prevista e probabilidade. A tabela de leads não tem ordenação escolhida; a lista foi decidida pelo dono em 6/11/2026.
 - **Padrão: última atualização, mais recente primeiro** (D2).
 - A escolha do usuário fica salva no `localStorage`, por quadro. Vale até ele trocar, limpar os dados do navegador ou usar outro dispositivo; aí volta ao padrão.
 - **Não existe ordem manual:** arrastar só serve para mudar de coluna. Nenhuma posição é gravada no servidor.
 
 **Aceite**
 
-- [ ] Quadro com 20 mil oportunidades cumpre os Core Web Vitals do Google no percentil 75 (D7): LCP ≤ 2,5 s, INP ≤ 200 ms ao arrastar e clicar, TTFB ≤ 800 ms.
-- [ ] Orçamento interno da API: primeira página de cada coluna em até 500 ms no p95 com 20 mil oportunidades.
-- [ ] Total e soma por coluna batem com a consulta direta no banco.
-- [ ] View salva na tabela produz o mesmo conjunto no quadro.
-- [ ] Arrastar com filtro ativo funciona e avisa quando o card sai do filtro.
+- [ ] Quadro com 20 mil oportunidades cumpre os Core Web Vitals do Google no percentil 75 (D7): LCP ≤ 2,5 s, INP ≤ 200 ms ao arrastar e clicar, TTFB ≤ 800 ms. _(Falta a tela no ar.)_
+- [ ] Orçamento interno da API: primeira página de cada coluna em até 500 ms no p95 com 20 mil oportunidades. _(Uma coluna por vez: p95 até 455 ms. Tela inteira contra o banco de dev: 602 ms. Falta medir com a API na região do banco.)_
+- [x] Total e soma por coluna batem com a consulta direta no banco.
+- [x] View salva na tabela produz o mesmo conjunto no quadro.
+- [ ] Arrastar com filtro ativo funciona e avisa quando o card sai do filtro. _(API provada em 06/11/2026; falta a tela mostrar o aviso.)_
 
 ## M5 — Tempo real do CRM
 
@@ -330,9 +330,8 @@ Itens decididos, mas que entram depois que os quadros de pipeline estiverem em u
 | D5  | Até 5 pipelines por tenant, incluindo Vendas e Atendimento (fixo por enquanto)                                                             | M2.5         |
 | D6  | Segunda venda com tratamento ativo: oferece juntar; por automação/importação não cria card novo e avisa no card existente                  | Depois do M5 |
 | D7  | Core Web Vitals no p75 (LCP ≤ 2,5 s, INP ≤ 200 ms, TTFB ≤ 800 ms) + API ≤ 500 ms p95 por coluna                                            | M4           |
+| D8  | Sem evento de uso para a ordenação por enquanto; a preferência fica só no `localStorage`                                                   | M4           |
 
 ### Ainda pendente
 
-| #   | Pergunta                                                                                                                                                        | Onde |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| D8  | A preferência de ordenação também deve gerar um evento de uso (analytics) para medir quais ordens a equipe prefere? O `localStorage` sozinho não permite medir. | M4   |
+Nenhuma decisão pendente.

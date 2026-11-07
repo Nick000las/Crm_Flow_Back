@@ -352,7 +352,7 @@ Passos adaptados ao código:
 - [x] Venda ganha gera card no quadro de atendimento com a auto-criação ligada, e não gera com ela desligada.
 - [x] OPERADOR sem acesso a Valor não recebe valor nem soma.
 - [x] Nenhuma tabela do Kanban guarda dado pessoal do CRM.
-- [x] Todos os gates verdes: 1015 de 1015 em 06/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
+- [x] Todos os gates verdes: 1016 de 1016 em 06/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
 - [x] 13 proteções quebradas uma a uma, todas detectadas. Duas passaram na primeira rodada: os testes foram reforçados, e uma delas revelou uma brecha real, já corrigida: o `PUT` do lead gravava evento sem o pipeline, e o histórico mostrava ao OPERADOR valor e status da principal oculta.
 
 **Achado depois da entrega:** a revisão do handoff revelou que regra sobre data prevista, probabilidade ou data de conversão recusava para sempre, porque lia esses campos da pessoa, que não os tem desde a F5. Mover e criar agora leem da oportunidade, com teste.
@@ -371,12 +371,45 @@ Passos adaptados ao código:
 
 ### M4. Ordem, filtros e escala
 
-- [ ] Reaproveitar `montarCondicoes` e as views do CRM. Ordenar só pelos campos ordenáveis da tabela.
-- [ ] Cursor por chave (campo de ordenação + `id`), não por `OFFSET`.
-- [ ] Índices definidos com `EXPLAIN ANALYZE` sobre 20 mil oportunidades em banco de dev.
-- [ ] Passar pelo desenvolvedor do Kanban. D8 segue pendente com você.
+**Decididas pelo dono em 06/11/2026:**
 
-Aceite: os 5 itens do documento.
+- **Ordem:** a tabela de leads não tem ordenação escolhida, nem no back nem no front. O quadro usa uma lista fechada: última atualização (padrão), criação, nome, valor, data prevista e probabilidade. Quem não vê o campo não ordena por ele. A tabela segue como está.
+- **Responsável no filtro:** é o da oportunidade, o mesmo que o card mostra (P13).
+- **D8:** sem evento de uso por enquanto. A preferência fica só no `localStorage`.
+- **`podeMover`** vem no próprio card.
+
+- [x] Reaproveitar `montarCondicoes` e as views do CRM, por `prepararFiltro`: um só caminho para tabela, export e quadro.
+- [x] Cursor por chave (campo de ordenação + `id`), não por `OFFSET`. Vazio fica por último nas duas direções, e o cursor vale só para a ordem em que nasceu.
+- [x] Índices definidos com `EXPLAIN ANALYZE` sobre 20 mil oportunidades: **nenhum índice novo**. A consulta da coluna mais cheia (9.600 cards) leva cerca de 10 ms com `idx_crm_deal_quadro_status`, inclusive com ordem por nome e busca. Sem migration neste marco.
+- [x] Passar pelo desenvolvedor do Kanban: o dono mandou seguir para o M4. Essa revisão não foi registrada à parte. D8 decidida.
+- [x] Arrastar com filtro: `saiuDoFiltro` no `mover`. O filtro é validado antes de gravar. O `mover` aceita `campos: { motivoPerda }`, para o formulário de campos faltantes terminar nele e receber a mesma resposta.
+- [x] Menos transações por página, porque é aí que está o custo: a lista de ocultos sai da consulta dos cards, o pipeline já traz a visibilidade, e o layout padrão fica em cache, com invalidação ao salvar. A visibilidade continua lida do banco a cada consulta.
+
+**Aceite** (provado em `controllers/quadro-comercial.db.test.js`, 42 casos, e nas medições abaixo)
+
+- [ ] Core Web Vitals no p75 com 20 mil oportunidades. **Falta a tela no ar:** LCP, INP e TTFB só se medem no front publicado.
+- [ ] API em até 500 ms no p95 por coluna. **Não fechado:** ver a medição abaixo. Uma coluna por vez passa; a abertura real da tela não passa contra o banco de dev.
+- [x] Total e soma por coluna batem com a consulta direta no banco: 10 colunas, 20 mil oportunidades, 0 divergências.
+- [x] View salva na tabela produz o mesmo conjunto no quadro. Por decisão, o comercial e o responsável são os da oportunidade, então pessoa com várias oportunidades pode diferir de propósito.
+- [ ] Arrastar com filtro ativo funciona e avisa quando o card sai do filtro. **Falta a tela:** a API move e devolve `saiuDoFiltro` (provado); mostrar o aviso é do front.
+- [x] Paginação em escala: 9.600 cards percorridos em três ordens, sem perda nem repetição.
+- [x] Todos os gates verdes: 1033 de 1033 em 07/11/2026, com banco e Redis ligados. Rodada local; o CI só valida no primeiro PR.
+- [x] 19 proteções quebradas uma a uma, todas detectadas.
+
+**Medição** em 06/11/2026, tenant SMOKE com 19.999 oportunidades, pela rota real, com RLS e autenticação, da máquina local até o Neon (29 ms por ida e volta), sem Redis:
+
+| Cenário (OPERADOR, salvo indicação)   | p50    | p95    |
+| ------------------------------------- | ------ | ------ |
+| Uma coluna por vez, sem filtro        | 343 ms | 371 ms |
+| Uma coluna por vez, pior cenário      | 351 ms | 403 ms |
+| Uma coluna por vez, pior cenário DONO | 378 ms | 455 ms |
+| Tela inteira, 1 usuário: uma página   | 375 ms | 602 ms |
+| Tela inteira, 3 usuários: uma página  | 851 ms | 989 ms |
+| Tela inteira, 5 usuários: uma página  | 1,3 s  | 1,6 s  |
+
+**Por que não fecha:** o tempo vem da rede, não do volume. Cada transação custa cerca de quatro idas e voltas, e abrir a tela de 6 colunas dispara 12 requisições ao mesmo tempo. O M4 cortou pela metade: com 5 usuários, a página caiu de 3,1 s para 1,6 s no p95. Falta medir com a API na mesma região do banco. Se não bastar, a saída é uma rota única de abertura do quadro, que muda o contrato do M2.
+
+**Handoff ao front:** instruções completas em `handoff-front-m4.md`.
 
 ### M5. Tempo real
 
@@ -404,7 +437,7 @@ Como no documento. O envio de e-mail reaproveita o `kanban.worker.js` do M6, e o
 3. M2 (feito).
 4. M6 (feito).
 5. M2.5 (feito).
-6. M3 (feito no back; falta a tela do aceite 1) → M4 → M5.
+6. M3 (feito no back; falta a tela do aceite 1) → M4 (feito no back; faltam medir a API publicada e a tela) → M5.
 7. Formulários do zero e segunda venda (D6).
 8. M7.
 

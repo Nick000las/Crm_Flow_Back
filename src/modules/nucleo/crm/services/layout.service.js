@@ -63,6 +63,7 @@ const LIMITE_DA_LISTA = Object.freeze({
 
 /** @param {string} tenantId */
 const chaveCache = (tenantId) => `crm:layout:${tenantId}`;
+const chaveDoPadrao = (tenantId) => `crm:layout-padrao:${tenantId}`;
 
 const CHAVES_DAS_FIXAS = new Set(Object.values(REFERENCIAS_FIXAS).map((fixa) => fixa.chave));
 const CHAVES_DO_SISTEMA = new Set(CAMPOS_SISTEMA.map((campo) => campo.systemKey));
@@ -90,20 +91,35 @@ function referenciaOculta(fixa, campos) {
  * @param {{ papel?: string }} [acesso]  M13: campo oculto pro papel sai do `efetivo`
  */
 export async function obterLayout(tenantId, usuarioId, acesso = {}) {
-  const [{ campos }, camposConfig, padraoSalvo, override] = await Promise.all([
+  const [{ campos }, { padrao, configurado }, override] = await Promise.all([
     obterSchemaDoPapel(tenantId, acesso.papel),
-    listarConfiguracaoCampos(tenantId),
-    buscarLayoutPadrao(tenantId),
+    padraoDoTenant(tenantId),
     buscarOverride(tenantId, usuarioId),
   ]);
-  const padrao = padraoSalvo ?? layoutInicial(camposConfig);
 
   return {
     padrao,
-    padraoConfigurado: Boolean(padraoSalvo),
+    padraoConfigurado: configurado,
     meu: override?.layout ?? null,
     efetivo: resolverLayout(mesclarLayout(padrao, override), campos),
   };
+}
+
+/**
+ * O padrão salvo, ou o inicial. Em cache: o quadro pede o layout a cada coluna,
+ * e o layout não é permissão, que `resolverLayout` aplica depois.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{ padrao: LayoutRefs, configurado: boolean }>}
+ */
+function padraoDoTenant(tenantId) {
+  return lerComCache(chaveDoPadrao(tenantId), TTL_CACHE_SEGUNDOS, async () => {
+    const salvo = await buscarLayoutPadrao(tenantId);
+    return {
+      padrao: salvo ?? layoutInicial(await listarConfiguracaoCampos(tenantId)),
+      configurado: Boolean(salvo),
+    };
+  });
 }
 
 /**
@@ -116,7 +132,7 @@ export async function obterLayout(tenantId, usuarioId, acesso = {}) {
 export async function salvarPadrao(tenantId, usuarioId, layout) {
   validarLayout(layout, await catalogo(tenantId));
   await salvarLayoutPadrao(tenantId, layout);
-  await cacheDel(chaveCache(tenantId));
+  await Promise.all([cacheDel(chaveCache(tenantId)), cacheDel(chaveDoPadrao(tenantId))]);
   return obterLayout(tenantId, usuarioId);
 }
 

@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '#api/app.js';
@@ -133,6 +134,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.ARQUIVO },
         { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.ATIVIDADES },
         { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.MASSA },
+        { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.LAYOUT },
         { moduleKey: 'kanban_universal', featureKey: FLAG_KANBAN },
       ].map((linha) => ({ tenantId, ...linha })),
     });
@@ -524,6 +526,337 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         SELECT count(*)::int AS total FROM modulo_crm.leads WHERE email = ${email}
       `;
       expect(total).toBe(0);
+    });
+  });
+
+  describe('filtros e ordem (M4)', () => {
+    const buscar = (coluna, filtros, ordem, cursor, limite = LIMITE) =>
+      cards(vendas.id, coluna, undefined, { filtros, ordem, cursor, limite });
+    const todasAsPaginas = async (coluna, filtros, ordem) => {
+      const vistos = [];
+      let cursor;
+      do {
+        const pagina = await buscar(coluna, filtros, ordem, cursor, 1);
+        vistos.push(...pagina.itens);
+        cursor = pagina.proximoCursor ?? undefined;
+      } while (cursor);
+      return vistos;
+    };
+
+    it('total e soma batem com a consulta direta, sobre o filtro inteiro', async () => {
+      const marca = randomUUID();
+      for (const valor of [VALOR, OUTRO_VALOR, TERCEIRO_VALOR]) {
+        await novoLead({ nome: `Soma ${marca}`, valor });
+      }
+      await novoLead({ nome: `Fora ${marca}` });
+      const filtros = { busca: `Soma ${marca}`, valorMin: OUTRO_VALOR + 1 };
+
+      const pagina = await buscar('novo', filtros, undefined, undefined, 1);
+      const resumo = await ok(
+        chamar('POST', `${quadro(vendas.id)}/resumo`, { colunaRef: 'novo', filtros }),
+      );
+      const [direto] = await prisma.$queryRaw`
+        SELECT count(*)::int AS total, sum(d.amount)::float AS soma
+        FROM modulo_crm.crm_deal d
+        JOIN modulo_crm.leads l ON l.id = d.lead_id AND l.tenant_id = d.tenant_id
+        WHERE d.tenant_id = ${tenantId}::uuid AND d.pipeline_id = ${vendas.id}::uuid
+          AND d.status = 'novo' AND l.nome = ${`Soma ${marca}`} AND d.amount > ${OUTRO_VALOR}
+      `;
+
+      expect(pagina.itens).toHaveLength(1);
+      expect(resumo).toEqual({ total: direto.total, soma: direto.soma });
+      expect(resumo.total).toBe(DUAS);
+    });
+
+    it('view salva na tabela produz o mesmo conjunto no quadro', async () => {
+      const marca = randomUUID();
+      const dentro = await novoLead({ nome: `View ${marca}`, valor: VALOR });
+      await novoLead({ nome: `View ${marca}`, valor: OUTRO_VALOR });
+      const view = await ok(
+        chamar('POST', '/crm/filter-views', {
+          nome: `View ${marca}`,
+          filtros: { busca: marca, valorMin: VALOR, situacao: 'ativos' },
+        }),
+        HTTP_STATUS.CREATED,
+      );
+
+      const tabela = await ok(
+        chamar('POST', '/crm/leads/search', {
+          ...view.filtros,
+          paginacao: { pagina: 1, tamanho: LIMITE },
+        }),
+      );
+      const noQuadro = await buscar('novo', view.filtros);
+
+      expect(tabela.itens.map((lead) => lead.id)).toEqual([dentro]);
+      expect(noQuadro.itens.map((card) => card.leadId)).toEqual([dentro]);
+      await ok(chamar('DELETE', `/crm/filter-views/${view.id}`));
+
+      // O quadro só tem cards ativos: a situação da view não vale aqui.
+      const naLixeira = await buscar('novo', { busca: marca, situacao: 'lixeira' });
+      expect(naLixeira.itens).toHaveLength(DUAS);
+    });
+
+    it('busca por telefone e e-mail, no servidor', async () => {
+      const marca = randomUUID();
+      const email = `${marca}@smoke.test`;
+      const leadId = await novoLead({ nome: 'Contato', email, telefone: '11987654321' });
+
+      const porEmail = await buscar('novo', { busca: email });
+      expect(porEmail.itens.map((card) => card.leadId)).toEqual([leadId]);
+      const porTelefone = await buscar('novo', { busca: '(11) 98765-4321' });
+      expect(porTelefone.itens.map((card) => card.leadId)).toContain(leadId);
+    });
+
+    it('filtro comercial olha a própria oportunidade, não a principal', async () => {
+      const marca = randomUUID();
+      const leadId = await novoLead({ nome: `Segunda ${marca}`, valor: VALOR });
+      await ok(
+        chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
+          pipelineId: vendas.id,
+          status: 'proposta',
+          valor: OUTRO_VALOR,
+        }),
+        HTTP_STATUS.CREATED,
+      );
+
+      const filtros = { busca: marca, valorMax: OUTRO_VALOR };
+      expect((await buscar('proposta', filtros)).itens).toHaveLength(1);
+      expect((await buscar('novo', filtros)).itens).toHaveLength(0);
+    });
+
+    it('responsável é o da oportunidade', async () => {
+      const marca = randomUUID();
+      const leadId = await novoLead({ nome: `Dono ${marca}`, usuarioResponsavelId: donoId });
+      await ok(
+        chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
+          pipelineId: atendimento.id,
+          responsavelId: operadorId,
+        }),
+        HTTP_STATUS.CREATED,
+      );
+      const [{ ref }] = await ok(chamar('GET', `${quadro(atendimento.id)}/colunas`));
+      const buscarDe = (usuarioResponsavelId) =>
+        cards(atendimento.id, ref, undefined, {
+          filtros: { busca: marca, usuarioResponsavelId },
+        });
+
+      expect((await buscarDe(operadorId)).itens).toHaveLength(1);
+      expect((await buscarDe(donoId)).itens).toHaveLength(0);
+    });
+
+    it.each([
+      ['asc', [OUTRO_VALOR, VALOR, null]],
+      ['desc', [VALOR, OUTRO_VALOR, null]],
+    ])('ordena por valor %s, com vazio por último, sem repetir', async (direcao, esperado) => {
+      const marca = randomUUID();
+      const porLead = new Map();
+      for (const valor of [VALOR, null, OUTRO_VALOR, OUTRO_VALOR]) {
+        const campos = valor === null ? {} : { valor };
+        porLead.set(await novoLead({ nome: `Ordem ${marca}`, ...campos }), valor);
+      }
+
+      const vistos = await todasAsPaginas('novo', { busca: marca }, { campo: 'valor', direcao });
+
+      expect(new Set(vistos.map((card) => card.entidadeId)).size).toBe(porLead.size);
+      const valores = vistos.map((card) => porLead.get(card.leadId));
+      expect([...new Set(valores)]).toEqual(esperado);
+    });
+
+    it('ordena por nome sem diferenciar maiúsculas', async () => {
+      const marca = randomUUID();
+      const bia = await novoLead({ nome: `bia ${marca}` });
+      const ana = await novoLead({ nome: `Ana ${marca}` });
+      const caio = await novoLead({ nome: `Caio ${marca}` });
+
+      const vistos = await todasAsPaginas(
+        'novo',
+        { busca: marca },
+        { campo: 'nome', direcao: 'asc' },
+      );
+
+      expect(vistos.map((card) => card.leadId)).toEqual([ana, bia, caio]);
+    });
+
+    it('sem ordem, a última atualização vem primeiro', async () => {
+      const marca = randomUUID();
+      const antigo = await novoLead({ nome: `Recente ${marca}` });
+      await novoLead({ nome: `Recente ${marca}` });
+      const [deal] = await oportunidades(antigo);
+      await ok(
+        chamar('PUT', `/crm/oportunidades/${deal.id}`, {
+          titulo: 'Agora',
+          expectedUpdatedAt: deal.atualizadaEm,
+        }),
+      );
+
+      const { itens } = await buscar('novo', { busca: marca });
+      expect(itens[0].leadId).toBe(antigo);
+    });
+
+    it('cursor vale só para a ordem em que nasceu, e adulterado é 400', async () => {
+      const marca = randomUUID();
+      await novoLead({ nome: `Cursor ${marca}`, valor: VALOR });
+      await novoLead({ nome: `Cursor ${marca}`, valor: OUTRO_VALOR });
+      const ordem = { campo: 'valor', direcao: 'asc' };
+      const { proximoCursor } = await buscar('novo', { busca: marca }, ordem, undefined, 1);
+      const adulterado = (valor) =>
+        Buffer.from(JSON.stringify({ o: 'valor:asc', v: valor, id: randomUUID() })).toString(
+          'base64url',
+        );
+
+      for (const [cursor, pedido] of [
+        [proximoCursor, { campo: 'nome', direcao: 'asc' }],
+        ['nao-e-cursor', ordem],
+        [adulterado('1; DROP TABLE'), ordem],
+      ]) {
+        const resposta = await chamar('POST', `${quadro(vendas.id)}/cards/busca`, {
+          colunaRef: 'novo',
+          ordem: pedido,
+          cursor,
+        });
+        expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      }
+    });
+
+    it('campo fora da lista é 400, e quem não vê Valor não ordena nem filtra por ele', async () => {
+      const foraDaLista = await chamar('POST', `${quadro(vendas.id)}/cards/busca`, {
+        colunaRef: 'novo',
+        ordem: { campo: 'email' },
+      });
+      expect(foraDaLista.status).toBe(HTTP_STATUS.BAD_REQUEST);
+
+      await ligarPermissao({ valor: 'hidden' });
+      for (const pedido of [{ ordem: { campo: 'valor' } }, { filtros: { valorMin: 1 } }]) {
+        const resposta = await chamar(
+          'POST',
+          `${quadro(vendas.id)}/cards/busca`,
+          { colunaRef: 'novo', ...pedido },
+          operador,
+        );
+        expect(resposta.status, JSON.stringify(pedido)).toBe(HTTP_STATUS.BAD_REQUEST);
+      }
+      await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
+    });
+
+    it('arrastar com filtro ativo move e diz se o card saiu do filtro (D1)', async () => {
+      const marca = randomUUID();
+      const leadId = await novoLead({ nome: `Filtro ${marca}`, status: 'novo' });
+      const [deal] = await oportunidades(leadId);
+      const mexer = (colunaDestino, filtros) =>
+        ok(
+          chamar('PATCH', `${quadro(vendas.id)}/cards/${deal.id}/mover`, {
+            colunaDestino,
+            filtros,
+          }),
+        );
+
+      const dentro = await mexer('proposta', { busca: marca });
+      expect(dentro.saiuDoFiltro).toBe(false);
+
+      const fora = await mexer('qualificado', {
+        filtros: [{ chave: 'status', operador: 'igual', valor: 'proposta' }],
+      });
+      expect(fora.saiuDoFiltro).toBe(true);
+      expect((await oportunidades(leadId))[0].status).toBe('qualificado');
+
+      expect((await mexer('proposta')).saiuDoFiltro).toBe(false);
+    });
+
+    it('o formulário de campos faltantes termina no mover, com a resposta do filtro', async () => {
+      const marca = randomUUID();
+      const leadId = await novoLead({ nome: `Motivo ${marca}` });
+      const [deal] = await oportunidades(leadId);
+      const url = `${quadro(vendas.id)}/cards/${deal.id}/mover`;
+      const filtros = { filtros: [{ chave: 'status', operador: 'igual', valor: 'novo' }] };
+
+      const semMotivo = await chamar('PATCH', url, { colunaDestino: 'perdido', filtros });
+      expect(semMotivo.corpo.error.fields).toHaveProperty('motivoPerda');
+
+      const campoEstranho = await chamar('PATCH', url, {
+        colunaDestino: 'perdido',
+        campos: { motivoPerda: 'Preço', valor: 1 },
+      });
+      expect(campoEstranho.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect((await oportunidades(leadId))[0].status).toBe('novo');
+
+      const comMotivo = await ok(
+        chamar('PATCH', url, {
+          colunaDestino: 'perdido',
+          filtros,
+          campos: { motivoPerda: 'Preço' },
+        }),
+      );
+
+      expect(comMotivo.saiuDoFiltro).toBe(true);
+      expect((await oportunidades(leadId))[0]).toMatchObject({
+        status: 'perdido',
+        motivoPerda: 'Preço',
+      });
+    });
+
+    it('quem não edita o motivo não o grava pelo mover', async () => {
+      const [deal] = await oportunidades(await novoLead());
+      await ligarPermissao({ motivoPerda: 'view' });
+
+      const resposta = await chamar(
+        'PATCH',
+        `${quadro(vendas.id)}/cards/${deal.id}/mover`,
+        { colunaDestino: 'perdido', campos: { motivoPerda: 'Preço' } },
+        operador,
+      );
+
+      expect(resposta.status).toBe(HTTP_STATUS.FORBIDDEN);
+      await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
+    });
+
+    it('filtro inválido no mover não move o card', async () => {
+      const leadId = await novoLead();
+      const [deal] = await oportunidades(leadId);
+
+      const resposta = await chamar('PATCH', `${quadro(vendas.id)}/cards/${deal.id}/mover`, {
+        colunaDestino: 'proposta',
+        filtros: { filtros: [{ chave: 'naoExiste', operador: 'igual', valor: 'x' }] },
+      });
+
+      expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect((await oportunidades(leadId))[0].status).toBe('novo');
+    });
+
+    it('salvar o layout padrão vale na hora, apesar do cache', async () => {
+      const antes = await ok(chamar('GET', '/crm/layout'));
+      const novo = { ...antes.padrao, subtitulo: [] };
+
+      await ok(chamar('PUT', '/crm/layout/padrao', novo));
+
+      const depois = await ok(chamar('GET', '/crm/layout'));
+      expect(depois.padrao.subtitulo).toEqual([]);
+      expect(depois.padraoConfigurado).toBe(true);
+      await ok(chamar('PUT', '/crm/layout/padrao', antes.padrao));
+    });
+
+    it('podeMover vem no card: anonimizada e Status em "só ver" não arrastam', async () => {
+      const marca = randomUUID();
+      const leadId = await novoLead({ nome: `Mover ${marca}` });
+      const doCard = async (opcoes) =>
+        (await cards(vendas.id, 'novo', opcoes, { filtros: { busca: marca } })).itens[0];
+
+      expect((await doCard()).podeMover).toBe(true);
+
+      await ligarPermissao({ status: 'view' });
+      expect((await doCard(operador)).podeMover).toBe(false);
+      expect((await doCard()).podeMover).toBe(true);
+      await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
+
+      await prisma.$executeRaw`
+        UPDATE modulo_crm.leads SET anonimizado_em = now() WHERE id = ${leadId}::uuid
+      `;
+      const anonimizado = await doCard();
+      expect(anonimizado.podeMover).toBe(false);
+      const acoes = await ok(
+        chamar('GET', `${quadro(vendas.id)}/cards/${anonimizado.entidadeId}/acoes`),
+      );
+      expect(acoes).toEqual([]);
     });
   });
 

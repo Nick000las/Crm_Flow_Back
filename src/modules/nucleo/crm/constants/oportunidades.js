@@ -25,6 +25,35 @@ export const ROTULOS_DO_QUADRO = Object.freeze({
   MOVER: 'mover',
 });
 
+/**
+ * Ordens do quadro (M4, decisão do dono). `coluna` é texto fixo, nunca vem do
+ * cliente. `campo`: só ordena por ele quem o vê, como em busca e filtro.
+ */
+export const ORDENS_DO_QUADRO = Object.freeze({
+  atualizadoEm: Object.freeze({ coluna: 'l.deal_atualizada_em', tipo: 'timestamp' }),
+  criadoEm: Object.freeze({ coluna: 'l.deal_criada_em', tipo: 'timestamp' }),
+  nome: Object.freeze({ coluna: 'lower(l.nome)', tipo: 'text' }),
+  valor: Object.freeze({ coluna: 'l.valor', tipo: 'numeric', campo: 'valor' }),
+  dataPrevistaFechamento: Object.freeze({
+    coluna: 'l.data_prevista_fechamento',
+    tipo: 'timestamp',
+    campo: 'dataPrevistaFechamento',
+  }),
+  probabilidadeFechamento: Object.freeze({
+    coluna: 'l.probabilidade_fechamento',
+    tipo: 'numeric',
+    campo: 'probabilidadeFechamento',
+  }),
+});
+
+export const DIRECOES_DE_ORDEM = Object.freeze({ ASC: 'asc', DESC: 'desc' });
+
+/** Padrão da D2: última atualização, mais recente primeiro. */
+export const ORDEM_PADRAO_DO_QUADRO = Object.freeze({
+  campo: 'atualizadoEm',
+  direcao: DIRECOES_DE_ORDEM.DESC,
+});
+
 /** Selos derivados do CRM a cada leitura; nada fica guardado no Kanban. */
 export const SELOS_DO_CARD = Object.freeze({
   ESFRIANDO: 'esfriando',

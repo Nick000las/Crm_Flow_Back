@@ -65,19 +65,18 @@ Os quadros aparecem em `GET /kanban/boards` com `modo: 'entidade'`, `boardType: 
 - Atualização otimista, com rollback e aviso em caso de erro.
 - Com `CAMPOS_OBRIGATORIOS` (400), volte o card e abra um formulário com os campos de `error.fields`. Ao confirmar, grave cada campo na rota dele e só então repita a mudança de status:
 
-  | Campo                                                        | Rota                                                                 |
-  | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-  | `motivoPerda`                                                | `PATCH /crm/oportunidades/:id/status`, junto com o status de destino |
-  | `valor`, `probabilidadeFechamento`, `dataPrevistaFechamento` | `PUT /crm/oportunidades/:id`, com `expectedUpdatedAt`                |
-  | Contato, `usuarioResponsavelId` e `customFields`             | `PUT /crm/leads/:id`, com o `leadId` do card                         |
+  | Campo                                                        | Rota                                                     |
+  | ------------------------------------------------------------ | -------------------------------------------------------- |
+  | `motivoPerda`                                                | `PATCH .../mover` de novo, com `campos: { motivoPerda }` |
+  | `valor`, `probabilidadeFechamento`, `dataPrevistaFechamento` | `PUT /crm/oportunidades/:id`, com `expectedUpdatedAt`    |
+  | Contato, `usuarioResponsavelId` e `customFields`             | `PUT /crm/leads/:id`, com o `leadId` do card             |
   - Não mande comercial por `PUT /crm/leads/:id`: ele grava na oportunidade principal, que pode não ser a do card.
   - Campos personalizados chegam todos numa só chave, `customFields`, com a mensagem de um deles, que traz o nome do campo. Se faltar mais de um, o `PATCH` volta com o próximo: reabra o formulário.
   - `dataConversao` nunca vem nessa lista quando o card vai para Ganho: ganhar preenche a data.
 
 - Com `conflito: true` na resposta, a gravação aconteceu. Mostre que outra pessoa mexeu antes.
 - O card só se move dentro do próprio pipeline; não existe arrastar entre quadros.
-- Quem não edita o campo Status não arrasta: use a permissão do papel para desabilitar o arraste no quadro todo. Não chame `/acoes` por card na listagem.
-- Card de pessoa anonimizada aparece no quadro, mas não se move: o arraste dá 403. Volte o card e mostre o aviso.
+- Use `podeMover`, que vem no próprio card desde o M4, para travar o arraste. Não chame `/acoes` por card na listagem.
 
 **Resumo:** `soma` vem `null` para quem não vê Valor. Não mostre "R$ 0,00" nesse caso.
 
@@ -113,4 +112,4 @@ Para o OPERADOR, com pipeline oculto:
 
 ## 5. O que ainda não existe
 
-Filtros e ordenação escolhida no quadro (M4), tempo real (M5), alerta de formulário no card e contador de sessões (formulários, depois do M5).
+Tempo real (M5), alerta de formulário no card e contador de sessões (formulários, depois do M5).
