@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CAMADA, POLITICAS_ESCRITA } from '../constants.js';
 import {
   camposElegiveis,
+  comPadroes,
   retratoDosCampos,
   temAlteracoesNaoPublicadas,
   validarRascunho,
@@ -90,8 +91,14 @@ describe('validarRascunho', () => {
               campoId: ID.email,
               obrigatorio: false,
               politica: POLITICAS_ESCRITA.PREENCHER_SE_VAZIO,
+              preencher: false,
             },
-            { campoId: ID.alergias, obrigatorio: true, politica: POLITICAS_ESCRITA.SOBRESCREVER },
+            {
+              campoId: ID.alergias,
+              obrigatorio: true,
+              politica: POLITICAS_ESCRITA.SOBRESCREVER,
+              preencher: false,
+            },
           ],
         },
       ],
@@ -192,3 +199,107 @@ describe('temAlteracoesNaoPublicadas', () => {
 function rascunho2(extra = {}) {
   return { secoes: [{ itens: [{ campoId: ID.alergias }] }], ...extra };
 }
+
+describe('FM2b: perguntas próprias e pré-preenchimento', () => {
+  const PERGUNTA_ID = '00000000-0000-0000-0000-0000000000aa';
+  const comItens = (itens, extra = {}) => ({ secoes: [{ itens }], ...extra });
+
+  it('campo sensível não pode ser pré-preenchido; os outros podem', () => {
+    const podem = Object.fromEntries(ELEGIVEIS.map((c) => [c.chave, c.podePreencher]));
+    expect(podem).toMatchObject({ nome: true, email: true, alergias: false });
+    expect(
+      validarRascunho(comItens([{ campoId: ID.email, preencher: true }]), ELEGIVEIS).secoes[0]
+        .itens[0].preencher,
+    ).toBe(true);
+    expect(() =>
+      validarRascunho(comItens([{ campoId: ID.alergias, preencher: true }]), ELEGIVEIS),
+    ).toThrow(
+      expect.objectContaining({
+        fields: { 'rascunho.secoes.0.itens.0.preencher': [expect.any(String)] },
+      }),
+    );
+  });
+
+  it('pergunta é normalizada, ganha id se não tiver e mantém o que veio', () => {
+    const { secoes } = validarRascunho(
+      comItens([
+        { pergunta: { rotulo: ' Fuma? ', tipo: 'booleano' } },
+        {
+          pergunta: {
+            id: PERGUNTA_ID,
+            rotulo: 'Dor',
+            tipo: 'selecao',
+            opcoes: [' leve ', 'forte'],
+          },
+          obrigatorio: true,
+        },
+      ]),
+      ELEGIVEIS,
+    );
+    const [fuma, dor] = secoes[0].itens;
+    expect(fuma).toEqual({
+      pergunta: {
+        id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        rotulo: 'Fuma?',
+        ajuda: null,
+        tipo: 'booleano',
+        opcoes: null,
+        sensivel: false,
+      },
+      obrigatorio: false,
+    });
+    expect(dor.pergunta).toMatchObject({ id: PERGUNTA_ID, opcoes: ['leve', 'forte'] });
+    expect(dor.obrigatorio).toBe(true);
+  });
+
+  it('opções: seleção exige, outro tipo recusa, repetida é erro', () => {
+    expect(() =>
+      validarRascunho(
+        comItens([
+          { pergunta: { rotulo: 'A', tipo: 'selecao', opcoes: [] } },
+          { pergunta: { rotulo: 'B', tipo: 'texto', opcoes: ['x'] } },
+          { pergunta: { rotulo: 'C', tipo: 'selecao_multipla', opcoes: ['Sim', 'sim'] } },
+        ]),
+        ELEGIVEIS,
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        fields: {
+          'rascunho.secoes.0.itens.0.pergunta.opcoes': [expect.any(String)],
+          'rascunho.secoes.0.itens.1.pergunta.opcoes': [expect.any(String)],
+          'rascunho.secoes.0.itens.2.pergunta.opcoes': [expect.any(String)],
+        },
+      }),
+    );
+  });
+
+  it('a mesma pergunta duas vezes é 400', () => {
+    const pergunta = { id: PERGUNTA_ID, rotulo: 'Fuma?', tipo: 'booleano' };
+    expect(() => validarRascunho(comItens([{ pergunta }, { pergunta }]), ELEGIVEIS)).toThrow(
+      expect.objectContaining({
+        fields: { 'rascunho.secoes.0.itens.1.pergunta.id': [expect.any(String)] },
+      }),
+    );
+  });
+
+  it('formulário só com perguntas publica, e pergunta não entra no retrato', () => {
+    const validado = validarRascunho(
+      comItens([{ pergunta: { rotulo: 'Fuma?', tipo: 'booleano' } }], { termo: 'Aceito' }),
+      ELEGIVEIS,
+      { publicar: true },
+    );
+    expect(retratoDosCampos(validado, ELEGIVEIS)).toEqual({});
+  });
+
+  it('item de campo gravado antes da FM2b vale sem pré-preenchimento', () => {
+    const antigo = [
+      { titulo: null, itens: [{ campoId: ID.nome, obrigatorio: false, politica: 'overwrite' }] },
+    ];
+    expect(comPadroes(antigo)[0].itens[0]).toEqual({
+      campoId: ID.nome,
+      obrigatorio: false,
+      politica: 'overwrite',
+      preencher: false,
+    });
+  });
+});

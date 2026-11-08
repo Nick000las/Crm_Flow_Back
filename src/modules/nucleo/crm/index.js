@@ -19,6 +19,7 @@ import { registrarRotasPermissoes } from './controllers/permissoes.controller.js
 import { registrarRotasScore } from './controllers/score.controller.js';
 import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { registrarRotasFormularios } from './controllers/formularios.controller.js';
+import { registrarRotasPublicasFormularios } from './controllers/formulario-publico.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { provedorDePessoa } from './services/pessoa-entidade.service.js';
 import { provedorComercial, provedorDeOportunidade } from './services/quadro-comercial.service.js';
@@ -32,6 +33,11 @@ export const crmModule = {
   reconciliar: reconciliarTenant,
   entidades: [provedorDePessoa, provedorDeOportunidade],
   quadros: [provedorComercial],
+  // Sem login, sob `/public`: a página do link de formulário (FM3). Cada rota
+  // descobre o tenant pelo token e confere módulo e flag.
+  registerPublicRoutes(app) {
+    registrarRotasPublicasFormularios(app);
+  },
   // Autenticação e módulo contratado já são aplicados por `#api/app.js`
   // a todo módulo, antes destas rotas.
   async registerRoutes(app) {

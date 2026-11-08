@@ -6,12 +6,13 @@ import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
+import { atualizarConfiguracaoCampo } from '../services/configuracoes-campos.service.js';
 import { criarNovaDefinicao } from '../services/field-definitions.service.js';
 import { invalidarSchemaCampos } from '../services/field-schema.service.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
- * FM1: formulário e versões pelas rotas de Configurações, no tenant padrão
+ * FM1 e FM2b: formulário e versões pelas rotas de Configurações, no tenant padrão
  * (só a flag `crm.formularios` ligada). GRAVA no banco de `DATABASE_URL`
  * (tenant SMOKE, apagado no fim): só roda com `CRM_DB_TESTS=1`.
  */
@@ -24,6 +25,8 @@ const ORDEM = 70;
 const BASE = '/crm/configuracoes/formularios';
 const PRIMEIRA = 1;
 const SEGUNDA = 2;
+const ITENS_DADOS = 3;
+const ITENS_SAUDE = 1;
 
 rodar('formulários (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
   const prisma = getAdminClient();
@@ -257,6 +260,187 @@ rodar('formulários (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       await novoFormulario('Pós-venda');
       const resposta = await chamar('POST', BASE, { nome: 'PÓS-VENDA' });
       expect(resposta.status).toBe(HTTP_STATUS.CONFLICT);
+    });
+  });
+
+  describe('FM2b: perguntas próprias e pré-preenchimento', () => {
+    const TERMO = 'Autorizo o uso dos meus dados para o atendimento.';
+    const contarCampos = async () => {
+      const [linha] = await prisma.$queryRaw`
+        SELECT count(*)::int AS n FROM modulo_crm.crm_field WHERE tenant_id = ${tenantId}::uuid
+      `;
+      return linha.n;
+    };
+
+    it('campos e perguntas publicam juntos, na ordem, e a pergunta não cria campo', async () => {
+      const formulario = await novoFormulario();
+      const camposAntes = await contarCampos();
+      const salvo = await salvarRascunho(formulario.id, {
+        secoes: [
+          {
+            titulo: 'Dados',
+            itens: [
+              { campoId: idDe('nome'), obrigatorio: true, preencher: true },
+              { pergunta: { rotulo: 'Fuma?', tipo: 'booleano' }, obrigatorio: true },
+              { campoId: idDe('email') },
+            ],
+          },
+          {
+            titulo: 'Saúde',
+            itens: [
+              {
+                pergunta: {
+                  rotulo: 'Dor ao mastigar',
+                  ajuda: 'Escolha a que mais se parece',
+                  tipo: 'selecao',
+                  opcoes: ['Nenhuma', 'Leve', 'Forte'],
+                  sensivel: true,
+                },
+              },
+            ],
+          },
+        ],
+        termo: TERMO,
+      });
+      const fuma = salvo.rascunho.secoes[0].itens[1].pergunta;
+      expect(fuma.id).toMatch(/^[0-9a-f-]{36}$/);
+
+      // Reenviar a pergunta com o id devolvido mantém o id.
+      const rascunhoDeVolta = salvo.rascunho;
+      const resalvo = await salvarRascunho(formulario.id, rascunhoDeVolta);
+      expect(resalvo.rascunho.secoes[0].itens[1].pergunta.id).toBe(fuma.id);
+
+      const versao = await ok(
+        chamar('POST', `${BASE}/${formulario.id}/publicar`),
+        HTTP_STATUS.CREATED,
+      );
+      const relida = await ok(chamar('GET', `${BASE}/${formulario.id}/versoes/${versao.id}`));
+      expect(relida).toEqual(versao);
+      expect(relida.secoes.map((secao) => secao.itens.length)).toEqual([ITENS_DADOS, ITENS_SAUDE]);
+      expect(relida.secoes[0].itens[0]).toMatchObject({
+        preencher: true,
+        obrigatorio: true,
+        campo: { chave: 'nome' },
+      });
+      expect(relida.secoes[0].itens[1]).toEqual({
+        pergunta: {
+          id: fuma.id,
+          rotulo: 'Fuma?',
+          ajuda: null,
+          tipo: 'booleano',
+          opcoes: null,
+          sensivel: false,
+        },
+        obrigatorio: true,
+      });
+      expect(relida.secoes[0].itens[2]).toMatchObject({
+        preencher: false,
+        campo: { chave: 'email' },
+      });
+      expect(relida.secoes[1].itens[0].pergunta).toMatchObject({
+        rotulo: 'Dor ao mastigar',
+        opcoes: ['Nenhuma', 'Leve', 'Forte'],
+        sensivel: true,
+      });
+      expect(await contarCampos()).toBe(camposAntes);
+      expect(await ok(chamar('GET', `${BASE}/${formulario.id}`))).toMatchObject({
+        alteracoesNaoPublicadas: false,
+      });
+    });
+
+    it('campo sensível não pode vir preenchido, nem se virar sensível depois de salvo', async () => {
+      const { id: campoId } = await criarNovaDefinicao(tenantId, {
+        label: `Medicação ${randomUUID().slice(0, TAMANHO_SUFIXO)}`,
+        tipo: 'texto',
+        obrigatorio: false,
+        ordem: ORDEM + 1,
+      });
+      await invalidarSchemaCampos(tenantId);
+      const formulario = await novoFormulario();
+      await salvarRascunho(formulario.id, {
+        secoes: [{ itens: [{ campoId, preencher: true }] }],
+        termo: TERMO,
+      });
+      await atualizarConfiguracaoCampo(tenantId, campoId, { sensivel: true });
+      await invalidarSchemaCampos(tenantId);
+
+      const elegivel = (await ok(chamar('GET', `${BASE}/campos-elegiveis`))).find(
+        (campo) => campo.id === campoId,
+      );
+      expect(elegivel).toMatchObject({ sensivel: true, podePreencher: false });
+
+      const publicar = await chamar('POST', `${BASE}/${formulario.id}/publicar`);
+      expect(publicar.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(publicar.corpo.error.fields).toHaveProperty(['rascunho.secoes.0.itens.0.preencher']);
+
+      const salvar = await chamar('PUT', `${BASE}/${formulario.id}`, {
+        rascunho: { secoes: [{ itens: [{ campoId, preencher: true }] }] },
+      });
+      expect(salvar.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(salvar.corpo.error.fields).toHaveProperty(['rascunho.secoes.0.itens.0.preencher']);
+
+      // Sem pré-preencher, o sensível entra normalmente.
+      await salvarRascunho(formulario.id, {
+        secoes: [{ itens: [{ campoId }] }],
+        termo: TERMO,
+      });
+      await ok(chamar('POST', `${BASE}/${formulario.id}/publicar`), HTTP_STATUS.CREATED);
+    });
+
+    it('pergunta inválida é 400 no lugar certo', async () => {
+      const formulario = await novoFormulario();
+      const resposta = await chamar('PUT', `${BASE}/${formulario.id}`, {
+        rascunho: {
+          secoes: [
+            {
+              itens: [
+                { pergunta: { rotulo: 'Quem atendeu?', tipo: 'usuario' } },
+                { pergunta: { rotulo: '  ', tipo: 'texto' } },
+                { pergunta: { rotulo: 'Cor', tipo: 'selecao' } },
+              ],
+            },
+          ],
+        },
+      });
+      expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(Object.keys(resposta.corpo.error.fields).sort()).toEqual([
+        'rascunho.secoes.0.itens.0.pergunta.tipo',
+        'rascunho.secoes.0.itens.1.pergunta.rotulo',
+      ]);
+      // Com o schema em ordem, a regra do service aponta a opção que falta.
+      const semOpcoes = await chamar('PUT', `${BASE}/${formulario.id}`, {
+        rascunho: { secoes: [{ itens: [{ pergunta: { rotulo: 'Cor', tipo: 'selecao' } }] }] },
+      });
+      expect(semOpcoes.status).toBe(HTTP_STATUS.BAD_REQUEST);
+      expect(semOpcoes.corpo.error.fields).toHaveProperty([
+        'rascunho.secoes.0.itens.0.pergunta.opcoes',
+      ]);
+    });
+
+    it('versão publicada no formato da FM1 continua lida igual', async () => {
+      const formulario = await novoFormulario();
+      const nome = idDe('nome');
+      const [antiga] = await prisma.$queryRaw`
+        INSERT INTO modulo_crm.crm_form_version
+          (tenant_id, form_id, version, sections, fields_snapshot, consent_text)
+        VALUES (
+          ${tenantId}::uuid, ${formulario.id}::uuid, ${PRIMEIRA},
+          ${JSON.stringify([{ titulo: null, itens: [{ campoId: nome, obrigatorio: true, politica: 'overwrite' }] }])}::jsonb,
+          ${JSON.stringify({ [nome]: { chave: 'nome', label: 'Nome', tipo: 'texto', camada: 1, sensivel: false, opcoes: null } })}::jsonb,
+          ${TERMO}
+        )
+        RETURNING id::text
+      `;
+      const versao = await ok(chamar('GET', `${BASE}/${formulario.id}/versoes/${antiga.id}`));
+      expect(versao.secoes[0].itens).toEqual([
+        {
+          campoId: nome,
+          obrigatorio: true,
+          politica: 'overwrite',
+          preencher: false,
+          campo: expect.objectContaining({ chave: 'nome', label: 'Nome' }),
+        },
+      ]);
     });
   });
 

@@ -440,6 +440,21 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       expect(recebidos.flatMap((evento) => evento.entidadeIds)).not.toContain(entidadeId);
     });
 
+    it('evento de outra entidade (formulário) é confirmado sem aviso', async () => {
+      const entidadeId = randomUUID();
+      const [{ id }] = await prisma.$queryRaw`
+        INSERT INTO modulo_crm.crm_event (tenant_id, tipo, entidade, entidade_id, payload)
+        VALUES (${tenantId}::uuid, 'form.link_created', 'form_link', ${entidadeId}::uuid, '{}'::jsonb)
+        RETURNING id::text
+      `;
+
+      await setTimeout(SILENCIO_MS);
+
+      expect((await situacao(id)).processed_at).not.toBeNull();
+      expect(recebidos.some((evento) => !evento.quadroRef)).toBe(false);
+      expect(recebidos.flatMap((evento) => evento.entidadeIds)).not.toContain(entidadeId);
+    });
+
     it('evento confirmado sai da fila e é emitido uma vez só', async () => {
       const { deal } = await novoLead();
       await esperarCard(deal.id);
