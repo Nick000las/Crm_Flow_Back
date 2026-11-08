@@ -357,9 +357,9 @@ Uma transação:
 
 ### 2.9 Critérios de aceite
 
-- [ ] Copiar duas vezes devolve o mesmo link; duas recepcionistas ao mesmo tempo geram um link só.
-- [ ] Token de um tenant nunca acessa dados de outro (teste de RLS na rota pública).
-- [ ] Prévia do link no WhatsApp não mostra nome do paciente e não marca o link como aberto.
+- [x] Copiar duas vezes devolve o mesmo link; duas recepcionistas ao mesmo tempo geram um link só. (FM2, 07/11/2026: `formulario-links.db.test.js`)
+- [x] Token de um tenant nunca acessa dados de outro (teste de RLS na rota pública). (FM3, 08/11/2026: `formulario-publico.db.test.js`)
+- [ ] Prévia do link no WhatsApp não mostra nome do paciente e não marca o link como aberto. (FM3: no back, `GET` não marca abertura, só o `POST /aberto`; falta provar a prévia, que vem do `index.html` do front)
 - [ ] Foto enviada chega sem EXIF.
 - [ ] Submissão é imutável: editar o campo na ficha não altera "Ver respostas".
 - [ ] OPERADOR sem acesso a campos sensíveis vê o alerta genérico e não vê as respostas.

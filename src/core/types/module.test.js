@@ -22,6 +22,13 @@ describe('assertModule — featureFlags e reconciliar', () => {
     expect(() => assertModule({ ...base, reconciliar: 'sim' })).toThrow(/função/);
   });
 
+  it('registerPublicRoutes é opcional, mas se vier precisa ser função', () => {
+    expect(() => assertModule({ ...base, registerPublicRoutes() {} })).not.toThrow();
+    expect(() => assertModule({ ...base, registerPublicRoutes: '/f' })).toThrow(
+      /registerPublicRoutes/,
+    );
+  });
+
   it('valida os provedores de quadro e de entidade', () => {
     const metodos = (nomes) => Object.fromEntries(nomes.map((nome) => [nome, async () => []]));
     const quadro = {

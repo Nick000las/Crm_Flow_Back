@@ -3,7 +3,7 @@ import {
   confirmarEventos as confirmarEventosRepository,
   reservarEventos,
 } from '../adapters/crm-outbox.repository.js';
-import { ENTIDADE_DO_EVENTO_DA_PESSOA } from '../constants.js';
+import { ENTIDADE_DO_EVENTO_DA_PESSOA, ENTIDADE_OPORTUNIDADE } from '../constants.js';
 
 /**
  * SERVICE: o outbox `crm_event` como fonte única do tempo real (M5). Como o
@@ -11,6 +11,7 @@ import { ENTIDADE_DO_EVENTO_DA_PESSOA } from '../constants.js';
  * worker e auto-criação chegam pelo mesmo caminho.
  *
  * Mudança na pessoa vira uma mudança em cada card dela: é ela que dá nome ao card.
+ * Evento de outra entidade (ex.: link de formulário) é confirmado sem aviso.
  * Sem usuário: quem decide o que cada um vê é a releitura pela API.
  */
 
@@ -23,7 +24,8 @@ export async function drenarEventos(limite) {
   // O antigo é confirmado sem ser emitido: quem abre o quadro já lê o estado atual.
   const recentes = linhas.filter((linha) => linha.recente);
   const dasPessoas = recentes.filter((linha) => linha.entidade === ENTIDADE_DO_EVENTO_DA_PESSOA);
-  const dosNegocios = recentes.filter((linha) => linha.entidade !== ENTIDADE_DO_EVENTO_DA_PESSOA);
+  // Outras entidades (formulário, FM2) não mexem em card: são confirmadas sem aviso.
+  const dosNegocios = recentes.filter((linha) => linha.entidade === ENTIDADE_OPORTUNIDADE);
   const cardsDasPessoas =
     dasPessoas.length > 0
       ? await buscarOportunidadesParaEventos(dasPessoas.map((linha) => linha.entidade_id))

@@ -27,6 +27,10 @@ export const ERROR_CODES = Object.freeze({
   FEATURE_NOT_ENABLED: 'FEATURE_NOT_ENABLED',
   EMAIL_UNAVAILABLE: 'EMAIL_UNAVAILABLE',
   QUEUE_UNAVAILABLE: 'QUEUE_UNAVAILABLE',
+  // FM2: sem FORMS_TOKEN_KEY no ambiente, link de formulário não é gerado.
+  FORMS_UNAVAILABLE: 'FORMS_UNAVAILABLE',
+  // Rota pública (FM3): pedidos demais do mesmo IP ou para o mesmo link.
+  RATE_LIMITED: 'RATE_LIMITED',
   // Serviço de terceiro (ex. consulta de CNPJ, M11b) fora do ar ou lento.
   EXTERNAL_SERVICE_UNAVAILABLE: 'EXTERNAL_SERVICE_UNAVAILABLE',
   RESOURCE_CONFLICT: 'RESOURCE_CONFLICT',

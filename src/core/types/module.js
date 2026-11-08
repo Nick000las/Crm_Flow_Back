@@ -8,6 +8,12 @@
  * @property {string} key
  * @property {string} name
  * @property {(app: import('fastify').FastifyInstance) => void | Promise<void>} registerRoutes
+ * @property {(app: import('fastify').FastifyInstance) => void | Promise<void>} [registerPublicRoutes]
+ *   rotas SEM login, sob `/public` (ex.: a página de um link de formulário).
+ *   O escopo não tem `authenticateHook` nem `exigirModuloAtivo`: a rota
+ *   descobre o tenant pelo que recebe e confere módulo e flag ela mesma. O
+ *   app já põe limite por IP, cabeçalhos de privacidade e tira da URL do log
+ *   o que vem depois do recurso (MODULE_CONTRACT.md)
  * @property {string[]} [featureFlags]  catálogo das flags do módulo, cada uma
  *   prefixada pela `key` (`crm.listas`) — o que o MASTER pode ligar por
  *   tenant (`#core/tenant/feature-flags.js`)
@@ -146,6 +152,9 @@ export function assertModule(candidato) {
         `Módulo "${mod.key}" inválido: a flag "${semPrefixo}" deve começar com "${mod.key}.".`,
       );
     }
+  }
+  if (mod.registerPublicRoutes !== undefined && typeof mod.registerPublicRoutes !== 'function') {
+    throw new Error(`Módulo "${mod.key}" inválido: \`registerPublicRoutes(app)\` deve ser função.`);
   }
   if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`reconciliar(tenantId)\` deve ser função.`);

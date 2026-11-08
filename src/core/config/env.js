@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import 'dotenv/config';
 import { z } from 'zod';
 import { JWT_SECRET_MIN_LENGTH } from '#core/auth/constants.js';
@@ -8,6 +9,7 @@ const MAX_NETWORK_PORT = 65_535;
 const DEFAULT_APP_PORT = 3_000;
 const DEFAULT_SMTP_PORT = 587;
 const DEFAULT_SMTP_TIMEOUT_MS = 10_000;
+const FORMS_TOKEN_KEY_BYTES = 32;
 
 const envSchema = z
   .object({
@@ -40,6 +42,18 @@ const envSchema = z
     // onde getTenantClient() conecta pra RLS ser garantia real do Postgres.
     TENANT_DATABASE_URL: z.string().min(TEXT_LIMITS.NON_EMPTY_MIN_LENGTH).optional(),
     FRONTEND_URL: z.string().url().optional(),
+    // Formulários (FM2): chave AES-256 do link guardado, 32 bytes em base64.
+    // Opcional no bootstrap: sem ela, só gerar link responde 503.
+    FORMS_TOKEN_KEY: z.preprocess(
+      (valor) => (valor === '' ? undefined : valor),
+      z
+        .string()
+        .refine(
+          (valor) => Buffer.from(valor, 'base64').length === FORMS_TOKEN_KEY_BYTES,
+          'FORMS_TOKEN_KEY deve ter 32 bytes em base64',
+        )
+        .optional(),
+    ),
     KANBAN_EMAIL_ENABLED: z
       .enum(['true', 'false'])
       .default('true')

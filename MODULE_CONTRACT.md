@@ -188,6 +188,7 @@ Todo módulo exporta, do seu `index.js`, um objeto que satisfaz:
  * @property {string} key                    // identificador único, snake_case
  * @property {string} name                   // nome legível
  * @property {(app: FastifyInstance) => void | Promise<void>} registerRoutes
+ * @property {(app: FastifyInstance) => void | Promise<void>} [registerPublicRoutes]  // sem login, sob /public
  * @property {string[]} [featureFlags]     // catálogo de flags, prefixadas pela key
  * @property {(tenantId: string) => Promise<unknown>} [reconciliar]
  */
@@ -236,6 +237,28 @@ export const crmModule = {
   },
 };
 ```
+
+### Rotas sem login: `registerPublicRoutes`
+
+Para o que alguém de fora do sistema abre, sem conta (ex.: a página do link
+de formulário do CRM, `GET /public/f/:token`). `#api/app.js` chama
+`registerPublicRoutes(app)` num escopo **separado**, com prefixo `/public`:
+
+- **Sem `authenticateHook` nem `exigirModuloAtivo`.** A rota descobre o
+  tenant pelo que recebe (no formulário, o `token_hash`, buscado pelo cliente
+  admin, que devolve só o `tenant_id`) e daí em diante usa `getTenantClient`.
+  Ela mesma confere módulo contratado (`moduloAtivo`), flag (`featureAtiva`)
+  e status do tenant.
+- **Limite por IP** em todo `/public` (`LIMITE_PUBLICO`, `@fastify/rate-limit`,
+  com Redis quando há `REDIS_URL`). Limite próprio da rota (ex.: por link) usa
+  `app.createRateLimit()` com checagem manual: o `app.rateLimit()` de rota é
+  pulado, porque o plugin marca o pedido depois do primeiro limitador.
+- **Cabeçalhos** em toda resposta: `Cache-Control: no-store`,
+  `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`.
+- **Log:** a URL sai como `/public/<recurso>/[oculto]` (`urlParaLog`), porque o
+  resto do caminho pode ser segredo. A rota loga só ids, nunca o que a pessoa
+  digitou.
+- **Erro que não ensina:** tudo que não abre responde o mesmo 404.
 
 ### Publicar conteúdo em outro módulo
 
