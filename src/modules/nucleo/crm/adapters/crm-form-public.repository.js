@@ -1,6 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
 import { TENANT_STATUS } from '#shared/constants/index.js';
-import { STATUS_LINK } from '../constants/formularios.js';
+import { STATUS_LINK, TOLERANCIA_ENVIO_HORAS } from '../constants/formularios.js';
 
 /**
  * ADAPTER: leitura do link pela página pública (FM3), sem usuário logado.
@@ -12,12 +13,24 @@ import { STATUS_LINK } from '../constants/formularios.js';
  *
  * @typedef {{
  *   id: string, status: string, no_prazo: boolean, aberto_em: Date | null, expira_em: Date,
- *   formulario_nome: string, formulario_ativo: boolean,
+ *   formulario_id: string, formulario_nome: string, formulario_ativo: boolean,
+ *   lead_id: string, oportunidade_id: string | null,
  *   versao_id: string, versao: number, secoes: object[], campos: Record<string, object>,
- *   introducao: string | null, termo: string,
+ *   introducao: string | null, termo: string, alertas: object[],
  *   pessoa: Record<string, any> | null,
  * }} LinkPublico
  */
+
+/**
+ * No prazo: antes de vencer, ou até `TOLERANCIA_ENVIO_HORAS` depois para
+ * quem abriu antes de vencer (o link não fecha no meio do preenchimento).
+ * Sobre `k` = crm_form_link.
+ */
+export const LINK_NO_PRAZO_SQL = Prisma.sql`(
+  k.expires_at > CURRENT_TIMESTAMP
+  OR (k.opened_at IS NOT NULL AND k.opened_at < k.expires_at
+      AND CURRENT_TIMESTAMP < k.expires_at + make_interval(hours => ${TOLERANCIA_ENVIO_HORAS}::int))
+)`;
 
 /** Tenant que não abre página pública: suspenso ou cancelado. */
 const STATUS_SEM_PAGINA = [TENANT_STATUS.SUSPENSO, TENANT_STATUS.CANCELADO];
@@ -46,11 +59,13 @@ export async function tenantDoToken(tokenHash) {
 export function buscarLinkPublico(tenantId, tokenHash) {
   return getTenantClient(tenantId, async (tx) => {
     const [linha] = await tx.$queryRaw`
-      SELECT k.id::text, k.status, k.expires_at > CURRENT_TIMESTAMP AS no_prazo,
+      SELECT k.id::text, k.status, ${LINK_NO_PRAZO_SQL} AS no_prazo,
         k.opened_at AS aberto_em, k.expires_at AS expira_em,
         f.name AS formulario_nome, f.is_active AS formulario_ativo,
         v.id::text AS versao_id, v.version AS versao, v.sections AS secoes,
         v.fields_snapshot AS campos, v.intro_text AS introducao, v.consent_text AS termo,
+        v.alert_rules AS alertas,
+        k.form_id::text AS formulario_id, k.lead_id::text AS lead_id, k.deal_id::text AS oportunidade_id,
         to_jsonb(l) AS pessoa
       FROM modulo_crm.crm_form_link k
       JOIN modulo_crm.crm_form f ON f.tenant_id = k.tenant_id AND f.id = k.form_id

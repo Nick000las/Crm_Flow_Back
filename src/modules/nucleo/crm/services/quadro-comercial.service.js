@@ -1,3 +1,4 @@
+import { buscarNivelPendentePorPessoa } from '../adapters/crm-form-alerts.repository.js';
 import { Buffer } from 'node:buffer';
 import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
@@ -388,9 +389,13 @@ function valorNoCard(linha, item, schema) {
     : (valor ?? null);
 }
 
-/** @param {Record<string, any>} linha */
-function selosDoCard(linha) {
+/**
+ * @param {Record<string, any>} linha
+ * @param {string | undefined} nivelDoAlerta  mais grave não visto por quem pede (FM5)
+ */
+function selosDoCard(linha, nivelDoAlerta) {
   return [
+    ...(nivelDoAlerta ? [{ tipo: SELOS_DO_CARD.ALERTA, nivel: nivelDoAlerta }] : []),
     ...(linha.esfriando_desde
       ? [{ tipo: SELOS_DO_CARD.ESFRIANDO, desde: linha.esfriando_desde }]
       : []),
@@ -409,7 +414,10 @@ function selosDoCard(linha) {
  */
 async function descrever({ tenantId, userId, role }, ids) {
   if (ids.length === 0) return [];
-  const inatividade = await featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE);
+  const [inatividade, formularios] = await Promise.all([
+    featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE),
+    featureAtiva(tenantId, CRM_FEATURES.FORMULARIOS),
+  ]);
   // Em paralelo: cada etapa em série custa uma transação inteira, e o quadro
   // pede uma página por coluna (M4).
   const [schema, { efetivo }, linhas] = await Promise.all([
@@ -428,13 +436,23 @@ async function descrever({ tenantId, userId, role }, ids) {
     valor: valorNoCard(linha, item, schema),
   });
 
+  // FM5: selo de alerta de formulário, por usuário (some quando ele marca visto).
+  const pendentes = formularios
+    ? await buscarNivelPendentePorPessoa(
+        tenantId,
+        [...new Set(linhas.map((linha) => linha.id))],
+        userId,
+      )
+    : [];
+  const nivelPorPessoa = new Map(pendentes.map((item) => [item.lead_id, item.nivel]));
+
   return linhas.map((linha) => ({
     id: linha.deal_id,
     leadId: linha.id,
     titulo: tituloDaPessoa(linha, efetivo.identificador, schema),
     subtitulo: efetivo.subtitulo.map((item) => noCard(linha, item)),
     destaques: efetivo.destaques.map((item) => noCard(linha, item)),
-    selos: selosDoCard(linha),
+    selos: selosDoCard(linha, nivelPorPessoa.get(linha.id)),
     tituloOportunidade: linha.deal_titulo,
     responsavelId: linha.deal_dono_id,
     podeMover: podeMoverCard(linha, schema),

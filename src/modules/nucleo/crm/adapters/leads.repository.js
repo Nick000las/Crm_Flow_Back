@@ -253,9 +253,12 @@ export function criarLead(tenantId, dados, historico, novaOportunidade, pipeline
  *   inatividade?: Date | null,
  *   oportunidade?: import('./crm-oportunidades.repository.js').ComercialDoLead,
  *   ocultos?: string[],
- *   conferir?: (lead: { updated_at: Date }) => Promise<void>,
+ *   conferir?: (lead: { updated_at: Date }, tx: Prisma.TransactionClient) => Promise<void>,
+ *   depoisDeGravar?: (tx: Prisma.TransactionClient, depois: Lead) => Promise<void>,
  * }} [opcoes] `inatividade`: ver `colunasLeitura` (só a linha devolvida); `ocultos`: pipelines
- *   que quem edita não vê; `conferir`: roda com o lead travado, antes de gravar
+ *   que quem edita não vê; `conferir`: roda com o lead travado, antes de gravar;
+ *   `depoisDeGravar`: na mesma transação, depois do histórico (ex.: a resposta
+ *   de formulário que originou a edição, FM4)
  * @returns {Promise<Lead | undefined>}
  */
 export function atualizarLead(
@@ -263,7 +266,7 @@ export function atualizarLead(
   leadId,
   dados,
   historico,
-  { inatividade = null, oportunidade, ocultos = [], conferir } = {},
+  { inatividade = null, oportunidade, ocultos = [], conferir, depoisDeGravar } = {},
 ) {
   const atribuicoes = montarAtribuicoes(dados);
   return getTenantClient(tenantId, async (tx) => {
@@ -274,7 +277,7 @@ export function atualizarLead(
       FOR UPDATE
     `;
     if (!travado) return undefined;
-    await conferir?.(travado);
+    await conferir?.(travado, tx);
     const antes = historico ? await lerLead(tx, tenantId, leadId) : undefined;
 
     const [{ usuario_responsavel_id: responsavel }] = await tx.$queryRaw`
@@ -311,6 +314,7 @@ export function atualizarLead(
         });
       }
     }
+    await depoisDeGravar?.(tx, depois);
     return depois;
   });
 }

@@ -11,6 +11,9 @@ import {
   leadDoFormularioParamSchema,
   linkDoFormularioParamSchema,
   linkParamSchema,
+  listarAlertasQuerySchema,
+  alertaParamSchema,
+  respostaParamSchema,
   versaoParamSchema,
 } from '../schemas/formularios.schema.js';
 import {
@@ -19,6 +22,11 @@ import {
   listarLinksDaPessoa,
   revogarLink,
 } from '../services/formulario-links.service.js';
+import { listarAlertasDaPessoa, marcarVisto } from '../services/formulario-alertas.service.js';
+import {
+  listarRespostasDaPessoa,
+  obterResposta,
+} from '../services/formulario-respostas.service.js';
 import {
   criarFormulario,
   editarFormulario,
@@ -112,5 +120,32 @@ export function registrarRotasFormularios(app) {
     const { tenantId } = req.tenantContext;
     const { id, linkId } = linkParamSchema.parse(req.params);
     return sendSuccess(reply, await revogarLink(tenantId, id, linkId));
+  });
+
+  // FM4: "Ver respostas". Campo que o papel não vê sai oculto.
+  app.get('/crm/leads/:id/formularios/respostas', comFlag, async (req, reply) => {
+    const { tenantId } = req.tenantContext;
+    const { id } = leadDoFormularioParamSchema.parse(req.params);
+    return sendSuccess(reply, await listarRespostasDaPessoa(tenantId, id));
+  });
+
+  // FM5: alertas no topo da ficha, até cada usuário marcar o seu como visto.
+  app.get('/crm/leads/:id/formularios/alertas', comFlag, async (req, reply) => {
+    const { tenantId, userId, role } = req.tenantContext;
+    const { id } = leadDoFormularioParamSchema.parse(req.params);
+    const opcoes = listarAlertasQuerySchema.parse(req.query ?? {});
+    return sendSuccess(reply, await listarAlertasDaPessoa(tenantId, id, { userId, role }, opcoes));
+  });
+
+  app.post('/crm/leads/:id/formularios/alertas/:alertaId/visto', comFlag, async (req, reply) => {
+    const { tenantId, userId } = req.tenantContext;
+    const { id, alertaId } = alertaParamSchema.parse(req.params);
+    return sendSuccess(reply, await marcarVisto(tenantId, id, alertaId, userId));
+  });
+
+  app.get('/crm/leads/:id/formularios/respostas/:respostaId', comFlag, async (req, reply) => {
+    const { tenantId, role } = req.tenantContext;
+    const { id, respostaId } = respostaParamSchema.parse(req.params);
+    return sendSuccess(reply, await obterResposta(tenantId, id, respostaId, role));
   });
 }

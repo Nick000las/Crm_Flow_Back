@@ -32,7 +32,7 @@ import { hashDoToken } from './token-formulario.service.js';
  * @typedef {import('../adapters/crm-form-public.repository.js').LinkPublico} LinkPublico
  */
 
-const indisponivel = () => erroNaoEncontrado('Este link não está mais disponível');
+export const indisponivel = () => erroNaoEncontrado('Este link não está mais disponível');
 
 /**
  * @param {LinkPublico | undefined} link
@@ -57,7 +57,7 @@ function podeAbrir(link) {
  * @param {unknown} token
  * @returns {Promise<{ tenantId: string, link: LinkPublico }>}
  */
-async function resolverLink(token) {
+export async function resolverLink(token) {
   if (typeof token !== 'string' || !FORMATO_TOKEN_LINK.test(token)) throw indisponivel();
   const hash = hashDoToken(token);
   const tenantId = await tenantDoToken(hash);

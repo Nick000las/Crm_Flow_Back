@@ -95,7 +95,42 @@ export const ENTIDADE_LINK_FORMULARIO = 'form_link';
 export const EVENTOS_FORMULARIO = Object.freeze({
   LINK_CRIADO: 'form.link_created',
   LINK_REVOGADO: 'form.link_revoked',
+  RESPONDIDO: 'form.submitted',
 });
+
+/** `crm_event.entidade` da resposta (FM4). O despacho do quadro confirma sem aviso. */
+export const ENTIDADE_RESPOSTA_FORMULARIO = 'form_submission';
+
+/** `crm_form_submission.filled_by`. */
+export const QUEM_PREENCHE = Object.freeze({ TITULAR: 'titular', RESPONSAVEL: 'responsavel' });
+
+export const LISTA_QUEM_PREENCHE = Object.freeze(Object.values(QUEM_PREENCHE));
+
+/** O que a resposta fez com cada campo da pessoa (`write_report`). */
+export const RESULTADOS_ESCRITA = Object.freeze({
+  GRAVADO: 'gravado',
+  IGNORADO: 'ignorado',
+  REVISAO: 'revisao',
+});
+
+/** Por que um campo foi ignorado ou foi para revisão. */
+export const MOTIVOS_ESCRITA = Object.freeze({
+  SEM_RESPOSTA: 'sem_resposta',
+  IGUAL: 'igual',
+  VALOR_DIFERENTE: 'valor_diferente',
+  CONTATO_DE_OUTRA_PESSOA: 'contato_de_outra_pessoa',
+  REGRA_DO_CRM: 'regra_do_crm',
+  CAMPO_INDISPONIVEL: 'campo_indisponivel',
+});
+
+/**
+ * Quem abriu antes de vencer tem esta folga para enviar: o link não fecha no
+ * meio do preenchimento.
+ */
+export const TOLERANCIA_ENVIO_HORAS = 2;
+
+/** Nome do responsável, quando quem preenche não é o titular. */
+export const LIMITE_NOME_RESPONSAVEL = 200;
 
 /** Caminho da página pública no front: `${FRONTEND_URL}/f/<token>`. */
 export const CAMINHO_PUBLICO_DO_FORMULARIO = '/f/';
@@ -111,3 +146,22 @@ export const LIMITE_POR_LINK = Object.freeze({ MAX: 30, JANELA: '1 minute' });
 
 /** Caminho das rotas públicas do formulário, dentro de `/public`. */
 export const ROTA_PUBLICA_FORMULARIO = '/f/:token';
+
+/** Nível de um alerta (FM5), do menos ao mais grave. */
+export const NIVEIS_ALERTA = Object.freeze({
+  INFO: 'info',
+  ATENCAO: 'warning',
+  CRITICO: 'critical',
+});
+
+export const LISTA_NIVEIS_ALERTA = Object.freeze(Object.values(NIVEIS_ALERTA));
+
+/** Gravidade para ordenar: maior = mais grave. */
+export const GRAVIDADE_ALERTA = Object.freeze(
+  Object.fromEntries(LISTA_NIVEIS_ALERTA.map((nivel, posicao) => [nivel, posicao])),
+);
+
+export const LIMITES_ALERTA = Object.freeze({ POR_FORMULARIO: 30, TEXTO: 300 });
+
+/** O que vê quem não pode ver o alvo do alerta (campo ou pergunta sensível). */
+export const TEXTO_ALERTA_GENERICO = 'Há um alerta restrito nesta pessoa. Fale com a gestão.';

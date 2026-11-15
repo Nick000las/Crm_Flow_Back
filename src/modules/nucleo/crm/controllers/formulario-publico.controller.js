@@ -1,13 +1,19 @@
 import { AppError } from '#core/errors/app-error.js';
+
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendSuccess } from '#shared/http/response.js';
 import { LIMITE_POR_LINK, ROTA_PUBLICA_FORMULARIO } from '../constants.js';
+import { enviarRespostaBodySchema } from '../schemas/formularios.schema.js';
 import {
   abrirFormularioPublico,
   marcarFormularioAberto,
 } from '../services/formulario-publico.service.js';
+import { enviarResposta } from '../services/formulario-respostas.service.js';
 import { hashDoToken } from '../services/token-formulario.service.js';
+
+/** O navegador fica na resposta só para auditoria; além disso, é ruído. */
+const LIMITE_USER_AGENT = 500;
 
 /**
  * Rotas sem login da página do formulário (FM3), sob `/public`
@@ -51,5 +57,21 @@ export function registrarRotasPublicasFormularios(app) {
     const linkId = await marcarFormularioAberto(/** @type {any} */ (req.params).token);
     req.log.info({ formLinkId: linkId }, 'Formulário público aberto');
     return sendSuccess(reply, { aberto: true });
+  });
+
+  // FM4. O log leva só os ids: nunca o que a pessoa respondeu.
+  app.post(`${ROTA_PUBLICA_FORMULARIO}/respostas`, { preHandler: porLink }, async (req, reply) => {
+    const corpo = enviarRespostaBodySchema.parse(req.body ?? {});
+    const agente = req.headers['user-agent'];
+    const { linkId, respostaId } = await enviarResposta(
+      /** @type {any} */ (req.params).token,
+      corpo,
+      {
+        ip: req.ip ?? null,
+        userAgent: typeof agente === 'string' ? agente.slice(0, LIMITE_USER_AGENT) : null,
+      },
+    );
+    req.log.info({ formLinkId: linkId, respostaId }, 'Formulário respondido');
+    return sendSuccess(reply, { enviado: true }, HTTP_STATUS.CREATED);
   });
 }

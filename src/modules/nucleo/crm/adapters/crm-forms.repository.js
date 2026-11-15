@@ -15,7 +15,7 @@ import { getTenantClient } from '#core/db/tenantClient.js';
  * @typedef {{
  *   id: string, formulario_id: string, versao: number, secoes: object[],
  *   campos: Record<string, object>, introducao: string | null, termo: string,
- *   publicada_em: Date, publicada_por: string | null,
+ *   alertas: object[], publicada_em: Date, publicada_por: string | null,
  * }} VersaoLinha
  */
 
@@ -28,7 +28,7 @@ const RETORNO_FORMULARIO_SQL = Prisma.raw(
 const RETORNO_VERSAO_SQL = Prisma.raw(
   `id::text, form_id::text AS formulario_id, version AS versao, sections AS secoes,
    fields_snapshot AS campos, intro_text AS introducao, consent_text AS termo,
-   published_at AS publicada_em, published_by::text AS publicada_por`,
+   alert_rules AS alertas, published_at AS publicada_em, published_by::text AS publicada_por`,
 );
 
 /**
@@ -146,10 +146,14 @@ export async function atualizarFormulario(tenantId, id, mudancas) {
  *
  * @param {string} tenantId
  * @param {string} formId
- * @param {{ secoes: object[], campos: Record<string, object>, introducao: string | null, termo: string, usuarioId: string | null }} versao
+ * @param {{ secoes: object[], campos: Record<string, object>, introducao: string | null, termo: string, alertas: object[], usuarioId: string | null }} versao
  * @returns {Promise<VersaoLinha | undefined>} `undefined` se o formulário não existe
  */
-export function inserirVersao(tenantId, formId, { secoes, campos, introducao, termo, usuarioId }) {
+export function inserirVersao(
+  tenantId,
+  formId,
+  { secoes, campos, introducao, termo, alertas, usuarioId },
+) {
   return getTenantClient(tenantId, async (tx) => {
     const [formulario] = await tx.$queryRaw`
       SELECT id FROM modulo_crm.crm_form
@@ -160,10 +164,11 @@ export function inserirVersao(tenantId, formId, { secoes, campos, introducao, te
 
     const [versao] = await tx.$queryRaw`
       INSERT INTO modulo_crm.crm_form_version
-        (tenant_id, form_id, version, sections, fields_snapshot, intro_text, consent_text, published_by)
+        (tenant_id, form_id, version, sections, fields_snapshot, intro_text, consent_text,
+         alert_rules, published_by)
       SELECT ${tenantId}::uuid, ${formId}::uuid, COALESCE(max(version), 0) + 1,
         ${JSON.stringify(secoes)}::jsonb, ${JSON.stringify(campos)}::jsonb,
-        ${introducao}, ${termo}, ${usuarioId}::uuid
+        ${introducao}, ${termo}, ${JSON.stringify(alertas ?? [])}::jsonb, ${usuarioId}::uuid
       FROM modulo_crm.crm_form_version
       WHERE tenant_id = ${tenantId}::uuid AND form_id = ${formId}::uuid
       RETURNING ${RETORNO_VERSAO_SQL}

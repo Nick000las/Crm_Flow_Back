@@ -25,9 +25,12 @@ import {
   LIMITES_FORMULARIO,
   POLITICAS_ESCRITA,
   TIPOS_FORA_DO_FORMULARIO,
+  OPERADORES_POR_TIPO,
+  TIPOS_CAMPO,
   TIPOS_PERGUNTA_COM_OPCOES,
 } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
+import { normalizarValorDoTipo, valorValidoParaTipo } from './tipos-campo.service.js';
 
 /**
  * SERVICE: formulários (FM1, docs/crm/plano-execucao-formularios-forecast.md).
@@ -49,7 +52,11 @@ import { obterSchemaCampos } from './field-schema.service.js';
  * @typedef {{ pergunta: Pergunta, obrigatorio: boolean }} ItemPergunta
  * @typedef {ItemCampo | ItemPergunta} Item
  * @typedef {{ titulo: string | null, itens: Item[] }} Secao
- * @typedef {{ secoes: Secao[], introducao: string | null, termo: string | null }} Rascunho
+ * @typedef {{
+ *   id: string, alvo: { campoId: string } | { perguntaId: string }, operador: string,
+ *   valor?: unknown, nivel: string, texto: string,
+ * }} Alerta
+ * @typedef {{ secoes: Secao[], introducao: string | null, termo: string | null, alertas: Alerta[] }} Rascunho
  * @typedef {{
  *   id: string, chave: string, label: string, tipo: string, camada: number,
  *   sensivel: boolean, opcoes: readonly string[] | null,
@@ -130,14 +137,129 @@ function normalizarPergunta(entrada, caminho, erros) {
   };
 }
 
+/** Operadores sem valor: a condição é só "respondeu" ou "não respondeu". */
+const OPERADORES_SEM_VALOR = Object.freeze(['vazio', 'nao_vazio']);
+
+/**
+ * Tipo de cada valor de uma lista ou intervalo: seleção múltipla compara
+ * opção a opção; intervalo de datas compara datas.
+ *
+ * @param {string} tipo
+ */
+function tipoDoElemento(tipo) {
+  if (tipo === TIPOS_CAMPO.SELECAO_MULTIPLA) return TIPOS_CAMPO.SELECAO;
+  if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) return TIPOS_CAMPO.DATA;
+  return tipo;
+}
+
+/**
+ * Valor da condição do alerta, conferido contra o tipo do alvo. Mesmos
+ * operadores do filtro (`OPERADORES_POR_TIPO`) e o mesmo sentido de
+ * `avaliarCondicao`.
+ *
+ * @param {{ tipo: string, opcoes: readonly string[] | null }} alvo
+ * @param {string} operador
+ * @param {unknown} valor
+ * @returns {{ valor?: unknown } | { erro: string }}
+ */
+export function valorDaCondicao(alvo, operador, valor) {
+  const { tipo, opcoes } = alvo;
+  if (!OPERADORES_POR_TIPO[tipo]?.includes(operador)) {
+    return { erro: `O operador "${operador}" não vale para este tipo de resposta` };
+  }
+  if (OPERADORES_SEM_VALOR.includes(operador)) return {};
+  const elemento = tipoDoElemento(tipo);
+  const valido = (item) => valorValidoParaTipo(elemento, item, opcoes);
+  switch (operador) {
+    case 'igual':
+      return valorValidoParaTipo(tipo, valor, opcoes)
+        ? { valor: normalizarValorDoTipo(tipo, valor) }
+        : { erro: 'Valor inválido para este tipo de resposta' };
+    case 'contem':
+      if (tipo === TIPOS_CAMPO.SELECAO_MULTIPLA) {
+        return valido(valor) ? { valor } : { erro: 'Escolha uma das opções' };
+      }
+      return typeof valor === 'string' && valor.trim().length > 0
+        ? { valor: valor.trim() }
+        : { erro: 'Escreva o texto a procurar' };
+    case 'e_um_dos':
+      return Array.isArray(valor) && valor.length > 0 && valor.every(valido)
+        ? { valor: valor.map((item) => normalizarValorDoTipo(elemento, item)) }
+        : { erro: 'Escolha ao menos um valor válido' };
+    case 'entre': {
+      const intervalo = /** @type {{ de?: unknown, ate?: unknown }} */ (valor ?? {});
+      const limites = [intervalo.de, intervalo.ate].filter(
+        (item) => item !== undefined && item !== null,
+      );
+      return typeof valor === 'object' && limites.length > 0 && limites.every(valido)
+        ? { valor: { de: intervalo.de ?? null, ate: intervalo.ate ?? null } }
+        : { erro: 'Informe o início, o fim ou os dois' };
+    }
+    default:
+      return { erro: 'Operador inválido' };
+  }
+}
+
+/**
+ * Normaliza as regras de alerta e anota os erros. O alvo tem de ser um item
+ * do rascunho já normalizado.
+ *
+ * @param {any[]} entrada
+ * @param {Secao[]} secoes  já normalizadas
+ * @param {Map<string, CampoElegivel>} porId
+ * @param {Record<string, string[]>} erros
+ * @returns {Alerta[]}
+ */
+function normalizarAlertas(entrada, secoes, porId, erros) {
+  const alvos = new Map();
+  for (const item of secoes.flatMap((secao) => secao.itens)) {
+    if (ehPergunta(item)) {
+      const { pergunta } = /** @type {ItemPergunta} */ (item);
+      alvos.set(`p:${pergunta.id}`, { tipo: pergunta.tipo, opcoes: pergunta.opcoes });
+    } else {
+      const campo = porId.get(/** @type {ItemCampo} */ (item).campoId);
+      if (campo) alvos.set(`c:${campo.id}`, { tipo: campo.tipo, opcoes: campo.opcoes });
+    }
+  }
+  const ids = new Set();
+  return entrada.map((alerta, posicao) => {
+    const base = `rascunho.alertas.${posicao}`;
+    const alvo = alerta.alvo?.campoId
+      ? { campoId: alerta.alvo.campoId }
+      : { perguntaId: alerta.alvo?.perguntaId };
+    const chave = 'campoId' in alvo ? `c:${alvo.campoId}` : `p:${alvo.perguntaId}`;
+    const doAlvo = alvos.get(chave);
+    let valor;
+    if (!doAlvo) {
+      erros[`${base}.alvo`] = ['O alerta precisa ser sobre um campo ou pergunta deste formulário'];
+    } else {
+      const resultado = valorDaCondicao(doAlvo, alerta.operador, alerta.valor);
+      if ('erro' in resultado) erros[`${base}.operador`] = [resultado.erro];
+      else valor = resultado.valor;
+    }
+    const id = alerta.id ?? randomUUID();
+    if (ids.has(id)) erros[`${base}.id`] = ['Este alerta já está no formulário'];
+    ids.add(id);
+    return {
+      id,
+      alvo,
+      operador: alerta.operador,
+      ...(valor === undefined ? {} : { valor }),
+      nivel: alerta.nivel,
+      texto: alerta.texto.trim(),
+    };
+  });
+}
+
 /**
  * Normaliza e confere o rascunho. Item de campo aponta para um campo
  * elegível, sem repetir, herda a política padrão do campo e só vem
  * pré-preenchido se o campo não for sensível. Pergunta própria ganha um id
  * se não tiver, e o id não se repete. Para publicar, também exige ao menos um
- * item e o termo de aceite.
+ * item e o termo de aceite. Alerta (FM5) precisa apontar para um item do
+ * rascunho, com operador e valor que valem para o tipo dele.
  *
- * @param {{ secoes?: { titulo?: string | null, itens?: object[] }[], introducao?: string | null, termo?: string | null }} entrada
+ * @param {{ secoes?: { titulo?: string | null, itens?: object[] }[], introducao?: string | null, termo?: string | null, alertas?: any[] }} entrada
  * @param {CampoElegivel[]} elegiveis
  * @param {{ publicar?: boolean }} [opcoes]
  * @returns {Rascunho}
@@ -189,6 +311,7 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
     ),
   }));
 
+  const alertas = normalizarAlertas(entrada.alertas ?? [], secoes, porId, erros);
   const termo = entrada.termo?.trim() || null;
   if (publicar && total === 0) {
     erros['rascunho.secoes'] = ['Escolha ao menos um campo ou pergunta para publicar'];
@@ -207,7 +330,7 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
       fields: erros,
     });
   }
-  return { secoes, introducao: entrada.introducao?.trim() || null, termo };
+  return { secoes, introducao: entrada.introducao?.trim() || null, termo, alertas };
 }
 
 /**
@@ -277,15 +400,20 @@ export function comPadroes(secoes) {
 
 /**
  * @param {Rascunho} rascunho
- * @param {Pick<VersaoLinha, 'secoes' | 'introducao' | 'termo'> | undefined} versao
+ * @param {Pick<VersaoLinha, 'secoes' | 'introducao' | 'termo' | 'alertas'> | undefined} versao
  */
 export function temAlteracoesNaoPublicadas(rascunho, versao) {
   if (!versao) return true;
-  const atual = { ...rascunho, secoes: comPadroes(rascunho.secoes) };
+  const atual = {
+    ...rascunho,
+    secoes: comPadroes(rascunho.secoes),
+    alertas: rascunho.alertas ?? [],
+  };
   const publicado = {
     secoes: comPadroes(/** @type {Secao[]} */ (versao.secoes)),
     introducao: versao.introducao,
     termo: versao.termo,
+    alertas: versao.alertas ?? [],
   };
   return canonico(atual) !== canonico(publicado);
 }
@@ -359,7 +487,11 @@ export async function obterFormulario(tenantId, id) {
   ]);
   return {
     ...resumo,
-    rascunho: { ...linha.rascunho, secoes: comPadroes(linha.rascunho.secoes) },
+    rascunho: {
+      ...linha.rascunho,
+      secoes: comPadroes(linha.rascunho.secoes),
+      alertas: linha.rascunho.alertas ?? [],
+    },
     versoes: versoes.map((versao) => ({
       id: versao.id,
       versao: versao.versao,
@@ -433,6 +565,7 @@ export async function publicarFormulario(tenantId, id, usuarioId) {
     campos: retratoDosCampos(rascunho, elegiveis),
     introducao: rascunho.introducao,
     termo: /** @type {string} */ (rascunho.termo),
+    alertas: rascunho.alertas,
     usuarioId,
   });
   if (!versao) throw naoEncontrado();
@@ -448,6 +581,7 @@ function versaoParaApi(versao) {
     publicadaPor: versao.publicada_por,
     introducao: versao.introducao,
     termo: versao.termo,
+    alertas: versao.alertas ?? [],
     secoes: comPadroes(/** @type {Secao[]} */ (versao.secoes)).map((secao) => ({
       titulo: secao.titulo,
       itens: secao.itens.map((item) =>

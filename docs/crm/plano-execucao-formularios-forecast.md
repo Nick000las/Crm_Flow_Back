@@ -122,7 +122,7 @@ As quatro colunas da 1A.5 que faltam entram na FC2, calculadas na leitura (`MIN/
 - [x] `criarLinkDoFormulario(tenantId, leadId, formId, { oportunidadeId, usuarioId })`: devolve o ativo ou cria, com `ON CONFLICT` no índice parcial. Service isolado, sem depender de sessão: pronto para o bot.
 - [x] Vencido é avaliado na leitura (status `expired` derivado) e, ao copiar, o vencido é fechado e outro nasce. Revogar é imediato e só vale para link ativo (409 nos outros). Fechado vira "Gerar novo" (mesmo `POST`, 201, outra URL). O link fica na versão em que nasceu: publicar a v2 não muda um ativo.
 - [x] Rotas na ficha (só com `crm.formularios`, qualquer papel que vê a pessoa): formulários disponíveis, links da pessoa, copiar e revogar. Outbox: `form.link_created` e `form.link_revoked` com só ids no payload (teste confere que nem token nem hash vão). O despacho do quadro passou a avisar só eventos de oportunidade: os de formulário são confirmados sem aviso (`quadro-eventos.service.test.js`, `quadro-tempo-real.db.test.js`).
-- [ ] Listar **respostas** da pessoa na ficha: fica para a FM4, que cria as submissões.
+- [x] Listar **respostas** da pessoa na ficha: entregue na FM4 (`GET /crm/leads/:id/formularios/respostas`).
 
 **Aceite**
 
@@ -186,22 +186,45 @@ Fecha a revisão do dono. Sem migration: rascunho e versão já guardam as seç�
 
 ### FM4. Envio da resposta
 
-- [ ] Uma transação: `SELECT … FOR UPDATE` no link, confere status e validade (tolerância de 2 h se `opened_at` < `expires_at`), valida contra o snapshot com os validadores de tipo que o CRM já usa (CPF, CEP, opções).
-- [ ] `crm_form_submission` imutável: respostas, hash do termo, aceite, `filled_by`, `guardian_name`, IP, user agent e `write_report`.
-- [ ] Gravar na pessoa pelo caminho do lead (`atualizarLeadExistente` ou a parte dele que não exige usuário), com `write_policy`. Valor de contato que pertence a outra pessoa (`encontrarDuplicados`) vai para revisão, não grava. Pessoa anonimizada ou na lixeira: recusa.
-- [ ] Campo pré-preenchido que a pessoa não mudou: o `write_report` marca como mantido e nada é gravado. Mudou: grava pela política do item. Respostas das perguntas próprias ficam só na submissão, validadas pelo tipo da pergunta.
-- [ ] Histórico na timeline da pessoa e `form.submitted` no outbox, na mesma transação. Link vira `submitted`.
-- [ ] Ficha: lista das respostas da pessoa (pendente da FM2) e `GET` de uma submissão, com campos e perguntas. Campo e pergunta sensíveis só para quem vê sensível.
+- [x] `POST /public/f/:token/respostas`, com o mesmo 404 genérico e os mesmos limites da FM3. Validação contra a versão do link, com os validadores de tipo do CRM (`valorValidoParaTipo`, `normalizarValorDoTipo`): obrigatório respondido, valor do tipo, opção existente, sem chave de fora. Erro 400 em `respostas.<campoId | perguntaId>`; o link continua ativo para corrigir.
+- [x] Prazo com folga: quem abriu antes de vencer envia (e recarrega a página) até 2 h depois do vencimento (`LINK_NO_PRAZO_SQL`, também na leitura da FM3).
+- [x] Migration 0045, `crm_form_submission`: respostas (`{ campos, perguntas }`), SHA-256 do termo, data do aceite, `filled_by` (`titular` ou `responsavel`, com o nome dele por CHECK), IP, navegador e `write_report`. Uma por link (`UNIQUE (link_id)`). Imutável por trigger (só a FK que zera a oportunidade passa), sem `UPDATE` para o `app_tenant`, RLS e FK por tenant.
+- [x] Escrita na pessoa pelo caminho da ficha (`atualizarLeadExistente`, sem autor), com `write_policy`: `overwrite` grava; `fill_if_empty` só grava se a pessoa não tinha valor, senão vai para revisão. Igual ao salvo é ignorado; vazio nunca apaga. Contato e documento que já são de outra pessoa (`encontrarDuplicados`, com as quatro regras ligadas, independente da configuração do tenant) vão para revisão. Regra do CRM que recusa a edição (400): a resposta é gravada e os campos vão para revisão. Pessoa anonimizada, arquivada ou na lixeira: 404.
+- [x] Mesma transação: a edição do lead trava a pessoa e, pelos ganchos novos de `atualizarLead` (`conferir` recebe a transação; `depoisDeGravar`), trava o link, grava a resposta, fecha o link, escreve `formulario_respondido` no histórico e publica `form.submitted` (só ids). Resposta sem campo a gravar usa o mesmo travamento, pessoa antes do link. Se a pessoa mudou entre o plano e a gravação, o plano é refeito uma vez.
+- [x] Ficha: lista das respostas (com a contagem do que foi gravado, ignorado e para revisão) e o detalhe, na versão que a pessoa viu, com `escrita` por campo. Campo que o papel não vê e pergunta sensível (só gestão) saem `oculto`, sem valor. IP e navegador só para a gestão.
 
-**Aceite:** clique duplo grava uma resposta só; editar o campo na ficha não muda "Ver respostas"; o `write_report` mostra o que foi gravado, ignorado e mandado para revisão.
+**Aceite**
+
+- [x] Clique duplo grava uma resposta só: três envios simultâneos, um 201 e dois 404, uma resposta no banco (`formulario-respostas.db.test.js`).
+- [x] Editar o campo na ficha não muda "Ver respostas": a resposta mantém o valor declarado, a ficha mostra o novo.
+- [x] O `write_report` mostra o que foi gravado, ignorado (igual, sem resposta) e mandado para revisão (valor diferente, contato de outra pessoa, regra do CRM, campo indisponível).
+- [x] O banco recusa alterar uma resposta.
+- [x] Gates verdes em 08/11/2026: 1154 de 1154 com banco, Redis e Kanban; lint, formato, RLS, FK, isolamento e boot real no Node. Nenhum tenant SMOKE sobrando.
+- [x] 13 proteções quebradas uma a uma, todas detectadas: link respondido aceitando outra, link sem fechar, `fill_if_empty`, valor igual, contato de outra pessoa, regra do CRM, obrigatório, tipo, pergunta sensível, campo oculto, IP para o OPERADOR, folga do prazo e resposta fora da transação da edição.
+- [ ] Teste na tela com dois navegadores (ficha gera o link, a página pública envia, a ficha mostra as respostas): depende das telas do front.
+
+**Decisões tomadas no marco (para confirmar):** pergunta sensível só aparece para a gestão (não há permissão por pergunta); duplicidade de contato vale mesmo com `crm.duplicidade` desligada; a resposta não conta como interação (`ultimaInteracaoEm` não muda).
+
+**Handoff ao front:** `handoff-front-fm4.md`.
 
 ### FM5. Alertas
 
-- [ ] Regra por formulário: "campo ou pergunta X = valor → alerta nível N, texto T", avaliada no envio.
-- [ ] Alerta no topo da ficha até "visto" por quem tem acesso. Quem não vê o campo sensível recebe só o texto genérico.
-- [ ] Selo de alerta no card do quadro comercial pelo `selos` que o card já tem. **A confirmar com você no início do marco.**
+**Decisões do dono (15/11/2026):** alerta na ficha e como selo no card do quadro comercial; "visto" por usuário (cada um vê até marcar o seu); três níveis, informativo, atenção e crítico (`info`, `warning`, `critical`), e o card mostra o mais grave não visto.
 
-**Aceite:** OPERADOR sem acesso ao campo sensível vê o alerta genérico e não vê as respostas, nem pela API.
+- [x] Regra por formulário, no rascunho (`alertas`) e publicada com a versão (migration 0046, `crm_form_version.alert_rules`): alvo (campo ou pergunta do próprio rascunho), operador, valor, nível e texto. Mesmos operadores do filtro por tipo (`OPERADORES_POR_TIPO`); valor conferido pelo tipo do alvo (`valorDaCondicao`). Alvo removido do rascunho, operador que não vale para o tipo ou valor inválido: 400 em `rascunho.alertas.<i>.<chave>`.
+- [x] Avaliada no envio da resposta (FM4), com o `avaliarCondicao` das regras do CRM, na mesma transação da resposta: cada regra que casa vira um `crm_form_alert` da pessoa (migration 0046), com a marca de sensível do alvo na versão. O alerta publica `person.updated` no outbox, para o card da pessoa ser avisado mesmo quando a resposta não grava campo.
+- [x] Ficha: `GET /crm/leads/:id/formularios/alertas` (não vistos por quem pede; `?todos=true` com os vistos) e `POST .../alertas/:alertaId/visto` (por usuário, `crm_form_alert_seen`, idempotente). Quem não vê o alvo recebe o nível e o texto genérico (`TEXTO_ALERTA_GENERICO`). A regra de quem vê o quê é a mesma do "Ver respostas" (`formulario-visibilidade.service.js`).
+- [x] Selo `alerta_formulario` no card do quadro comercial (`selosDoCard`), com o nível mais grave entre os alertas que quem vê o card não marcou; nunca traz o texto. Só com `crm.formularios`.
+
+**Aceite**
+
+- [x] OPERADOR sem acesso ao campo sensível vê o alerta genérico e não vê as respostas, nem pela API: os alertas de campo sensível e de pergunta sensível vêm genéricos, sem o texto da regra; "Ver respostas" esconde os dois valores (`formulario-alertas.db.test.js`).
+- [x] Visto por usuário: o DONO marca, o alerta sai para ele e continua para o OPERADOR; o selo do card do DONO cai para o próximo nível e some depois do último.
+- [x] Gates verdes em 15/11/2026: 1167 de 1167 com banco, Redis e Kanban; lint, formato, RLS, FK, isolamento e boot real no Node. Nenhum tenant SMOKE sobrando. Na primeira bateria, um teste do tempo real ficou preso 454 s numa conexão com o banco e deixou um tenant SMOKE; o arquivo passou três vezes sozinho (1,2 s), o tenant foi apagado como o teste apaga e a bateria inteira foi refeita.
+- [x] 10 proteções quebradas uma a uma, todas detectadas: alvo fora do rascunho, operador × tipo, avaliação da regra, texto do sensível, visto por usuário na lista e no selo, lista ignorando o visto, nível mais grave, aviso ao card e flag no selo.
+- [ ] Teste na tela com dois navegadores: depende das telas do front.
+
+**Handoff ao front:** `handoff-front-fm5.md`.
 
 ### FM6. LGPD e ciclo de vida da pessoa
 
