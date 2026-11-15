@@ -1,6 +1,16 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { LIMITES_FORMULARIO, LISTA_POLITICAS_ESCRITA, TIPOS_PERGUNTA } from '../constants.js';
+import {
+  FILTRO_OPERADORES,
+  LIMITE_NOME_RESPONSAVEL,
+  LIMITES_ALERTA,
+  LIMITES_FORMULARIO,
+  LISTA_NIVEIS_ALERTA,
+  LISTA_POLITICAS_ESCRITA,
+  LISTA_QUEM_PREENCHE,
+  QUEM_PREENCHE,
+  TIPOS_PERGUNTA,
+} from '../constants.js';
 
 const id = (mensagem) => z.string({ required_error: mensagem }).uuid(mensagem);
 const booleano = z.boolean({ invalid_type_error: 'Informe verdadeiro ou falso' });
@@ -98,6 +108,36 @@ const item = z.unknown().transform((valor, ctx) => {
   return z.NEVER;
 });
 
+/**
+ * Regra de alerta (FM5): quando a resposta do alvo casa, a pessoa ganha um
+ * alerta. O alvo é um item do próprio rascunho; pergunta nova precisa ser
+ * salva antes (é quando ganha o id). Operador e valor são conferidos contra o
+ * tipo do alvo no service.
+ */
+const alerta = z
+  .object({
+    id: id('Id de alerta inválido').optional(),
+    alvo: z
+      .object({
+        campoId: id('Escolha o campo do alerta').optional(),
+        perguntaId: id('Escolha a pergunta do alerta').optional(),
+      })
+      .strict()
+      .refine(
+        (alvo) => Boolean(alvo.campoId) !== Boolean(alvo.perguntaId),
+        'Escolha um campo ou uma pergunta',
+      ),
+    operador: z.enum(/** @type {[string, ...string[]]} */ ([...FILTRO_OPERADORES]), {
+      errorMap: () => ({ message: `Operador deve ser um de: ${FILTRO_OPERADORES.join(', ')}` }),
+    }),
+    valor: z.unknown().optional(),
+    nivel: z.enum(/** @type {[string, ...string[]]} */ ([...LISTA_NIVEIS_ALERTA]), {
+      errorMap: () => ({ message: 'Nível deve ser info, warning ou critical' }),
+    }),
+    texto: textoObrigatorio(LIMITES_ALERTA.TEXTO, 'Escreva o texto do alerta'),
+  })
+  .strict();
+
 const rascunho = z
   .object({
     secoes: z
@@ -121,6 +161,10 @@ const rascunho = z
       LIMITES_FORMULARIO.TERMO,
       `Use no máximo ${LIMITES_FORMULARIO.TERMO} caracteres`,
     ),
+    alertas: z
+      .array(alerta)
+      .max(LIMITES_ALERTA.POR_FORMULARIO, `No máximo ${LIMITES_ALERTA.POR_FORMULARIO} alertas`)
+      .optional(),
   })
   .strict();
 
@@ -174,3 +218,49 @@ export const criarLinkBodySchema = z
   .object({ oportunidadeId: id('Id de oportunidade inválido').nullable().optional() })
   .strict()
   .default({});
+
+// Ficha (FM4): `/crm/leads/:id/formularios/respostas/:respostaId`.
+export const respostaParamSchema = z.object({
+  id: id('Id de lead inválido'),
+  respostaId: id('Id de resposta inválido'),
+});
+
+// POST /public/f/:token/respostas (FM4). As respostas são conferidas contra
+// a versão do link no service; aqui, a forma e o aceite do termo.
+export const enviarRespostaBodySchema = z
+  .object({
+    respostas: z.record(z.string(), z.unknown(), {
+      invalid_type_error: 'Envie as respostas como um objeto',
+    }),
+    aceite: z.literal(true, {
+      errorMap: () => ({ message: 'É preciso aceitar o termo para enviar' }),
+    }),
+    preenchidoPor: z.enum(/** @type {[string, ...string[]]} */ ([...LISTA_QUEM_PREENCHE]), {
+      errorMap: () => ({ message: 'Diga quem está preenchendo' }),
+    }),
+    nomeResponsavel: textoOpcional(
+      LIMITE_NOME_RESPONSAVEL,
+      `Use no máximo ${LIMITE_NOME_RESPONSAVEL} caracteres`,
+    ),
+  })
+  .strict()
+  .superRefine((corpo, ctx) => {
+    if (corpo.preenchidoPor === QUEM_PREENCHE.RESPONSAVEL && !corpo.nomeResponsavel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['nomeResponsavel'],
+        message: 'Informe o nome de quem está preenchendo',
+      });
+    }
+  });
+
+// Ficha (FM5): alertas da pessoa.
+export const alertaParamSchema = z.object({
+  id: id('Id de lead inválido'),
+  alertaId: id('Id de alerta inválido'),
+});
+
+// `?todos=true` traz também os já vistos por quem pede.
+export const listarAlertasQuerySchema = z
+  .object({ todos: z.enum(['true', 'false']).optional() })
+  .transform(({ todos }) => ({ todos: todos === 'true' }));

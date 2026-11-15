@@ -22,6 +22,8 @@ export const TIPOS_EVENTO_LEAD = Object.freeze({
   OPORTUNIDADE_DESARQUIVADA: 'oportunidade_desarquivada',
   OPORTUNIDADE_EXCLUIDA: 'oportunidade_excluida',
   OPORTUNIDADE_RESTAURADA: 'oportunidade_restaurada',
+  // FM4: a pessoa respondeu um formulário (autor nulo; ids em `detalhes`).
+  FORMULARIO_RESPONDIDO: 'formulario_respondido',
 });
 
 /**

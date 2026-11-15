@@ -235,10 +235,25 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
  * @param {string} leadId
  * @param {AtualizarLeadInput} input
  * @param {string} [usuarioId] quem está editando (do token)
- * @param {{ papel?: string }} [acesso]  papel de quem edita (M13: campo que ele não edita → 403)
+ * @param {{
+ *   papel?: string,
+ *   transacao?: {
+ *     conferir: (lead: { updated_at: Date }, tx: import('@prisma/client').Prisma.TransactionClient) => Promise<void>,
+ *     depoisDeGravar: (tx: import('@prisma/client').Prisma.TransactionClient, depois: any) => Promise<void>,
+ *     detalhes?: Record<string, unknown>,
+ *   },
+ * }} [acesso]  papel de quem edita (M13: campo que ele não edita → 403). `transacao`: quem
+ *   edita sem usuário (resposta de formulário, FM4) confere e grava o que é dele na mesma
+ *   transação da edição, com o lead travado; `detalhes` vai no evento do histórico
  * @returns {Promise<Lead>}
  */
-export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioId, { papel } = {}) {
+export async function atualizarLeadExistente(
+  tenantId,
+  leadId,
+  entrada,
+  usuarioId,
+  { papel, transacao } = {},
+) {
   const { ignorarDuplicados, expectedUpdatedAt, ...semFlagDeDuplicidade } = entrada;
   const schema = await obterSchemaDoPapel(tenantId, papel);
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
@@ -283,13 +298,18 @@ export async function atualizarLeadExistente(tenantId, leadId, entrada, usuarioI
     {
       autorId: usuarioId ?? null,
       montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
+      ...(transacao?.detalhes ? { detalhes: transacao.detalhes } : {}),
     },
     {
       inatividade: await relogioDaInatividade(tenantId),
       ocultos: await pipelinesOcultos(tenantId, papel),
-      conferir: expectedUpdatedAt
-        ? (lead) => garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel)
-        : undefined,
+      conferir: async (lead, tx) => {
+        if (expectedUpdatedAt) {
+          await garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel);
+        }
+        await transacao?.conferir(lead, tx);
+      },
+      depoisDeGravar: transacao?.depoisDeGravar,
     },
   );
 

@@ -361,8 +361,8 @@ Uma transação:
 - [x] Token de um tenant nunca acessa dados de outro (teste de RLS na rota pública). (FM3, 08/11/2026: `formulario-publico.db.test.js`)
 - [ ] Prévia do link no WhatsApp não mostra nome do paciente e não marca o link como aberto. (FM3: no back, `GET` não marca abertura, só o `POST /aberto`; falta provar a prévia, que vem do `index.html` do front)
 - [ ] Foto enviada chega sem EXIF.
-- [ ] Submissão é imutável: editar o campo na ficha não altera "Ver respostas".
-- [ ] OPERADOR sem acesso a campos sensíveis vê o alerta genérico e não vê as respostas.
+- [x] Submissão é imutável: editar o campo na ficha não altera "Ver respostas". (FM4, 08/11/2026: `formulario-respostas.db.test.js`; o banco também recusa UPDATE)
+- [x] OPERADOR sem acesso a campos sensíveis vê o alerta genérico e não vê as respostas. (FM5, 15/11/2026: `formulario-alertas.db.test.js`)
 
 ## Rollout, testes e observabilidade
 

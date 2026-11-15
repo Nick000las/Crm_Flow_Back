@@ -80,6 +80,8 @@ export const ORDEM_PADRAO_DO_QUADRO = Object.freeze({
 export const SELOS_DO_CARD = Object.freeze({
   ESFRIANDO: 'esfriando',
   ORIGEM_REABERTA: 'origem_reaberta',
+  // FM5: alerta de formulário que quem vê o card ainda não marcou como visto.
+  ALERTA: 'alerta_formulario',
 });
 
 /**

@@ -104,6 +104,7 @@ describe('validarRascunho', () => {
       ],
       introducao: null,
       termo: null,
+      alertas: [],
     });
   });
 
