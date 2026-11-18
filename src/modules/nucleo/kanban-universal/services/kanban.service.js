@@ -15,6 +15,7 @@ export function operarKanban(context, action, id, data, publish) {
     });
   }
   const reads = [
+    'report.get',
     'board.get',
     'board.members',
     'card.get',

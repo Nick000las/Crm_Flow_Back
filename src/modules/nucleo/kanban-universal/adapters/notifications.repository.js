@@ -57,7 +57,7 @@ export function carregarEmailAutorizado(tenantId, notification) {
       LEFT JOIN modulo_kanban_universal.board_members bm ON bm.tenant_id=u.tenant_id AND bm.usuario_id=u.id AND bm.board_id=b.id
       WHERE c.tenant_id=${tenantId}::uuid AND c.id=${notification.card_id}::uuid AND c.archived_at IS NULL
         AND COALESCE(p.enabled,true) AND (u.role IN ('DONO','MASTER') OR bm.usuario_id IS NOT NULL)
-        AND (${notification.kind}='mention' OR c.responsavel_id=u.id)
+        AND (${notification.kind}='mention' OR (${notification.kind} IN ('assignment','due') AND c.responsavel_id=u.id) OR (${notification.kind}='update' AND u.id::text IN (SELECT jsonb_array_elements_text(COALESCE(c.dados_extras->'seguidores','[]'::jsonb)))))
         AND (${notification.kind}<>'mention' OR EXISTS (SELECT 1 FROM modulo_kanban_universal.card_comments cm
           WHERE cm.tenant_id=c.tenant_id AND cm.card_id=c.id AND cm.id::text=split_part(${notification.dedupe_key},':',1)))
         AND (${notification.kind}<>'due' OR (COALESCE(c.dados_extras->>'prazoConcluido','false')<>'true'

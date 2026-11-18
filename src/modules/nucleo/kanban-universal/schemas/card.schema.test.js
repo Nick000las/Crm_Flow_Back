@@ -11,7 +11,7 @@ const details = {
   descricao: 'Contexto',
   etiquetas: [label],
   checklist: [item],
-  leadId: 'legacy-lead',
+  leadId: id,
 };
 
 describe('contrato dos detalhes de cards', () => {

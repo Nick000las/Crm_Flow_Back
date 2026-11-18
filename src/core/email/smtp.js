@@ -15,7 +15,15 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
  * }} config
  * @param {{ to: string, code: string }} input
  */
-export async function sendPasswordActivationCode(config, { to, code }) {
+export async function sendPasswordActivationCode(config, input) {
+  return sendPasswordCode(config, { ...input, subject: 'Código para criar sua senha' });
+}
+
+export async function sendPasswordRecoveryCode(config, input) {
+  return sendPasswordCode(config, { ...input, subject: 'Código para recuperar sua conta' });
+}
+
+async function sendPasswordCode(config, { to, code, subject }) {
   const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_TIMEOUT_MS } = config;
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
@@ -36,7 +44,7 @@ export async function sendPasswordActivationCode(config, { to, code }) {
     await transporter.sendMail({
       from: SMTP_USER,
       to,
-      subject: 'Código para criar sua senha',
+      subject,
       text: `Seu código de verificação é ${code}. Ele expira em ${PASSWORD_ACTIVATION.EXPIRATION_MINUTES} minutos.`,
       html: `<p>Seu código de verificação é <strong>${code}</strong>.</p><p>Ele expira em ${PASSWORD_ACTIVATION.EXPIRATION_MINUTES} minutos.</p>`,
     });
@@ -87,18 +95,25 @@ function emailUnavailableError(cause) {
 
 const NOTIFICATION_TITLES = {
   assignment: 'Você recebeu um card',
+  update: 'Um card que você acompanha foi atualizado',
   mention: 'Você foi mencionado em um comentário',
   due: 'Um card seu vence hoje',
 };
 
 /** O conteúdo dinâmico só entra em texto simples; não há HTML fornecido por usuários. */
-export async function sendKanbanNotification(config, { email, titulo, quadro, kind, id, boardId }) {
+export async function sendKanbanNotification(
+  config,
+  { email, titulo, quadro, kind, id, boardId, cardId },
+) {
   const title = NOTIFICATION_TITLES[kind];
   if (!title || !config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASS) {
     throw emailUnavailableError();
   }
   const url = new URL('/kanban', config.FRONTEND_URL);
   url.searchParams.set('quadro', boardId);
+  if (cardId) {
+    url.searchParams.set('card', cardId);
+  }
   const transport = nodemailer.createTransport({
     host: config.SMTP_HOST,
     port: config.SMTP_PORT,

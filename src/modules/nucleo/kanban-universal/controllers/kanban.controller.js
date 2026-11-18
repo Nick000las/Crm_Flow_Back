@@ -40,6 +40,25 @@ export function registrarRotasKanbanCompleto(app) {
   );
   route('get', '/kanban/boards/:id/arquivados', 'archive.list');
   route('get', '/kanban/cards/:id/activities', 'activity.list');
+  route('get', '/kanban/boards/:id/relatorio', 'report.get');
+  route(
+    'post',
+    '/kanban/cards/:id/duplicar',
+    'card.duplicate',
+    z.object({ modelo: z.boolean().default(false) }).strict(),
+  );
+  route(
+    'put',
+    '/kanban/cards/:id/seguir',
+    'card.follow',
+    z.object({ seguindo: z.boolean() }).strict(),
+  );
+  route(
+    'patch',
+    '/kanban/comments/:id',
+    'comment.update',
+    z.object({ conteudo: z.string().trim().min(1).max(MAX_COMMENT) }).strict(),
+  );
   route(
     'patch',
     '/kanban/cards/:id/arquivar',

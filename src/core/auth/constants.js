@@ -60,4 +60,9 @@ export const PASSWORD_POLICY = Object.freeze({
   HASH_ROUNDS: 12,
 });
 
+export const PASSWORD_RECOVERY = Object.freeze({
+  ...PASSWORD_ACTIVATION,
+  PURPOSE: 'recuperacao_senha',
+});
+
 export const JWT_SECRET_MIN_LENGTH = 32;

@@ -14,6 +14,10 @@ import {
   verifyUserLoginEmail,
 } from '#core/auth/login/controllers/login.controller.js';
 import { authenticateHook } from '#core/auth/rbac.js';
+import {
+  forgotPassword,
+  recoverPassword,
+} from '#core/auth/login/controllers/password-recovery.controller.js';
 
 /**
  * @param {import('fastify').FastifyInstance} app
@@ -35,6 +39,9 @@ export function registerAuthRoutes(app) {
   app.post('/auth/login', verifyUserLoginEmail);
 
   app.post('/auth/login/password', loginWithPassword);
+
+  app.post('/auth/password/forgot', forgotPassword);
+  app.post('/auth/password/reset', recoverPassword);
 
   app.post('/auth/activation/verify', verifyActivationCode);
 

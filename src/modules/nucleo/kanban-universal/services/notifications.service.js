@@ -37,6 +37,7 @@ export async function processarEmails(config, logger, isStopping = () => false) 
             kind: item.kind,
             id: item.id,
             boardId: item.board_id,
+            cardId: item.card_id,
           });
           await concluirEmail(tenant.id, item, 'sent');
         } catch {

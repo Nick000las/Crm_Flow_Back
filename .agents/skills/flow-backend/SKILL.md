@@ -56,6 +56,13 @@ framework como parte de uma alteração de funcionalidade.
 
 ## Restauração de sessão
 
+- Recuperação usa `POST /auth/password/forgot` e `POST /auth/password/reset`.
+  O propósito `recuperacao_senha` é separado de ativação e MFA. Guarde apenas
+  hash do código, limite tentativas e reenvios, consuma-o junto da troca de senha
+  em transação e responda genericamente para e-mail desconhecido. Redefinir não
+  emite sessão nem desativa MFA. A migration `0030_recuperacao_senha` libera
+  esse propósito no CHECK da tabela existente.
+
 - `GET /auth/session` faz bootstrap com o mesmo `scope` de `/me`: sem sessão
   válida, devolve `200` com `{ accessToken: null, user: null }`. Não transforme
   erros operacionais 5xx em sessão anônima. O prefixo `/auth` recebe o cookie
@@ -238,3 +245,21 @@ framework como parte de uma alteração de funcionalidade.
 - Informe os padrões criados ou modificados e as verificações realizadas.
   Editar a skill não concede autorização para outras ações externas ou mudanças
   de infraestrutura fora da tarefa do usuário.
+
+## Colaboração e produtividade no Kanban
+
+- A migration `0031_kanban_colaboracao` adiciona data de edição de comentário e
+  avisos para seguidores. A edição pertence ao autor e exige acesso de edição
+  ao quadro; a exclusão mantém os privilégios de gestão existentes.
+- Seguidores são alterados apenas pela rota `PUT /kanban/cards/:id/seguir`,
+  sempre para o usuário autenticado. Revalide participação, preferência de
+  e-mail e assinatura antes de entregar avisos, inclusive após sair do quadro.
+- Recorrência gera a próxima tarefa na transição para prazo concluído, na mesma
+  transação, com datas de calendário e checklist reiniciado. Regras por etapa
+  são executadas na movimentação pelo backend, nunca apenas pelo frontend.
+- Metadados novos têm contrato Zod em `card.schema.js`: bloqueio, lead, links,
+  anexos binários limitados, modelos, recorrência e automações. Valide o tenant
+  do lead, as etapas e os participantes das regras antes de persistir.
+- Modelos ficam no mesmo armazenamento de cards e são separados das colunas na
+  resposta do quadro. Relatórios usam o histórico, excluem reordenações na mesma
+  etapa e encerram permanências no arquivamento.

@@ -145,7 +145,7 @@ integration('quadros e equipes no PostgreSQL', () => {
       prazoConcluido: false,
       etiquetas: [{ id: randomUUID(), nome: 'Cliente', cor: 'azul' }],
       checklist: [{ id: randomUUID(), titulo: 'Revisar', concluido: true }],
-      leadId: 'metadado-especifico',
+      referenciaExterna: 'metadado-especifico',
     };
     const updated = await member('PATCH', `/kanban/cards/${cardId}`, {
       dadosExtras: details,
@@ -349,6 +349,95 @@ integration('quadros e equipes no PostgreSQL', () => {
       wipLimit: 1,
     });
     expect(changed.body.data.wipLimit).toBe(1);
+    await owner('DELETE', `/kanban/boards/${boardId}`);
+  });
+  it('colaboração, modelos, recorrência e automações mantêm autorização e persistência', async () => {
+    await member('PUT', '/kanban/email-preferences', { enabled: true });
+    const created = await owner('POST', '/kanban/boards', {
+      nome: 'Recursos',
+      boardType: 'projetos',
+      participantes: [memberId],
+      colunasIniciais: ['A fazer', 'Concluído'],
+    });
+    const boardId = created.body.data.id;
+    const board = (await owner('GET', `/kanban/boards/${boardId}`)).body.data;
+    const [source, target] = board.colunas;
+    const createdCard = await owner('POST', `/kanban/boards/${boardId}/cards`, {
+      titulo: 'Recorrente',
+      colunaId: source.id,
+      dadosExtras: {
+        prazo: '2028-01-31',
+        recorrencia: 'mensal',
+        anexos: [
+          {
+            id: randomUUID(),
+            nome: 'arquivo.txt',
+            conteudo: 'data:application/octet-stream;base64,dGVzdGU=',
+          },
+        ],
+        links: [{ id: randomUUID(), nome: 'Link', url: 'https://example.com' }],
+        automacoes: [{ colunaId: target.id, concluir: true, responsavelId: memberId }],
+        checklist: [{ id: randomUUID(), titulo: 'Revisar', concluido: true }],
+      },
+    });
+    expect(createdCard.status).toBe(HTTP_STATUS.OK);
+    const cardId = createdCard.body.data.id;
+    expect(
+      (await outsider('PUT', `/kanban/cards/${cardId}/seguir`, { seguindo: true })).status,
+    ).toBe(HTTP_STATUS.NOT_FOUND);
+    expect(
+      (await member('PUT', `/kanban/cards/${cardId}/seguir`, { seguindo: true })).body.data
+        .dadosExtras.seguidores,
+    ).toEqual([memberId]);
+    const comment = (
+      await member('POST', `/kanban/cards/${cardId}/comments`, { conteudo: 'Original' })
+    ).body.data;
+    expect(
+      (await owner('PATCH', `/kanban/comments/${comment.id}`, { conteudo: 'Outro autor' })).status,
+    ).toBe(HTTP_STATUS.FORBIDDEN);
+    expect(
+      (await member('PATCH', `/kanban/comments/${comment.id}`, { conteudo: 'Corrigido' })).body.data
+        .editedAt,
+    ).toBeTruthy();
+    expect(
+      (await owner('GET', `/kanban/boards/${boardId}`)).body.data.colunas[0].cards[0].commentsCount,
+    ).toBe(1);
+    expect((await owner('POST', `/kanban/cards/${cardId}/duplicar`, { modelo: true })).status).toBe(
+      HTTP_STATUS.OK,
+    );
+    expect((await owner('GET', `/kanban/boards/${boardId}`)).body.data.modelos).toHaveLength(1);
+    const moved = await owner('PATCH', `/kanban/cards/${cardId}/mover`, {
+      novaColunaId: target.id,
+      novaOrdem: 0,
+    });
+    expect(moved.status).toBe(HTTP_STATUS.OK);
+    expect(moved.body.data).toMatchObject({
+      responsavelId: memberId,
+      dadosExtras: { prazoConcluido: true },
+    });
+    const nextBoard = (await owner('GET', `/kanban/boards/${boardId}`)).body.data;
+    const next = nextBoard.colunas
+      .flatMap((column) => column.cards)
+      .find((card) => card.id !== cardId);
+    expect(next.dadosExtras).toMatchObject({
+      prazo: '2028-02-29',
+      prazoConcluido: false,
+      checklist: [{ concluido: false }],
+    });
+    const report = await owner('GET', `/kanban/boards/${boardId}/relatorio`);
+    expect(report.status).toBe(HTTP_STATUS.OK);
+    expect(report.body.data.map((row) => row.nome)).toEqual([source.nome, target.nome]);
+    const pending = await prepararEmails(tenantId, 'America/Sao_Paulo', randomUUID());
+    const update = pending.find(
+      (item) => item.kind === 'update' && item.usuario_id === memberId && item.card_id === cardId,
+    );
+    expect(update).toBeTruthy();
+    expect(await carregarEmailAutorizado(tenantId, update)).toMatchObject({ titulo: 'Recorrente' });
+    await member('PUT', `/kanban/cards/${cardId}/seguir`, { seguindo: false });
+    expect(await carregarEmailAutorizado(tenantId, update)).toBeUndefined();
+    await member('PUT', `/kanban/cards/${cardId}/seguir`, { seguindo: true });
+    await owner('PUT', `/kanban/boards/${boardId}/membros`, { participantes: [ownerId] });
+    expect(await carregarEmailAutorizado(tenantId, update)).toBeUndefined();
     await owner('DELETE', `/kanban/boards/${boardId}`);
   });
 });

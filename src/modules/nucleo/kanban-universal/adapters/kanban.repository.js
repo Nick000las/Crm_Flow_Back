@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+import { nextOccurrence } from '../schemas/recurrence.js';
 import {
   exigirParticipacao,
   listarParticipantes,
@@ -47,6 +49,7 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
       await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.cards WHERE tenant_id = ${tenantId}::uuid ORDER BY "order", id`;
     const cards = allCards.filter((item) => !item.archived_at);
     const reads = [
+      'report.get',
       'board.get',
       'board.members',
       'card.get',
@@ -74,7 +77,7 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
     const card = allCards.find((c) => c.id === id);
     // Resolve também recursos indiretos antes de autorizar (cards, colunas, comentários).
     let resourceBoardId = board?.id ?? column?.board_id ?? card?.board_id;
-    if (action === 'comment.delete') {
+    if (['comment.delete', 'comment.update'].includes(action)) {
       const comments = await tx.$queryRaw`
         SELECT c.board_id, c.id AS card_id FROM modulo_kanban_universal.card_comments m
         JOIN modulo_kanban_universal.cards c ON c.tenant_id = m.tenant_id AND c.id = m.card_id
@@ -118,6 +121,53 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
         fail('O responsável deve ser um participante ativo do quadro.', true);
       }
     }
+    async function validateDetails(details, boardId, previous = {}) {
+      if (details.automacoes?.length) {
+        const participants = await listarParticipantes(tx, tenantId, boardId);
+        const validRules = [];
+        for (const rule of details.automacoes) {
+          const old = previous.automacoes?.find((item) => item.colunaId === rule.colunaId);
+          if (!columns.some((item) => item.id === rule.colunaId && item.board_id === boardId)) {
+            if (isDeepStrictEqual(rule, old)) { continue; }
+            fail('A etapa da automação não pertence ao quadro.', true);
+          }
+          if (rule.responsavelId && !participants.some((item) => item.id === rule.responsavelId && item.ativo)) {
+            if (old?.responsavelId !== rule.responsavelId) { fail('O responsável da automação deve ser um participante ativo do quadro.', true); }
+            validRules.push({ ...rule, responsavelId: null });
+          } else { validRules.push(rule); }
+        }
+        details.automacoes = validRules;
+      }
+      if (details.leadId != null && !isDeepStrictEqual(details.leadId, previous.leadId)) {
+        if (typeof details.leadId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(details.leadId)) {
+          fail('Informe um ID válido para vincular um novo lead.', true);
+        }
+        const leads = await tx.$queryRaw`SELECT l.id FROM modulo_crm.leads l JOIN public.tenant_modules m ON m.tenant_id=l.tenant_id AND m.module_key='crm' AND m.disabled_at IS NULL WHERE l.tenant_id=${tenantId}::uuid AND l.id=${details.leadId}::uuid AND l.deleted_at IS NULL AND l.anonimizado_em IS NULL AND l.mesclado_em_id IS NULL FOR SHARE OF l`;
+        if (!leads.length) { fail('Lead indisponível nesta empresa.', true); }
+      }
+    }
+    async function repeatCard(details, source, title, assignee) {
+      if (
+        !details.prazoConcluido ||
+        source.dados_extras?.prazoConcluido ||
+        !details.recorrencia ||
+        details.recorrencia === 'nenhuma' ||
+        !details.prazo ||
+        details.modelo
+      ) {
+        return;
+      }
+      const next = {
+        ...details,
+        prazo: nextOccurrence(details.prazo, details.recorrencia),
+        prazoConcluido: false,
+        seguidores: [],
+        checklist: (details.checklist ?? []).map((item) => ({ ...item, concluido: false })),
+      };
+      const [{ total: order }] =
+        await tx.$queryRaw`SELECT count(*)::int AS total FROM modulo_kanban_universal.cards WHERE tenant_id=${tenantId}::uuid AND coluna_id=${source.coluna_id}::uuid AND archived_at IS NULL`;
+      await tx.$executeRaw`INSERT INTO modulo_kanban_universal.cards(tenant_id,board_id,coluna_id,titulo,responsavel_id,dados_extras,"order") VALUES(${tenantId}::uuid,${source.board_id}::uuid,${source.coluna_id}::uuid,${title},${assignee}::uuid,${JSON.stringify(next)}::jsonb,${order})`;
+    }
     async function reorder(items, columnId) {
       for (const [order, item] of items.entries()) {
         await tx.$executeRaw`UPDATE modulo_kanban_universal.cards SET "order" = ${order}, coluna_id = ${columnId}::uuid WHERE tenant_id = ${tenantId}::uuid AND id = ${item.id}::uuid`;
@@ -126,19 +176,48 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
     if (action === 'board.get') {
       requireBoard();
       const participantes = await listarParticipantes(tx, tenantId, id);
+      const counts =
+        await tx.$queryRaw`SELECT m.card_id,count(*)::int AS total FROM modulo_kanban_universal.card_comments m JOIN modulo_kanban_universal.cards c ON c.tenant_id=m.tenant_id AND c.id=m.card_id WHERE m.tenant_id=${tenantId}::uuid AND c.board_id=${id}::uuid GROUP BY m.card_id`;
+      const presentCard = (row) => ({
+        ...present(row),
+        commentsCount: counts.find((item) => item.card_id === row.id)?.total ?? 0,
+      });
       return {
         ...present(board),
         canEdit:
           ['DONO', 'MASTER'].includes(context.role) ||
           participantes.find((member) => member.id === context.userId)?.permissao !== 'leitor',
         participantes,
+        modelos: cards.filter((k) => k.board_id === id && k.dados_extras?.modelo).map(present),
         colunas: columns
           .filter((c) => c.board_id === id)
           .map((c) => ({
             ...present(c),
-            cards: cards.filter((k) => k.coluna_id === c.id).map(present),
+            cards: cards
+              .filter((k) => k.coluna_id === c.id && !k.dados_extras?.modelo)
+              .map(presentCard),
           })),
       };
+    }
+    if (action === 'report.get') {
+      requireBoard();
+      return tx.$queryRaw`
+        WITH eventos AS (
+          SELECT id,card_id,action,details->>'colunaId' AS coluna_id,created_at,
+            lag(details->>'colunaId') OVER (PARTITION BY card_id ORDER BY created_at,id) AS anterior
+          FROM modulo_kanban_universal.activities
+          WHERE tenant_id=${tenantId}::uuid AND board_id=${id}::uuid AND action IN ('card.create','card.move','card.archive','card.restore')
+            AND card_id IN (SELECT id FROM modulo_kanban_universal.cards WHERE tenant_id=${tenantId}::uuid AND COALESCE(dados_extras->>'modelo','false')<>'true')
+        ), etapas AS (
+          SELECT card_id,action,coluna_id,created_at,
+            lead(created_at,1,now()::timestamp) OVER (PARTITION BY card_id ORDER BY created_at,id) AS fim
+          FROM eventos WHERE action IN ('card.create','card.archive','card.restore') OR coluna_id IS DISTINCT FROM anterior
+        )
+        SELECT c.id, c.nome, count(DISTINCT e.card_id)::int AS cards,
+          COALESCE(avg(EXTRACT(EPOCH FROM (e.fim-e.created_at)))/3600,0)::float AS horas
+        FROM modulo_kanban_universal.colunas c LEFT JOIN etapas e ON e.coluna_id=c.id::text AND e.action<>'card.archive'
+        WHERE c.tenant_id=${tenantId}::uuid AND c.board_id=${id}::uuid GROUP BY c.id,c.nome,c."order" ORDER BY c."order"
+      `;
     }
     if (action === 'activity.list') {
       requireCard();
@@ -286,10 +365,49 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
       requireBoard();
       validColumn(data.colunaId, id);
       await assignable();
+      if (data.dadosExtras) {
+        delete data.dadosExtras.seguidores;
+      }
+      await validateDetails(data.dadosExtras ?? {}, id);
       const order = cards.filter((c) => c.coluna_id === data.colunaId).length;
       return present(
         (
           await tx.$queryRaw`INSERT INTO modulo_kanban_universal.cards (tenant_id, board_id, coluna_id, titulo, responsavel_id, dados_extras, "order") VALUES (${tenantId}::uuid, ${id}::uuid, ${data.colunaId}::uuid, ${data.titulo}, ${data.responsavelId ?? null}::uuid, ${JSON.stringify(data.dadosExtras ?? {})}::jsonb, ${order}) RETURNING *`
+        )[0],
+      );
+    }
+    if (action === 'card.follow') {
+      requireCard();
+      const seguidores = new Set(card.dados_extras?.seguidores ?? []);
+      if (data.seguindo) {
+        seguidores.add(context.userId);
+      } else {
+        seguidores.delete(context.userId);
+      }
+      const details = { ...card.dados_extras, seguidores: [...seguidores] };
+      return present(
+        (
+          await tx.$queryRaw`UPDATE modulo_kanban_universal.cards SET dados_extras=${JSON.stringify(details)}::jsonb WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid RETURNING *`
+        )[0],
+      );
+    }
+    if (action === 'card.duplicate') {
+      requireCard();
+      const details = {
+        ...card.dados_extras,
+        modelo: data.modelo,
+        seguidores: [],
+        prazoConcluido: false,
+        checklist: (card.dados_extras?.checklist ?? []).map((item) => ({
+          ...item,
+          concluido: false,
+        })),
+      };
+      await validateDetails(details, card.board_id, card.dados_extras ?? {});
+      const order = cards.filter((item) => item.coluna_id === card.coluna_id).length;
+      return present(
+        (
+          await tx.$queryRaw`INSERT INTO modulo_kanban_universal.cards(tenant_id,board_id,coluna_id,titulo,responsavel_id,dados_extras,"order") VALUES(${tenantId}::uuid,${card.board_id}::uuid,${card.coluna_id}::uuid,${card.titulo},${card.responsavel_id}::uuid,${JSON.stringify(details)}::jsonb,${order}) RETURNING *`
         )[0],
       );
     }
@@ -305,11 +423,25 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
         );
       }
       await assignable();
-      const details = { ...card.dados_extras, ...data.dadosExtras };
+      const details = {
+        ...card.dados_extras,
+        ...data.dadosExtras,
+        ...(card.dados_extras?.seguidores && { seguidores: card.dados_extras.seguidores }),
+      };
+      if (!card.dados_extras?.seguidores) {
+        delete details.seguidores;
+      }
+      await validateDetails(details, card.board_id, card.dados_extras ?? {});
       if (details.prazoConcluido === true && card.dados_extras?.prazoConcluido !== true) {
         await tx.$executeRaw`INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action)
           VALUES(${tenantId}::uuid,${card.board_id}::uuid,${id}::uuid,${context.userId}::uuid,'card.complete')`;
       }
+      await repeatCard(
+        details,
+        card,
+        data.titulo ?? card.titulo,
+        data.responsavelId === undefined ? card.responsavel_id : data.responsavelId,
+      );
       return present(
         (
           await tx.$queryRaw`UPDATE modulo_kanban_universal.cards SET titulo = ${data.titulo ?? card.titulo}, responsavel_id = ${data.responsavelId === undefined ? card.responsavel_id : data.responsavelId}::uuid, dados_extras = ${JSON.stringify(details)}::jsonb WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid RETURNING *`
@@ -319,6 +451,8 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
     if (action === 'card.move') {
       requireCard();
       validColumn(data.novaColunaId, card.board_id);
+      const moveDetails = { ...card.dados_extras };
+      await validateDetails(moveDetails, card.board_id, card.dados_extras ?? {});
       const target = cards.filter((c) => c.coluna_id === data.novaColunaId && c.id !== id);
       target.splice(Math.min(data.novaOrdem, target.length), 0, card);
       if (card.coluna_id !== data.novaColunaId) {
@@ -328,6 +462,19 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
         );
       }
       await reorder(target, data.novaColunaId);
+      if (card.coluna_id !== data.novaColunaId) {
+        const rule = moveDetails.automacoes?.find(
+          (item) => item.colunaId === data.novaColunaId,
+        );
+        if (rule) {
+          const details = {
+            ...moveDetails,
+            prazoConcluido: rule.concluir || card.dados_extras?.prazoConcluido || false,
+          };
+          await repeatCard(details, card, card.titulo, rule.responsavelId ?? card.responsavel_id);
+          await tx.$executeRaw`UPDATE modulo_kanban_universal.cards SET dados_extras=${JSON.stringify(details)}::jsonb,responsavel_id=${rule.responsavelId ?? card.responsavel_id}::uuid WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid`;
+        }
+      }
       if (card.coluna_id === data.novaColunaId) {
         await tx.$executeRaw`INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action,details)
           VALUES(${tenantId}::uuid,${card.board_id}::uuid,${id}::uuid,${context.userId}::uuid,'card.move',${JSON.stringify({ colunaId: card.coluna_id, novaOrdem: data.novaOrdem })}::jsonb)`;
@@ -366,19 +513,30 @@ export function executar(tenantId, action, id, data = {}, context = {}, change) 
         )[0],
       );
     }
-    if (action === 'comment.delete') {
+    if (['comment.delete', 'comment.update'].includes(action)) {
       const comment = (
         await tx.$queryRaw`SELECT * FROM modulo_kanban_universal.card_comments WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
       )[0];
       if (!comment) {
         fail('Comentário não encontrado.');
       }
-      if (context.role === 'OPERADOR' && comment.usuario_id !== context.userId) {
+      if (
+        (action === 'comment.update' || context.role === 'OPERADOR') &&
+        comment.usuario_id !== context.userId
+      ) {
         throw new AppError({
           code: 'FORBIDDEN',
           statusCode: HTTP_STATUS.FORBIDDEN,
           message: 'Você só pode excluir seus comentários.',
         });
+      }
+      if (action === 'comment.update') {
+        await tx.$executeRaw`INSERT INTO modulo_kanban_universal.activities(tenant_id,board_id,card_id,actor_id,action) VALUES(${tenantId}::uuid,${resourceBoardId}::uuid,${comment.card_id}::uuid,${context.userId}::uuid,'comment.update')`;
+        return present(
+          (
+            await tx.$queryRaw`UPDATE modulo_kanban_universal.card_comments SET conteudo=${data.conteudo},edited_at=now() WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid RETURNING *`
+          )[0],
+        );
       }
       await tx.$executeRaw`DELETE FROM modulo_kanban_universal.card_comments WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`;
       return null;
@@ -416,7 +574,7 @@ export function verificarModulo(tenantId) {
 export async function executarComEvento(tenantId, action, id, data, context) {
   const event = { tenantId, type: action, actorId: context.userId };
   const value = await executar(tenantId, action, id, data, context, event);
-  if (action === 'card.create') {
+  if (['card.create', 'card.duplicate'].includes(action)) {
     event.cardId = value.id;
   }
   event.conflito = value?.conflito ?? false;

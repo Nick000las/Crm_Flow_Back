@@ -45,6 +45,10 @@ export const activatePasswordBodySchema = z.object({
   ),
 });
 
+export const resetPasswordBodySchema = verifyCodeBodySchema.extend({
+  senha: activatePasswordBodySchema.shape.senha,
+});
+
 // Opcional: a sessão de tenant manda o refresh token no cookie httpOnly;
 // só a sessão master (memória) ainda o envia no corpo.
 export const refreshBodySchema = z
