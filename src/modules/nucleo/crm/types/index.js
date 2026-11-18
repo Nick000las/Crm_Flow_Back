@@ -1,4 +1,8 @@
 /**
+ * @file Status de um job de importação (`modulo_crm.import_jobs`, migration 0010), sem o
+ * `payload`.
+ */
+/**
  * Tipos do módulo CRM. Sem TypeScript, servem ao editor (via JSDoc) e como
  * documentação viva do contorno de dado que sai dos `adapters/`.
  *

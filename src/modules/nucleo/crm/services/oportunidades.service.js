@@ -1,3 +1,6 @@
+/**
+ * @file SERVICE: a única porta para mudar uma oportunidade (M2.5, F3).
+ */
 import {
   AppError,
   erroCamposObrigatorios,
@@ -7,13 +10,14 @@ import {
 } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { buscarStatusDoPipeline } from '../adapters/crm-options.repository.js';
+
 import {
   alterarOportunidade,
   buscarOportunidade,
   buscarOportunidadesDaPessoa,
   criarOportunidade as criarOportunidadeRepository,
 } from '../adapters/crm-oportunidades.repository.js';
+import { buscarStatusDoPipeline } from '../adapters/crm-options.repository.js';
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
 import { atualizarLead, buscarLeadPorId, criarLead } from '../adapters/leads.repository.js';
 import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
@@ -36,8 +40,8 @@ import {
   validarComerciais,
 } from './oportunidade-transicao.service.js';
 import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
-import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 import { validarRegras } from './regras-campos.service.js';
+import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
 import { recalcularScoreDosLeads } from './score.service.js';
 import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 
@@ -69,12 +73,17 @@ const naoEncontrada = () => erroNaoEncontrado('Oportunidade não encontrada');
 
 /** @param {Record<string, any>} lead */
 function garantirPessoaEditavel(lead) {
-  if (lead.anonimizado_em) throw leadAnonimizadoNaoEditavel();
+  if (lead.anonimizado_em) {
+    throw leadAnonimizadoNaoEditavel();
+  }
 }
 
 /** @param {Record<string, any>} deal */
 function garantirAtiva(deal) {
-  if (deal.deleted_at) throw naoEncontrada();
+  if (deal.deleted_at) {
+    throw naoEncontrada();
+  }
+
   if (deal.archived_at) {
     throw erroDeConflito('oportunidade', 'Restaure a oportunidade antes de alterá-la');
   }
@@ -120,10 +129,17 @@ function oportunidadeParaOPapel(linha, { campos }) {
   const oportunidade = formatarOportunidade(linha);
   const ligados = new Set(campos.map((campo) => campo.chave));
   const doSistema = new Set(CAMPOS_SISTEMA.map((campo) => campo.systemKey));
+
   for (const [campo, saidas] of Object.entries(SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE)) {
-    if (!doSistema.has(campo) || ligados.has(campo)) continue;
-    for (const saida of saidas) delete oportunidade[saida];
+    if (!doSistema.has(campo) || ligados.has(campo)) {
+      continue;
+    }
+
+    for (const saida of saidas) {
+      delete oportunidade[saida];
+    }
   }
+
   return oportunidade;
 }
 
@@ -140,8 +156,11 @@ function oportunidadeParaOPapel(linha, { campos }) {
  */
 export async function criarLeadComOportunidade(tenantId, dados, historico, destino = {}) {
   const { comerciais, contato } = separarComerciais(dados);
+
   validarComerciais(comerciais);
+
   const completos = { ...comerciais, ...(destino.status && { status: destino.status }) };
+
   return criarLead(
     tenantId,
     contato,
@@ -149,7 +168,9 @@ export async function criarLeadComOportunidade(tenantId, dados, historico, desti
     (opcoes) => {
       const nova = novaOportunidadeDoLead(opcoes, completos);
       const opcao = opcoes.find((item) => item.key === nova.status);
+
       destino.conferir?.(/** @type {OpcaoDeStatus} */ (opcao), opcoes);
+
       return nova;
     },
     destino.pipelineId,
@@ -206,7 +227,9 @@ export async function atualizarLeadComOportunidade(
   opcoes = {},
 ) {
   const { comerciais, contato } = separarComerciais(dados);
+
   validarComerciais(comerciais);
+
   const exigeOportunidade = Object.keys(comerciais).length > 0;
   const { usuarioResponsavelId } = contato;
   const oportunidade =
@@ -217,23 +240,35 @@ export async function atualizarLeadComOportunidade(
           planejar: (deal, status) => {
             // D4: o OPERADOR edita o contato, mas não alcança uma principal oculta.
             if (opcoes.ocultos?.includes(deal.pipeline_id)) {
-              if (!exigeOportunidade) return null;
+              if (!exigeOportunidade) {
+                return null;
+              }
+
               throw erroDeConflito('oportunidade', 'A oportunidade desta pessoa não está visível');
             }
+
             const plano = planejarEdicaoDoLead(
               deal,
               status,
               { ...comerciais, usuarioResponsavelId },
               new Date(),
             );
+
             // Atribuição, não acúmulo: o plano pode ser refeito na mesma edição.
-            if (opcoes.avisos) opcoes.avisos.lista = avisosDoPlano(plano);
+            if (opcoes.avisos) {
+              opcoes.avisos.lista = avisosDoPlano(plano);
+            }
+
             return plano;
           },
         }
       : undefined;
   const { avisos, ...doLead } = opcoes;
-  if (avisos) avisos.lista = [];
+
+  if (avisos) {
+    avisos.lista = [];
+  }
+
   return atualizarLead(tenantId, leadId, contato, historico, { ...doLead, oportunidade });
 }
 
@@ -249,7 +284,10 @@ export async function atualizarLeadComOportunidade(
  * @param {OpcaoDeStatus[]} opcoes
  */
 function garantirRegras(schema, regras, lead, comerciais, opcao, opcoes) {
-  if (regras.length === 0) return;
+  if (regras.length === 0) {
+    return;
+  }
+
   lancarErrosDasRegras(
     validarRegras(
       regras,
@@ -276,9 +314,11 @@ async function pipelineDeDestino(tenantId, pipelineId, papel) {
   const pipeline = pipelineId
     ? pipelines.find((item) => item.id === pipelineId)
     : pipelines.find((item) => item.padrao);
+
   if (!pipeline || !pipeline.ativo) {
     throw erroDeValidacao('pipelineId', 'Escolha um pipeline ativo');
   }
+
   return pipeline;
 }
 
@@ -304,11 +344,13 @@ async function validarResponsavel(tenantId, usuarioId) {
  */
 export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { papel } = {}) {
   validarComerciais(dados);
+
   const pipeline = await pipelineDeDestino(tenantId, dados.pipelineId, papel);
   const [schema, opcoes] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
     buscarStatusDoPipeline(tenantId, pipeline.id),
   ]);
+
   garantirEscritaPermitida(schema, {
     status: dados.status,
     valor: dados.valor,
@@ -316,6 +358,7 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
     probabilidadeFechamento: dados.probabilidadeFechamento,
     dataPrevistaFechamento: dados.dataPrevistaFechamento,
   });
+
   await validarResponsavel(tenantId, dados.responsavelId);
 
   const opcao = opcaoDoStatus(opcoes, dados.status ?? primeiroStatusAberto(opcoes)?.key);
@@ -337,6 +380,7 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
     },
     (lead) => {
       garantirPessoaEditavel(lead);
+
       garantirRegras(
         schema,
         regras,
@@ -355,8 +399,13 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
     },
     { autorId: usuarioId ?? null },
   );
-  if (!criada) throw erroNaoEncontrado('Lead não encontrado');
+
+  if (!criada) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
+
   await recalcularScoreDosLeads(tenantId, [leadId]);
+
   return oportunidadeParaOPapel(criada, schema);
 }
 
@@ -374,18 +423,24 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
  */
 export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, { papel } = {}) {
   const atual = await buscarOportunidade(tenantId, id);
-  if (!atual) throw naoEncontrada();
+
+  if (!atual) {
+    throw naoEncontrada();
+  }
 
   const [schema, opcoes] = await Promise.all([
     obterSchemaDoPapel(tenantId, papel),
     buscarStatusDoPipeline(tenantId, atual.pipeline_id),
   ]);
+
   validarComerciais(dados);
+
   garantirEscritaPermitida(schema, {
     status: dados.status,
     motivoPerda: dados.motivoPerda,
     probabilidadeFechamento: dados.probabilidadeFechamento,
   });
+
   const regras = await regrasAplicaveis(tenantId, schema);
 
   let conflito = false;
@@ -396,6 +451,7 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
     (deal, lead) => {
       garantirAtiva(deal);
       garantirPessoaEditavel(lead);
+
       const opcao = opcaoDoStatus(opcoes, dados.status, deal.status);
       const plano = comProbabilidadeMandada(
         planejarStatus(deal, opcao, dados, new Date()),
@@ -405,6 +461,7 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
         'probability_override' in plano.mudancas
           ? plano.mudancas.probability_override
           : deal.probability_override;
+
       garantirRegras(
         schema,
         regras,
@@ -420,14 +477,17 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
         opcao,
         opcoes,
       );
+
       conflito = Boolean(
         dados.expectedUpdatedAt &&
         new Date(dados.expectedUpdatedAt).getTime() !== new Date(deal.updated_at).getTime(),
       );
+
       // O aviso traz a probabilidade anterior: só para quem vê o campo.
       if (schema.campos.some((campo) => campo.chave === 'probabilidadeFechamento')) {
         avisos = avisosDoPlano(plano);
       }
+
       return {
         ...plano,
         diff: diffDaOportunidade(deal, plano.mudancas, CAMPOS_NO_HISTORICO),
@@ -435,8 +495,13 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
     },
     { autorId: usuarioId ?? null },
   );
-  if (!depois) throw naoEncontrada();
+
+  if (!depois) {
+    throw naoEncontrada();
+  }
+
   await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
+
   return { ...oportunidadeParaOPapel(depois, schema), conflito, avisos };
 }
 
@@ -449,7 +514,10 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
  * @returns {P}
  */
 function comProbabilidadeMandada(plano, probabilidade) {
-  if (probabilidade === undefined) return plano;
+  if (probabilidade === undefined) {
+    return plano;
+  }
+
   return {
     ...plano,
     mudancas: { ...plano.mudancas, probability_override: probabilidade },
@@ -473,13 +541,16 @@ function comProbabilidadeMandada(plano, probabilidade) {
  */
 export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel } = {}) {
   validarComerciais(dados);
+
   const schema = await obterSchemaDoPapel(tenantId, papel);
+
   garantirEscritaPermitida(schema, {
     valor: dados.valor,
     probabilidadeFechamento: dados.probabilidadeFechamento,
     dataPrevistaFechamento: dados.dataPrevistaFechamento,
     usuarioResponsavelId: dados.responsavelId,
   });
+
   await validarResponsavel(tenantId, dados.responsavelId);
 
   const entradas = {
@@ -499,12 +570,14 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
     (deal, lead) => {
       garantirAtiva(deal);
       garantirPessoaEditavel(lead);
+
       if (
         dados.expectedUpdatedAt &&
         new Date(dados.expectedUpdatedAt).getTime() !== new Date(deal.updated_at).getTime()
       ) {
         const mensagem =
           'Esta oportunidade foi alterada por outra pessoa. Carregue a versão atual.';
+
         throw new AppError({
           statusCode: HTTP_STATUS.CONFLICT,
           code: ERROR_CODES.RESOURCE_CONFLICT,
@@ -513,6 +586,7 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
           details: { atual: oportunidadeParaOPapel(deal, schema) },
         });
       }
+
       return {
         mudancas,
         diff: diffDaOportunidade(deal, mudancas, CAMPOS_NO_HISTORICO),
@@ -521,8 +595,13 @@ export async function editarOportunidade(tenantId, id, dados, usuarioId, { papel
     },
     { autorId: usuarioId ?? null },
   );
-  if (!depois) throw naoEncontrada();
+
+  if (!depois) {
+    throw naoEncontrada();
+  }
+
   await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
+
   return oportunidadeParaOPapel(depois, schema);
 }
 
@@ -543,13 +622,21 @@ async function mudarSituacao(tenantId, id, planejar, usuarioId, { papel }) {
     tenantId,
     id,
     (deal, lead) => {
-      if (lead.deleted_at) throw naoEncontrada();
+      if (lead.deleted_at) {
+        throw naoEncontrada();
+      }
+
       garantirPessoaEditavel(lead);
+
       return planejar(deal);
     },
     { autorId: usuarioId ?? null },
   );
-  if (!depois) throw naoEncontrada();
+
+  if (!depois) {
+    throw naoEncontrada();
+  }
+
   return oportunidadeParaOPapel(depois, schema);
 }
 
@@ -565,7 +652,10 @@ export function definirArquivamentoDaOportunidade(tenantId, id, arquivar, usuari
     tenantId,
     id,
     (deal) => {
-      if (deal.deleted_at) throw naoEncontrada();
+      if (deal.deleted_at) {
+        throw naoEncontrada();
+      }
+
       return {
         mudancas: { archived_at: arquivar ? new Date() : null },
         historico: arquivar
@@ -618,7 +708,11 @@ export async function listarOportunidadesDaPessoa(
     buscarOportunidadesDaPessoa(tenantId, leadId, { daLixeira }),
     pipelinesOcultos(tenantId, papel),
   ]);
-  if (!lead) throw erroNaoEncontrado('Lead não encontrado');
+
+  if (!lead) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
+
   return linhas
     .filter((linha) => !ocultos.includes(linha.pipeline_id))
     .map((linha) => oportunidadeParaOPapel(linha, schema));

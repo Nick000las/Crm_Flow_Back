@@ -1,3 +1,6 @@
+/**
+ * @file SERVICE: o outbox `crm_event` como fonte única do tempo real (M5).
+ */
 import {
   buscarOportunidadesParaEventos,
   confirmarEventos as confirmarEventosRepository,
@@ -50,5 +53,7 @@ export async function drenarEventos(limite) {
 
 /** @param {string[]} ids */
 export async function confirmarEventos(ids) {
-  if (ids.length > 0) await confirmarEventosRepository(ids);
+  if (ids.length > 0) {
+    await confirmarEventosRepository(ids);
+  }
 }

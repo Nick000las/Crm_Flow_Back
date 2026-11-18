@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { TIPOS_LISTA } from '../constants.js';
 import { atualizarOpcao, contarUsos, inserirOpcoes } from './crm-options.repository.js';
 
@@ -18,17 +20,21 @@ function registrar(strings, values) {
   const texto = strings.reduce((acc, parte, i) => {
     const valor = values[i - 1];
     const fragmento = valor && typeof valor === 'object' && 'sql' in valor ? valor.sql : '?';
+
     return acc + fragmento + parte;
   });
+
   chamadas.push({ sql: texto.replace(/\s+/g, ' '), values });
 }
 
 const tx = {
   $queryRaw: vi.fn(async (strings, ...values) => {
     registrar(strings, values);
+
     if (strings.join('').includes('to_regclass')) {
       return [{ oportunidades: false, funil_legado: true, status_legado: true }];
     }
+
     return resposta;
   }),
 };
@@ -42,7 +48,9 @@ beforeEach(() => {
 describe('contarUsos', () => {
   it('status conta as oportunidades, com a coluna fixa (nunca texto do cliente)', async () => {
     resposta = [{ key: 'ganho', usos: USOS }];
+
     const usos = await contarUsos(TENANT, TIPOS_LISTA.STATUS);
+
     expect(chamadas.at(-1).sql).toContain('SELECT d.status AS key');
     expect(usos.get('ganho')).toBe(USOS);
   });

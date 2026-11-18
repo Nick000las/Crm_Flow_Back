@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+
 import { registrarModulos } from '#core/registry/modules.js';
+
 import {
   assertProvedoresValidos,
   provedorDaEntidade,
@@ -48,6 +50,7 @@ describe('assertProvedoresValidos', () => {
         modulo('b', { quadros: [QUADRO] }),
       ]),
     ).toThrow(/quadro duplicado: "oportunidades"/);
+
     expect(() =>
       assertProvedoresValidos([
         modulo('a', { entidades: [ENTIDADE] }),

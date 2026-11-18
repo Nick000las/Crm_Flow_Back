@@ -1,5 +1,10 @@
+/**
+ * @file ADAPTER: o quadro comercial (M3).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { DIRECOES_DE_ORDEM } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 
@@ -70,12 +75,20 @@ function daColuna({ tenantId, pipelineId, status, condicoes }) {
  * @returns {Prisma.Sql}
  */
 function depoisDoCursor({ coluna, tipo, direcao }, cursor) {
-  if (!cursor) return Prisma.empty;
+  if (!cursor) {
+    return Prisma.empty;
+  }
+
   const expressao = Prisma.raw(coluna);
   const maior = Prisma.raw(direcao === DIRECOES_DE_ORDEM.ASC ? '>' : '<');
   const desempate = Prisma.sql`l.deal_id ${maior} ${cursor.id}::uuid`;
-  if (cursor.valor === null) return Prisma.sql`AND ${expressao} IS NULL AND ${desempate}`;
+
+  if (cursor.valor === null) {
+    return Prisma.sql`AND ${expressao} IS NULL AND ${desempate}`;
+  }
+
   const valor = Prisma.sql`CAST(${cursor.valor}::text AS ${Prisma.raw(tipo)})`;
+
   return Prisma.sql`AND (
     ${expressao} ${maior} ${valor}
     OR (${expressao} = ${valor} AND ${desempate})
@@ -96,14 +109,23 @@ export function listarCardsDaColuna(
 ) {
   const expressao = Prisma.raw(ordem.coluna);
   const direcao = Prisma.raw(ordem.direcao === DIRECOES_DE_ORDEM.ASC ? 'ASC' : 'DESC');
+
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT l.deal_id, l.deal_atualizada_em, (${expressao})::text AS ordem_valor
-      FROM ${FONTE_CARDS} l
-      WHERE ${daColuna({ tenantId, pipelineId, status, condicoes })} ${depoisDoCursor(ordem, cursor)}
-      ORDER BY ${expressao} ${direcao} NULLS LAST, l.deal_id ${direcao}
-      LIMIT ${limite}
+      SELECT
+        l.deal_id,
+        l.deal_atualizada_em,
+        (${expressao})::text AS ordem_valor
+      FROM
+        ${FONTE_CARDS} l
+      WHERE
+        ${daColuna({ tenantId, pipelineId, status, condicoes })} ${depoisDoCursor(ordem, cursor)}
+      ORDER BY
+        ${expressao} ${direcao} NULLS LAST,
+        l.deal_id ${direcao}
+      LIMIT
+        ${limite}
     `,
   );
 }
@@ -127,10 +149,18 @@ export function listarCardsPorIds(tenantId, { pipelineId, ids, condicoes }) {
     ],
     ' AND ',
   );
+
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT l.deal_id, l.deal_atualizada_em, l.status FROM ${FONTE_CARDS} l WHERE ${onde}
+      SELECT
+        l.deal_id,
+        l.deal_atualizada_em,
+        l.status
+      FROM
+        ${FONTE_CARDS} l
+      WHERE
+        ${onde}
     `,
   );
 }
@@ -145,10 +175,15 @@ export function listarCardsPorIds(tenantId, { pipelineId, ids, condicoes }) {
 export function resumirColuna(tenantId, { pipelineId, status, condicoes }) {
   return getTenantClient(tenantId, async (tx) => {
     const [resumo] = await tx.$queryRaw`
-      SELECT count(*)::int AS total, COALESCE(sum(l.valor), 0) AS soma
-      FROM ${FONTE_CARDS} l
-      WHERE ${daColuna({ tenantId, pipelineId, status, condicoes })}
+      SELECT
+        count(*)::int AS total,
+        COALESCE(sum(l.valor), 0) AS soma
+      FROM
+        ${FONTE_CARDS} l
+      WHERE
+        ${daColuna({ tenantId, pipelineId, status, condicoes })}
     `;
+
     return resumo;
   });
 }
@@ -166,10 +201,16 @@ export async function cardAtendeAoFiltro(tenantId, dealId, condicoes) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT 1 FROM ${FONTE_CARDS} l
-      WHERE l.tenant_id = ${tenantId}::uuid AND ${onde}
+      SELECT
+        1
+      FROM
+        ${FONTE_CARDS} l
+      WHERE
+        l.tenant_id = ${tenantId}::uuid
+        AND ${onde}
     `,
   );
+
   return linhas.length > 0;
 }
 
@@ -187,14 +228,27 @@ export function buscarCardsPorIds(tenantId, ids, { soVisiveis, inatividade }) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT l.*, ${colunaEsfriandoDesde(inatividade)}
-      FROM ${FONTE_CARDS} l
-      WHERE l.tenant_id = ${tenantId}::uuid AND l.deal_id = ANY(${ids}::uuid[])
+      SELECT
+        l.*,
+        ${colunaEsfriandoDesde(inatividade)}
+      FROM
+        ${FONTE_CARDS} l
+      WHERE
+        l.tenant_id = ${tenantId}::uuid
+        AND l.deal_id = ANY (${ids}::UUID[])
         AND l.deal_excluida_em IS NULL
-        AND (NOT ${soVisiveis}::boolean OR l.pipeline_id IN (
-          SELECT p.id FROM modulo_crm.crm_pipeline p
-          WHERE p.tenant_id = ${tenantId}::uuid AND p.operator_visible
-        ))
+        AND (
+          NOT ${soVisiveis}::boolean
+          OR l.pipeline_id IN (
+            SELECT
+              p.id
+            FROM
+              modulo_crm.crm_pipeline p
+            WHERE
+              p.tenant_id = ${tenantId}::uuid
+              AND p.operator_visible
+          )
+        )
     `,
   );
 }
@@ -210,9 +264,15 @@ export async function buscarIdsDeOportunidades(tenantId, ids) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id::text FROM modulo_crm.crm_deal
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
+      SELECT
+        id::text
+      FROM
+        modulo_crm.crm_deal
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ANY (${ids}::UUID[])
     `,
   );
+
   return linhas.map((linha) => linha.id);
 }

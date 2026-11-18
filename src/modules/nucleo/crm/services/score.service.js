@@ -1,7 +1,12 @@
+/**
+ * @file SERVICE: pontuação de leads (M14).
+ */
 import { Prisma } from '@prisma/client';
+
 import { erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { slugify } from '#shared/text/slugify.js';
+
 import {
   buscarProgressoRecalculo,
   contarLeadsDoTenant,
@@ -55,19 +60,28 @@ const OPERADORES_SEM_VALOR = new Set(['vazio', 'nao_vazio']);
 export function expressaoDoScore(regras, campos) {
   const campoPorId = new Map(campos.filter((campo) => campo.id).map((campo) => [campo.id, campo]));
   const parcelas = regras.flatMap((regra) => {
-    if (!regra.ativo) return [];
+    if (!regra.ativo) {
+      return [];
+    }
+
     try {
       const condicoes = regra.condicoes.map(({ campoId, operador, valor }) => {
         const campo = campoPorId.get(campoId);
-        if (!campo || campo.chave === CHAVE_CAMPO_SCORE) throw new Error('campo indisponível');
+
+        if (!campo || campo.chave === CHAVE_CAMPO_SCORE) {
+          throw new Error('campo indisponível');
+        }
+
         return condicaoDoCampo(campo, { chave: campo.chave, operador, valor });
       });
       const casa = condicoes.length > 0 ? Prisma.join(condicoes, ' AND ') : Prisma.sql`TRUE`;
+
       return [Prisma.sql`CASE WHEN ${casa} THEN ${regra.pontos}::int ELSE 0 END`];
     } catch {
       return [];
     }
   });
+
   return parcelas.length > 0 ? Prisma.join(parcelas, ' + ') : Prisma.sql`0`;
 }
 
@@ -78,11 +92,15 @@ export function expressaoDoScore(regras, campos) {
  * @returns {Promise<Prisma.Sql | null>}
  */
 async function expressaoDoTenant(tenantId) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.SCORE))) return null;
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.SCORE))) {
+    return null;
+  }
+
   const [regras, { campos }] = await Promise.all([
     listarRegrasScore(tenantId),
     obterSchemaCampos(tenantId),
   ]);
+
   return expressaoDoScore(regras, campos);
 }
 
@@ -96,7 +114,11 @@ async function expressaoDoTenant(tenantId) {
  */
 export async function recalcularScoreDosLeads(tenantId, leadIds) {
   const expressao = await expressaoDoTenant(tenantId);
-  if (!expressao) return null;
+
+  if (!expressao) {
+    return null;
+  }
+
   return gravarScores(tenantId, expressao, leadIds);
 }
 
@@ -109,28 +131,44 @@ export async function recalcularScoreDosLeads(tenantId, leadIds) {
  */
 export async function recalcularTodos(tenantId) {
   const expressao = await expressaoDoTenant(tenantId);
-  if (!expressao) return { total: 0, processados: 0 };
+
+  if (!expressao) {
+    return { total: 0, processados: 0 };
+  }
 
   const total = await contarLeadsDoTenant(tenantId);
+
   await registrarProgressoRecalculo(tenantId, { total, processados: 0, inicio: true });
+
   let processados = 0;
   let cursor = null;
+
   for (;;) {
     const ids = await gravarScoresEmLote(tenantId, expressao, cursor, LIMITES_SCORE.LOTE_RECALCULO);
-    if (ids.length === 0) break;
+
+    if (ids.length === 0) {
+      break;
+    }
+
     processados += ids.length;
     cursor = ids[ids.length - 1];
+
     await registrarProgressoRecalculo(tenantId, {
       total: Math.max(total, processados),
       processados,
     });
-    if (ids.length < LIMITES_SCORE.LOTE_RECALCULO) break;
+
+    if (ids.length < LIMITES_SCORE.LOTE_RECALCULO) {
+      break;
+    }
   }
+
   await registrarProgressoRecalculo(tenantId, {
     total: Math.max(total, processados),
     processados,
     concluido: true,
   });
+
   return { total: Math.max(total, processados), processados };
 }
 
@@ -141,7 +179,10 @@ export async function recalcularTodos(tenantId) {
  * @param {Record<string, unknown>} input
  */
 export async function garantirScoreNaoEditado(tenantId, input) {
-  if (input[CHAVE_CAMPO_SCORE] === undefined) return;
+  if (input[CHAVE_CAMPO_SCORE] === undefined) {
+    return;
+  }
+
   if (await featureAtiva(tenantId, CRM_FEATURES.SCORE)) {
     throw erroDeValidacao(
       CHAVE_CAMPO_SCORE,
@@ -162,6 +203,7 @@ export async function garantirScoreNaoEditado(tenantId, input) {
  */
 export async function obterFaixas(tenantId) {
   const salvas = await listarFaixasScore(tenantId);
+
   return salvas.length > 0 ? salvas : FAIXAS_SCORE_PADRAO.map((faixa) => ({ ...faixa }));
 }
 
@@ -172,9 +214,13 @@ export async function obterFaixas(tenantId) {
  * @param {number | string | { toString(): string } | null | undefined} score
  */
 export function faixaDoScore(faixas, score) {
-  if (score === null || score === undefined) return null;
+  if (score === null || score === undefined) {
+    return null;
+  }
+
   // NUMERIC chega como Decimal do Prisma.
   const valor = Number(score);
+
   return (
     faixas.find(
       (faixa) =>
@@ -194,7 +240,11 @@ export function faixaDoScore(faixas, score) {
  */
 export async function limitesDaFaixa(tenantId, chave) {
   const faixa = (await obterFaixas(tenantId)).find((item) => item.chave === chave);
-  if (!faixa) throw erroDeFiltro('faixaScore', `"${chave}" não é uma faixa de score`);
+
+  if (!faixa) {
+    throw erroDeFiltro('faixaScore', `"${chave}" não é uma faixa de score`);
+  }
+
   return { minimo: faixa.minimo, maximo: faixa.maximo };
 }
 
@@ -214,6 +264,7 @@ export async function obterConfigScore(tenantId) {
     listarFaixasScore(tenantId),
     buscarProgressoRecalculo(tenantId),
   ]);
+
   return {
     regras: regras.map(({ id, nome, ativo, pontos, condicoes }) => ({
       id,
@@ -251,6 +302,7 @@ export async function salvarConfigScore(tenantId, { regras, faixas }) {
   if (regras.length > LIMITES_SCORE.REGRAS_POR_TENANT) {
     throw erroDeValidacao('regras', `Use no máximo ${LIMITES_SCORE.REGRAS_POR_TENANT} regras`);
   }
+
   const { campos } = await obterSchemaCampos(tenantId);
   const campoPorId = new Map(campos.filter((campo) => campo.id).map((campo) => [campo.id, campo]));
 
@@ -260,6 +312,7 @@ export async function salvarConfigScore(tenantId, { regras, faixas }) {
   await salvarRegrasEFaixas(tenantId, regrasLimpas, faixasLimpas);
   await garantirScoreVisivel(tenantId);
   await recalcularTodos(tenantId);
+
   return obterConfigScore(tenantId);
 }
 
@@ -281,7 +334,11 @@ async function garantirScoreVisivel(tenantId) {
   const campo = (await listarConfiguracaoCampos(tenantId)).find(
     (item) => item.chave === CHAVE_CAMPO_SCORE,
   );
-  if (!campo || CONTEXTOS_DO_SCORE.every((contexto) => campo.visibilidade[contexto])) return;
+
+  if (!campo || CONTEXTOS_DO_SCORE.every((contexto) => campo.visibilidade[contexto])) {
+    return;
+  }
+
   await atualizarConfiguracaoCampo(tenantId, campo.id, {
     visibilidade: Object.fromEntries(CONTEXTOS_DO_SCORE.map((contexto) => [contexto, true])),
   });
@@ -295,19 +352,30 @@ async function garantirScoreVisivel(tenantId) {
 function normalizarRegra({ nome, ativo, pontos, condicoes }, indice, campoPorId) {
   const caminho = `regras.${indice}`;
   const nomeLimpo = nome.trim();
-  if (!nomeLimpo) throw erroDeValidacao(`${caminho}.nome`, 'Dê um nome à regra');
+
+  if (!nomeLimpo) {
+    throw erroDeValidacao(`${caminho}.nome`, 'Dê um nome à regra');
+  }
+
   if (condicoes.length > LIMITES_SCORE.CONDICOES_POR_REGRA) {
     throw erroDeValidacao(
       `${caminho}.condicoes`,
       `Use no máximo ${LIMITES_SCORE.CONDICOES_POR_REGRA} condições`,
     );
   }
+
   const condicoesLimpas = condicoes.map((condicao, posicao) => {
     const campo = campoPorId.get(condicao.campoId);
     const caminhoCondicao = `${caminho}.condicoes.${posicao}`;
-    if (!campo) throw erroDeValidacao(caminhoCondicao, 'Escolha um campo ativo para a condição');
-    if (campo.chave === CHAVE_CAMPO_SCORE)
+
+    if (!campo) {
+      throw erroDeValidacao(caminhoCondicao, 'Escolha um campo ativo para a condição');
+    }
+
+    if (campo.chave === CHAVE_CAMPO_SCORE) {
       throw erroDeValidacao(caminhoCondicao, 'O score não pode depender dele mesmo');
+    }
+
     try {
       // Mesmas regras de operador × tipo e de formato de valor do filtro.
       condicaoDoCampo(campo, {
@@ -321,10 +389,12 @@ function normalizarRegra({ nome, ativo, pontos, condicoes }, indice, campoPorId)
         erro instanceof Error ? erro.message : 'Condição inválida',
       );
     }
+
     return OPERADORES_SEM_VALOR.has(condicao.operador)
       ? { campoId: condicao.campoId, operador: condicao.operador }
       : { campoId: condicao.campoId, operador: condicao.operador, valor: condicao.valor };
   });
+
   return { nome: nomeLimpo, ativo, pontos, condicoes: condicoesLimpas };
 }
 
@@ -340,12 +410,18 @@ export function normalizarFaixas(faixas) {
   if (faixas.length > LIMITES_SCORE.FAIXAS_POR_TENANT) {
     throw erroDeValidacao('faixas', `Use no máximo ${LIMITES_SCORE.FAIXAS_POR_TENANT} faixas`);
   }
+
   const limpas = faixas.map((faixa, indice) => {
     const rotulo = faixa.rotulo.trim();
-    if (!rotulo) throw erroDeValidacao(`faixas.${indice}.rotulo`, 'Dê um nome à faixa');
+
+    if (!rotulo) {
+      throw erroDeValidacao(`faixas.${indice}.rotulo`, 'Dê um nome à faixa');
+    }
+
     if (faixa.minimo !== null && faixa.maximo !== null && faixa.minimo > faixa.maximo) {
       throw erroDeValidacao(`faixas.${indice}`, `"${rotulo}": o mínimo passa do máximo`);
     }
+
     return {
       chave: faixa.chave?.trim() || slugify(rotulo) || `faixa_${indice + 1}`,
       rotulo,
@@ -357,12 +433,17 @@ export function normalizarFaixas(faixas) {
 
   const chaves = limpas.map((faixa) => faixa.chave);
   const repetida = chaves.find((chave, indice) => chaves.indexOf(chave) !== indice);
-  if (repetida) throw erroDeValidacao('faixas', `Duas faixas com a mesma chave ("${repetida}")`);
+
+  if (repetida) {
+    throw erroDeValidacao('faixas', `Duas faixas com a mesma chave ("${repetida}")`);
+  }
 
   const ordenadas = [...limpas].sort((a, b) => (a.minimo ?? -Infinity) - (b.minimo ?? -Infinity));
+
   for (let i = 1; i < ordenadas.length; i += 1) {
     const anterior = ordenadas[i - 1];
     const atual = ordenadas[i];
+
     if (anterior.maximo === null || atual.minimo === null || atual.minimo <= anterior.maximo) {
       throw erroDeValidacao(
         'faixas',
@@ -370,5 +451,6 @@ export function normalizarFaixas(faixas) {
       );
     }
   }
+
   return limpas;
 }

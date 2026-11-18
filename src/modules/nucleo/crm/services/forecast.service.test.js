@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { AGRUPAMENTOS_FORECAST, BLOCOS_FORECAST, LIMITES_FORECAST } from '../constants.js';
 import {
   camposDesligados,
@@ -74,12 +75,15 @@ describe('meses do forecast', () => {
       '2027-01',
       '2027-02',
     ]);
+
     expect(mesesDoPeriodo(NOV, NOV)).toEqual([NOV]);
   });
 
   it('padrão: mês atual −3 a +3', () => {
     expect(periodoPadrao(HOJE)).toEqual({ de: '2026-08', ate: '2027-02' });
+
     const { de, ate } = periodoDoPedido({}, HOJE);
+
     expect(mesesDoPeriodo(de, ate)).toHaveLength(MESES_DO_PADRAO);
   });
 
@@ -97,7 +101,9 @@ describe('meses do forecast', () => {
   it('aceita até o limite de meses e recusa um a mais, em ate', () => {
     const de = '2026-01';
     const noLimite = deslocarMes(de, LIMITES_FORECAST.MESES_MAXIMOS - 1);
+
     expect(periodoDoPedido({ de, ate: noLimite }, HOJE)).toEqual({ de, ate: noLimite });
+
     expect(() => periodoDoPedido({ de, ate: deslocarMes(noLimite, 1) }, HOJE)).toThrow(
       expect.objectContaining({ fields: { ate: [expect.any(String)] } }),
     );
@@ -116,7 +122,9 @@ describe('centavos', () => {
 describe('montarAgregado', () => {
   it('sem linha: todos os meses e blocos zerados', () => {
     const agregado = montarAgregado([], MESES, AGRUPAMENTOS_FORECAST.TOTAL);
+
     expect(agregado.meses.map((mes) => mes.mes)).toEqual(MESES);
+
     expect(agregado.meses[0]).toEqual({
       mes: NOV,
       realizado: { quantidade: 0, soma: 0 },
@@ -125,6 +133,7 @@ describe('montarAgregado', () => {
       previsto: 0,
       ganhasSemValor: 0,
     });
+
     expect(agregado.blocos).toEqual({
       atrasadas: { quantidade: 0, soma: 0, ponderado: 0 },
       antesDoPeriodo: { quantidade: 0, soma: 0, ponderado: 0 },
@@ -132,6 +141,7 @@ describe('montarAgregado', () => {
       alemDoHorizonte: { quantidade: 0, soma: 0, ponderado: 0 },
       semValor: { quantidade: 0 },
     });
+
     expect(agregado.grupos).toEqual([]);
   });
 
@@ -161,6 +171,7 @@ describe('montarAgregado', () => {
       MESES,
       AGRUPAMENTOS_FORECAST.TOTAL,
     );
+
     expect(agregado.meses[0]).toEqual({
       mes: NOV,
       realizado: { quantidade: QTD_GANHAS, soma: SOMA_GANHAS },
@@ -169,12 +180,15 @@ describe('montarAgregado', () => {
       previsto: PREVISTO,
       ganhasSemValor: 1,
     });
+
     expect(agregado.meses).toHaveLength(MESES.length);
+
     expect(agregado.blocos.atrasadas).toEqual({
       quantidade: 1,
       soma: ATRASADAS_SOMA,
       ponderado: ATRASADAS_PONDERADO,
     });
+
     expect(agregado.blocos.semValor).toEqual({ quantidade: QTD_SEM_VALOR });
   });
 
@@ -203,13 +217,16 @@ describe('montarAgregado', () => {
       MESES,
       AGRUPAMENTOS_FORECAST.RESPONSAVEL,
     );
+
     expect(agregado.meses[0].ponderado.quantidade).toBe(QTD_ABERTAS);
+
     expect(agregado.grupos.map((grupo) => grupo.rotulo)).toEqual([
       'Caio',
       'Bia',
       'Sem responsável',
       'Ana',
     ]);
+
     expect(agregado.grupos.find((grupo) => grupo.chave === null)?.rotulo).toBe('Sem responsável');
     expect(agregado.grupos[1].meses).toHaveLength(MESES.length);
   });
@@ -220,6 +237,7 @@ describe('montarAgregado', () => {
       MESES,
       AGRUPAMENTOS_FORECAST.STATUS,
     );
+
     expect(agregado.grupos).toEqual([]);
   });
 });
@@ -236,6 +254,7 @@ describe('mascararValores', () => {
       AGRUPAMENTOS_FORECAST.STATUS,
     );
     const mascarado = mascararValores(agregado);
+
     expect(mascarado.meses[0]).toEqual({
       mes: NOV,
       realizado: { quantidade: 1, soma: null },
@@ -244,6 +263,7 @@ describe('mascararValores', () => {
       previsto: null,
       ganhasSemValor: 0,
     });
+
     expect(mascarado.blocos.atrasadas).toEqual({ quantidade: 0, soma: null, ponderado: null });
     expect(mascarado.blocos.semValor).toEqual({ quantidade: QTD_SEM_VALOR });
     expect(mascarado.grupos[0].meses[0].previsto).toBeNull();
@@ -256,6 +276,7 @@ describe('mascararValores', () => {
 describe('camposDesligados', () => {
   it('lista os campos do forecast que o papel não tem', () => {
     expect(camposDesligados(TODOS_OS_CAMPOS)).toEqual([]);
+
     expect(camposDesligados({ campos: [{ chave: 'probabilidadeFechamento' }] })).toEqual([
       'dataPrevistaFechamento',
     ]);
@@ -302,12 +323,14 @@ describe('itemParaOPapel', () => {
 
   it('sem valor nulo vira null, não zero', () => {
     const item = itemParaOPapel({ ...bruta, valor: null, ponderado: null }, TODOS_OS_CAMPOS);
+
     expect(item.valor).toBeNull();
     expect(item.ponderado).toBeNull();
   });
 
   it('remove as chaves do que o papel não vê', () => {
     const item = itemParaOPapel(bruta, { campos: [] });
+
     for (const chave of [
       'valor',
       'ponderado',
@@ -320,6 +343,7 @@ describe('itemParaOPapel', () => {
     ]) {
       expect(item).not.toHaveProperty(chave);
     }
+
     expect(item).toHaveProperty('pessoa', 'Ana');
   });
 });
@@ -328,6 +352,7 @@ describe('chaveDoCache', () => {
   it('muda com a marca e com o pedido; o hash é curto', () => {
     const pedido = { de: NOV, ate: DEZ, ocultos: [] };
     const chave = chaveDoCache('t1', 'm1', pedido);
+
     expect(chave).toMatch(/^crm:forecast:t1:m1:[0-9a-f]{16}$/);
     expect(chaveDoCache('t1', 'm2', pedido)).not.toBe(chave);
     expect(chaveDoCache('t1', 'm1', { ...pedido, ate: NOV })).not.toBe(chave);

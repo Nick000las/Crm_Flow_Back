@@ -1,5 +1,9 @@
-import { erroDeValidacao, erroNaoEncontrado, erroDeConflito } from '#core/errors/app-error.js';
+/**
+ * @file SERVICE: lógica de negócio pura. Nunca importa Fastify.
+ */
+import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { slugify } from '#shared/text/slugify.js';
+
 import {
   buscarPersonalizadoAtivoPorChave,
   criarCampoPersonalizado,
@@ -55,9 +59,11 @@ export async function criarNovaDefinicao(tenantId, input) {
   }
 
   const opcoes = validarTipoEOpcoes(input.tipo, input.opcoes);
+
   // Nome igual ao de outro campo (inclusive um do sistema renomeado) daria
   // duas colunas com o mesmo título no form e na tabela.
   garantirLabelDisponivel(await listarConfiguracaoCampos(tenantId), label);
+
   const chave = slugify(label);
 
   // Chave igual à de um campo do sistema (ex: "Empresa" → `empresa`)
@@ -65,6 +71,7 @@ export async function criarNovaDefinicao(tenantId, input) {
   // mapeamento de import.
   const definicaoExistente =
     CHAVES_SISTEMA.has(chave) || (await buscarPersonalizadoAtivoPorChave(tenantId, chave));
+
   if (definicaoExistente) {
     throw erroDeConflito('label', 'Já existe um campo com esse nome');
   }
@@ -77,7 +84,9 @@ export async function criarNovaDefinicao(tenantId, input) {
     obrigatorio: Boolean(input.obrigatorio),
     ordem: input.ordem,
   });
+
   await invalidarSchemaCampos(tenantId);
+
   return criada;
 }
 
@@ -98,7 +107,10 @@ export async function editarDefinicao(tenantId, definicaoId, atualizacoes) {
 
   const campos = await listarConfiguracaoCampos(tenantId);
   const atual = campos.find((campo) => campo.id === definicaoId && campo.systemKey === null);
-  if (!atual) throw definicaoNaoEncontrada();
+
+  if (!atual) {
+    throw definicaoNaoEncontrada();
+  }
 
   const label = garantirLabelDisponivel(campos, atualizacoes.label ?? '', definicaoId);
 
@@ -108,6 +120,7 @@ export async function editarDefinicao(tenantId, definicaoId, atualizacoes) {
       `"${label}" é obrigatório e precisa aparecer no formulário de criação`,
     );
   }
+
   if (atualizacoes.tipo !== atual.tipo && (await existeValorDoCampo(tenantId, definicaoId))) {
     throw erroDeValidacao(
       'tipo',
@@ -129,6 +142,7 @@ export async function editarDefinicao(tenantId, definicaoId, atualizacoes) {
   }
 
   await invalidarSchemaCampos(tenantId);
+
   return definicaoAtualizada;
 }
 
@@ -145,6 +159,7 @@ export async function removerDefinicao(tenantId, definicaoId) {
   if (!definicaoRemovida) {
     throw definicaoNaoEncontrada();
   }
+
   await invalidarSchemaCampos(tenantId);
 
   // Dado órfão de propósito (plano, Parte 1.4) — leads.custom_fields não é

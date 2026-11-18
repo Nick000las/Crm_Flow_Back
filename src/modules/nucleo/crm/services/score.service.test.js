@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   contarLeadsDoTenant,
   gravarScoresEmLote,
@@ -21,6 +23,7 @@ import {
 } from './score.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
+
 vi.mock('../adapters/crm-score.repository.js', () => ({
   listarRegrasScore: vi.fn(),
   listarFaixasScore: vi.fn(),
@@ -47,6 +50,7 @@ const CAMPOS = [
     camada: CAMADA.CAMADA_2,
   },
 ];
+
 // O score liga o campo Lead score ao salvar; aqui ele já está visível.
 vi.mock('./configuracoes-campos.service.js', () => ({
   listarConfiguracaoCampos: vi.fn(async () => [
@@ -58,6 +62,7 @@ vi.mock('./configuracoes-campos.service.js', () => ({
   ]),
   atualizarConfiguracaoCampo: vi.fn(),
 }));
+
 vi.mock('./field-schema.service.js', () => ({
   obterSchemaCampos: vi.fn(async () => ({ campos: CAMPOS })),
 }));
@@ -108,6 +113,7 @@ describe('expressaoDoScore', () => {
         CAMPOS,
       ),
     );
+
     // Uma parcela por regra (a condição em si também pode ter CASE).
     expect(texto.match(/ELSE 0 END/g)).toHaveLength(REGRAS_SOMADAS);
     expect(texto).toContain(' AND ');
@@ -136,6 +142,7 @@ describe('expressaoDoScore', () => {
         CAMPOS,
       ),
     );
+
     expect(texto).toBe('0');
   });
 });
@@ -143,6 +150,7 @@ describe('expressaoDoScore', () => {
 describe('faixas', () => {
   it('faixaDoScore: limites inclusivos, negativo cai no Frio, nulo fica sem faixa', () => {
     const faixas = FAIXAS_SCORE_PADRAO;
+
     expect(faixaDoScore(faixas, QUENTE)?.chave).toBe('quente');
     expect(faixaDoScore(faixas, MORNO)?.chave).toBe('morno');
     expect(faixaDoScore(faixas, LIMITE_FRIO)?.chave).toBe('frio');
@@ -156,6 +164,7 @@ describe('faixas', () => {
       minimo: INICIO_MORNO,
       maximo: FIM_MORNO,
     });
+
     await expect(limitesDaFaixa(TENANT, 'fervendo')).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { 'filtros.faixaScore': [expect.any(String)] },
@@ -168,19 +177,23 @@ describe('faixas', () => {
         { rotulo: 'Muito Quente', minimo: INICIO_MUITO_QUENTE, maximo: null, cor: '#000000' },
       ])[0].chave,
     ).toBe('muito_quente');
+
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
+
     expect(() =>
       normalizarFaixas([
         { rotulo: 'A', minimo: null, maximo: LIMITE, cor: '#000000' },
         { rotulo: 'B', minimo: LIMITE, maximo: null, cor: '#000000' },
       ]),
     ).toThrow(expect.objectContaining(invalido));
+
     expect(() =>
       normalizarFaixas([
         { rotulo: 'A', minimo: 0, maximo: DEZ, cor: '#000000' },
         { rotulo: 'a', minimo: VINTE, maximo: TRINTA, cor: '#000000' },
       ]),
     ).toThrow(expect.objectContaining(invalido));
+
     expect(
       normalizarFaixas([
         { rotulo: 'A', minimo: 0, maximo: DEZ, cor: '#000000' },
@@ -197,11 +210,13 @@ describe('recalcularTodos', () => {
       { length: lote },
       (_, i) => `id-${String(i).padStart(DIGITOS_ID, '0')}`,
     );
+
     contarLeadsDoTenant.mockResolvedValue(lote + 1);
     gravarScoresEmLote.mockResolvedValueOnce(primeiro).mockResolvedValueOnce(['id-9999']);
 
     expect(await recalcularTodos(TENANT)).toEqual({ total: lote + 1, processados: lote + 1 });
     expect(gravarScoresEmLote).toHaveBeenNthCalledWith(1, TENANT, expect.anything(), null, lote);
+
     expect(gravarScoresEmLote).toHaveBeenNthCalledWith(
       SEGUNDO_LOTE,
       TENANT,
@@ -209,11 +224,13 @@ describe('recalcularTodos', () => {
       primeiro.at(-1),
       lote,
     );
+
     expect(registrarProgressoRecalculo).toHaveBeenCalledWith(TENANT, {
       total: lote + 1,
       processados: 0,
       inicio: true,
     });
+
     expect(registrarProgressoRecalculo).toHaveBeenLastCalledWith(TENANT, {
       total: lote + 1,
       processados: lote + 1,
@@ -233,15 +250,18 @@ describe('salvarConfigScore', () => {
   it('grava e recalcula todos', async () => {
     contarLeadsDoTenant.mockResolvedValue(0);
     gravarScoresEmLote.mockResolvedValue([]);
+
     await salvarConfigScore(TENANT, {
       regras: [{ nome: ' Site ', ativo: true, pontos: PONTOS_SITE, condicoes: [doSite] }],
       faixas,
     });
+
     expect(salvarRegrasEFaixas).toHaveBeenCalledWith(
       TENANT,
       [{ nome: 'Site', ativo: true, pontos: PONTOS_SITE, condicoes: [doSite] }],
       [expect.objectContaining({ chave: 'frio' })],
     );
+
     expect(gravarScoresEmLote).toHaveBeenCalled();
   });
 
@@ -252,16 +272,21 @@ describe('salvarConfigScore', () => {
         faixas,
       });
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
+
     await expect(tentar([{ campoId: TENANT, operador: 'vazio' }])).rejects.toMatchObject(invalido);
+
     await expect(tentar([{ campoId: ID_SCORE, operador: 'nao_vazio' }])).rejects.toMatchObject(
       invalido,
     );
+
     await expect(
       tentar([{ campoId: ID_SALARIO, operador: 'contem', valor: 'x' }]),
     ).rejects.toMatchObject(invalido);
+
     await expect(
       tentar(Array.from({ length: ACIMA_DO_LIMITE }, () => doSite)),
     ).rejects.toMatchObject(invalido);
+
     expect(salvarRegrasEFaixas).not.toHaveBeenCalled();
   });
 });
@@ -272,6 +297,7 @@ describe('garantirScoreNaoEditado', () => {
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { leadScore: [expect.any(String)] },
     });
+
     await expect(garantirScoreNaoEditado(TENANT, { nome: 'x' })).resolves.toBeUndefined();
     featureAtiva.mockResolvedValue(false);
     await expect(garantirScoreNaoEditado(TENANT, { leadScore: QUENTE })).resolves.toBeUndefined();

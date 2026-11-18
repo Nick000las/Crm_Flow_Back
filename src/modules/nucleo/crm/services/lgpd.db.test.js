@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { registrarAtividade } from './atividades.service.js';
@@ -48,6 +51,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         subdomain: `smoke-lgpd-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -58,10 +62,13 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         ativo: true,
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.create({
       data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.LGPD },
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
   });
@@ -74,12 +81,14 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
 
   it('lead manual: origem "manual", base padrão com data, opt-out com data', async () => {
     await salvarConfigLgpd(tenantId, { basePadrao: 'legitimo_interesse', obrigatoria: false });
+
     const { id } = await registrarNovoLead(
       tenantId,
       { nome: 'Ana', email: 'ana@lgpd.test', optOutMarketing: true },
       donoId,
     );
     const lead = await buscarLeadPorId(tenantId, id);
+
     expect(lead).toMatchObject({ legal_basis: 'legitimo_interesse', origem_registro: 'manual' });
     expect(lead?.legal_basis_at).toBeInstanceOf(Date);
     expect(lead?.marketing_opt_out_at).toBeInstanceOf(Date);
@@ -99,6 +108,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       { baseLegal: 'execucao_contrato', optOutMarketing: true },
       donoId,
     );
+
     expect(trocada.legal_basis).toBe('execucao_contrato');
     expect(trocada.legal_basis_at.getTime()).toBeGreaterThanOrEqual(antes.legal_basis_at.getTime());
     expect(trocada.marketing_opt_out_at).toBeInstanceOf(Date);
@@ -110,6 +120,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       { baseLegal: 'execucao_contrato', optOutMarketing: true },
       donoId,
     );
+
     expect(repetida.legal_basis_at).toEqual(trocada.legal_basis_at);
     expect(repetida.marketing_opt_out_at).toEqual(trocada.marketing_opt_out_at);
 
@@ -119,6 +130,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       { baseLegal: null, optOutMarketing: false },
       donoId,
     );
+
     expect(limpa.legal_basis).toBeNull();
     expect(limpa.legal_basis_at).toBeNull();
     expect(limpa.marketing_opt_out_at).toBeNull();
@@ -134,20 +146,24 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { baseLegal: [expect.any(String)] },
     });
+
     const { id } = await registrarNovoLead(
       tenantId,
       { nome: 'Caio', email: 'caio@lgpd.test', baseLegal: 'outra' },
       donoId,
     );
+
     expect((await buscarLeadPorId(tenantId, id))?.legal_basis).toBe('outra');
 
     // Com a base padrão, o obrigatório se resolve sozinho no cadastro manual.
     await salvarConfigLgpd(tenantId, { basePadrao: 'consentimento', obrigatoria: true });
+
     const { id: comPadrao } = await registrarNovoLead(
       tenantId,
       { nome: 'Duda', email: 'duda@lgpd.test' },
       donoId,
     );
+
     expect((await buscarLeadPorId(tenantId, comPadrao))?.legal_basis).toBe('consentimento');
   });
 
@@ -160,17 +176,21 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       await criar('Cadeia Meio'),
       await criar('Cadeia Atual'),
     ];
+
     await mesclarLeads(tenantId, { principalId: meio, secundarioId: antiga }, donoId);
     await mesclarLeads(tenantId, { principalId: atual, secundarioId: meio }, donoId);
 
     const resumo = await anonimizarLeadDoTitular(tenantId, atual, donoId);
 
     expect(resumo.leads).toBe(TRES_LEADS);
+
     const linhas = await prisma.$queryRaw`
       SELECT nome, email, anonimizado_em FROM modulo_crm.leads
       WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${[antiga, meio, atual]}::uuid[])
     `;
+
     expect(linhas).toHaveLength(TRES_LEADS);
+
     for (const linha of linhas) {
       expect(linha.nome).not.toContain('Cadeia');
       expect(linha.email).toBeNull();
@@ -180,46 +200,56 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
 
   it('anonimizar: some a PII do lead, do mesclado, das atividades e do histórico; fica o rastro', async () => {
     await salvarConfigLgpd(tenantId, { basePadrao: 'consentimento', obrigatoria: false });
+
     await criarNovaDefinicao(tenantId, {
       label: 'Apelido',
       tipo: 'texto',
       obrigatorio: false,
       ordem: ORDEM_APELIDO,
     });
+
     await criarNovaDefinicao(tenantId, {
       label: 'Salário',
       tipo: 'numero',
       obrigatorio: false,
       ordem: ORDEM_SALARIO,
     });
+
     const pessoal = { email: 'eva@titular.test', telefone: '11955554444', empresa: 'Eva ME' };
     const { id: eva } = await registrarNovoLead(
       tenantId,
       { nome: 'Eva Titular', ...pessoal, customFields: { apelido: 'Evinha', salario: SALARIO } },
       donoId,
     );
+
     await atualizarLeadExistente(tenantId, eva, { empresa: 'Eva Ltda', cargo: 'Sócia' }, donoId);
+
     await registrarAtividade(
       tenantId,
       eva,
       { tipo: 'ligacao', titulo: 'Ligar pra Eva', notas: 'CPF dela no papel' },
       donoId,
     );
+
     const { id: copia } = await registrarNovoLead(
       tenantId,
       { nome: 'Eva Cópia', email: 'eva2@titular.test' },
       donoId,
     );
+
     await mesclarLeads(tenantId, { principalId: eva, secundarioId: copia }, donoId);
 
     const resumo = await anonimizarLeadDoTitular(tenantId, eva, donoId);
+
     expect(resumo).toMatchObject({ leadId: eva, leads: DOIS_LEADS, atividades: 1 });
 
     const leads = await prisma.$queryRaw`
       SELECT id::text, nome, email, telefone, empresa, cargo, custom_fields, anonimizado_em, legal_basis
       FROM modulo_crm.leads WHERE id IN (${eva}::uuid, ${copia}::uuid)
     `;
+
     expect(leads).toHaveLength(DOIS_LEADS);
+
     for (const lead of leads) {
       expect(lead).toMatchObject({
         nome: 'Lead anonimizado',
@@ -228,15 +258,19 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         empresa: null,
         cargo: null,
       });
+
       expect(lead.anonimizado_em).toBeInstanceOf(Date);
     }
+
     const principal = leads.find((lead) => lead.id === eva);
+
     expect(Object.values(principal.custom_fields)).toEqual([SALARIO]); // o número fica; o apelido sai
     expect(principal.legal_basis).toBe('consentimento'); // não é dado pessoal
 
     const [atividade] = await prisma.$queryRaw`
       SELECT titulo, notas FROM modulo_crm.crm_activity WHERE lead_id = ${eva}::uuid
     `;
+
     expect(atividade).toEqual({ titulo: 'Atividade anonimizada', notas: null });
 
     const eventos = await prisma.$queryRaw`
@@ -244,14 +278,19 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       WHERE lead_id = ${eva}::uuid
     `;
     const texto = eventos.map((evento) => `${evento.diff} ${evento.detalhes}`).join(' ');
-    for (const vestigio of ['Eva', 'eva@', 'Evinha', 'Sócia', '11955554444'])
+
+    for (const vestigio of ['Eva', 'eva@', 'Evinha', 'Sócia', '11955554444']) {
       expect(texto).not.toContain(vestigio);
+    }
+
     expect(eventos.map((evento) => evento.tipo)).toContain('anonimizado');
 
     const auditoria = await prisma.$queryRaw`
       SELECT acao, usuario_id::text AS autor FROM audit_log WHERE tenant_id = ${tenantId}::uuid AND entidade_id = ${eva}::uuid
     `;
+
     expect(auditoria).toEqual([{ acao: 'crm.lead_anonimizado', autor: donoId }]);
+
     // Append-only: DELETE direto continua barrado (a cascata do tenant, no fim, passa).
     await expect(
       prisma.$executeRaw`DELETE FROM audit_log WHERE tenant_id = ${tenantId}::uuid`,
@@ -263,6 +302,7 @@ rodar('base legal LGPD no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
     ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     await expect(anonimizarLeadDoTitular(tenantId, eva, donoId)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });

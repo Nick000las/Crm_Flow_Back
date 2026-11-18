@@ -31,12 +31,19 @@ exports.interfaceVersion = 2;
  * @returns {{ found: boolean, path?: string | null }}
  */
 exports.resolve = function resolve(source) {
-  if (!source.startsWith('#')) return { found: false };
+  if (!source.startsWith('#')) {
+    return { found: false };
+  }
 
   for (const [prefixo, destino] of mapeamentos) {
-    if (!source.startsWith(prefixo)) continue;
+    if (!source.startsWith(prefixo)) {
+      continue;
+    }
+
     const arquivo = path.resolve(raiz, destino + source.slice(prefixo.length));
+
     return fs.existsSync(arquivo) ? { found: true, path: arquivo } : { found: false };
   }
+
   return { found: false };
 };

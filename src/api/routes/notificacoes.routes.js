@@ -1,4 +1,10 @@
+/**
+ * @file Notificações in-app do usuário logado (sino do shell). Do core, não de um módulo:
+ * qualquer módulo gera (`#core/notificacoes`), e o usuário só vê e marca as próprias — o
+ * usuário vem do token, nunca do cliente.
+ */
 import { z } from 'zod';
+
 import { authenticateHook } from '#core/auth/rbac.js';
 import {
   listarNotificacoes,
@@ -33,17 +39,20 @@ export function registerNotificacoesRoutes(app) {
   app.get('/notificacoes', autenticada, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const paginacao = listarQuerySchema.parse(req.query ?? {});
+
     return sendSuccess(reply, await listarNotificacoes(tenantId, userId, paginacao));
   });
 
   app.post('/notificacoes/:id/lida', autenticada, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const { id } = idParamSchema.parse(req.params);
+
     return sendSuccess(reply, await marcarComoLida(tenantId, userId, id));
   });
 
   app.post('/notificacoes/lidas', autenticada, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
+
     return sendSuccess(reply, await marcarTodasComoLidas(tenantId, userId));
   });
 }

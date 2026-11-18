@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: formulários (FM1, docs/produto/crm-formularios.md).
+ */
 import { randomUUID } from 'node:crypto';
+
 import {
   AppError,
   erroDeConflito,
@@ -7,6 +11,7 @@ import {
 } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
   atualizarFormulario,
   buscarFormulario,
@@ -23,10 +28,10 @@ import {
   CHAVES_PREENCHER_SE_VAZIO,
   CHAVES_SISTEMA_DO_FORMULARIO,
   LIMITES_FORMULARIO,
-  POLITICAS_ESCRITA,
-  TIPOS_FORA_DO_FORMULARIO,
   OPERADORES_POR_TIPO,
+  POLITICAS_ESCRITA,
   TIPOS_CAMPO,
+  TIPOS_FORA_DO_FORMULARIO,
   TIPOS_PERGUNTA_COM_OPCOES,
 } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
@@ -120,6 +125,7 @@ export function ehPergunta(item) {
 function normalizarPergunta(entrada, caminho, erros) {
   const comOpcoes = TIPOS_PERGUNTA_COM_OPCOES.includes(entrada.tipo);
   const opcoes = (entrada.opcoes ?? []).map((opcao) => opcao.trim()).filter(Boolean);
+
   if (comOpcoes && opcoes.length === 0) {
     erros[`${caminho}.opcoes`] = ['Escreva ao menos uma opção'];
   } else if (!comOpcoes && opcoes.length > 0) {
@@ -127,6 +133,7 @@ function normalizarPergunta(entrada, caminho, erros) {
   } else if (new Set(opcoes.map((opcao) => opcao.toLowerCase())).size !== opcoes.length) {
     erros[`${caminho}.opcoes`] = ['Há opções repetidas'];
   }
+
   return {
     id: entrada.id ?? randomUUID(),
     rotulo: entrada.rotulo.trim(),
@@ -147,8 +154,14 @@ const OPERADORES_SEM_VALOR = Object.freeze(['vazio', 'nao_vazio']);
  * @param {string} tipo
  */
 function tipoDoElemento(tipo) {
-  if (tipo === TIPOS_CAMPO.SELECAO_MULTIPLA) return TIPOS_CAMPO.SELECAO;
-  if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) return TIPOS_CAMPO.DATA;
+  if (tipo === TIPOS_CAMPO.SELECAO_MULTIPLA) {
+    return TIPOS_CAMPO.SELECAO;
+  }
+
+  if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
+    return TIPOS_CAMPO.DATA;
+  }
+
   return tipo;
 }
 
@@ -164,12 +177,18 @@ function tipoDoElemento(tipo) {
  */
 export function valorDaCondicao(alvo, operador, valor) {
   const { tipo, opcoes } = alvo;
+
   if (!OPERADORES_POR_TIPO[tipo]?.includes(operador)) {
     return { erro: `O operador "${operador}" não vale para este tipo de resposta` };
   }
-  if (OPERADORES_SEM_VALOR.includes(operador)) return {};
+
+  if (OPERADORES_SEM_VALOR.includes(operador)) {
+    return {};
+  }
+
   const elemento = tipoDoElemento(tipo);
   const valido = (item) => valorValidoParaTipo(elemento, item, opcoes);
+
   switch (operador) {
     case 'igual':
       return valorValidoParaTipo(tipo, valor, opcoes)
@@ -179,6 +198,7 @@ export function valorDaCondicao(alvo, operador, valor) {
       if (tipo === TIPOS_CAMPO.SELECAO_MULTIPLA) {
         return valido(valor) ? { valor } : { erro: 'Escolha uma das opções' };
       }
+
       return typeof valor === 'string' && valor.trim().length > 0
         ? { valor: valor.trim() }
         : { erro: 'Escreva o texto a procurar' };
@@ -191,10 +211,12 @@ export function valorDaCondicao(alvo, operador, valor) {
       const limites = [intervalo.de, intervalo.ate].filter(
         (item) => item !== undefined && item !== null,
       );
+
       return typeof valor === 'object' && limites.length > 0 && limites.every(valido)
         ? { valor: { de: intervalo.de ?? null, ate: intervalo.ate ?? null } }
         : { erro: 'Informe o início, o fim ou os dois' };
     }
+
     default:
       return { erro: 'Operador inválido' };
   }
@@ -212,16 +234,23 @@ export function valorDaCondicao(alvo, operador, valor) {
  */
 function normalizarAlertas(entrada, secoes, porId, erros) {
   const alvos = new Map();
+
   for (const item of secoes.flatMap((secao) => secao.itens)) {
     if (ehPergunta(item)) {
       const { pergunta } = /** @type {ItemPergunta} */ (item);
+
       alvos.set(`p:${pergunta.id}`, { tipo: pergunta.tipo, opcoes: pergunta.opcoes });
     } else {
       const campo = porId.get(/** @type {ItemCampo} */ (item).campoId);
-      if (campo) alvos.set(`c:${campo.id}`, { tipo: campo.tipo, opcoes: campo.opcoes });
+
+      if (campo) {
+        alvos.set(`c:${campo.id}`, { tipo: campo.tipo, opcoes: campo.opcoes });
+      }
     }
   }
+
   const ids = new Set();
+
   return entrada.map((alerta, posicao) => {
     const base = `rascunho.alertas.${posicao}`;
     const alvo = alerta.alvo?.campoId
@@ -230,16 +259,27 @@ function normalizarAlertas(entrada, secoes, porId, erros) {
     const chave = 'campoId' in alvo ? `c:${alvo.campoId}` : `p:${alvo.perguntaId}`;
     const doAlvo = alvos.get(chave);
     let valor;
+
     if (!doAlvo) {
       erros[`${base}.alvo`] = ['O alerta precisa ser sobre um campo ou pergunta deste formulário'];
     } else {
       const resultado = valorDaCondicao(doAlvo, alerta.operador, alerta.valor);
-      if ('erro' in resultado) erros[`${base}.operador`] = [resultado.erro];
-      else valor = resultado.valor;
+
+      if ('erro' in resultado) {
+        erros[`${base}.operador`] = [resultado.erro];
+      } else {
+        valor = resultado.valor;
+      }
     }
+
     const id = alerta.id ?? randomUUID();
-    if (ids.has(id)) erros[`${base}.id`] = ['Este alerta já está no formulário'];
+
+    if (ids.has(id)) {
+      erros[`${base}.id`] = ['Este alerta já está no formulário'];
+    }
+
     ids.add(id);
+
     return {
       id,
       alvo,
@@ -279,23 +319,36 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
    */
   const normalizarItem = (item, base) => {
     total += 1;
+
     if (ehPergunta(item)) {
       const pergunta = normalizarPergunta(item.pergunta, `${base}.pergunta`, erros);
+
       if (perguntasUsadas.has(pergunta.id)) {
         erros[`${base}.pergunta.id`] = ['Esta pergunta já está no formulário'];
       }
+
       perguntasUsadas.add(pergunta.id);
+
       return { pergunta, obrigatorio: item.obrigatorio ?? false };
     }
+
     const caminho = `${base}.campoId`;
     const campo = porId.get(item.campoId);
-    if (!campo) erros[caminho] = ['Escolha um campo da pessoa que esteja ligado no CRM'];
-    else if (usados.has(item.campoId)) erros[caminho] = [`"${campo.label}" já está no formulário`];
+
+    if (!campo) {
+      erros[caminho] = ['Escolha um campo da pessoa que esteja ligado no CRM'];
+    } else if (usados.has(item.campoId)) {
+      erros[caminho] = [`"${campo.label}" já está no formulário`];
+    }
+
     usados.add(item.campoId);
+
     const preencher = item.preencher ?? false;
+
     if (preencher && campo && !campo.podePreencher) {
       erros[`${base}.preencher`] = [`"${campo.label}" é sensível: não pode vir preenchido`];
     }
+
     return {
       campoId: item.campoId,
       obrigatorio: item.obrigatorio ?? false,
@@ -313,15 +366,19 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
 
   const alertas = normalizarAlertas(entrada.alertas ?? [], secoes, porId, erros);
   const termo = entrada.termo?.trim() || null;
+
   if (publicar && total === 0) {
     erros['rascunho.secoes'] = ['Escolha ao menos um campo ou pergunta para publicar'];
   }
+
   if (publicar && !termo) {
     erros['rascunho.termo'] = ['Escreva o termo de aceite para publicar'];
   }
+
   if (total > LIMITES_FORMULARIO.ITENS) {
     erros['rascunho.secoes'] = [`No máximo ${LIMITES_FORMULARIO.ITENS} itens por formulário`];
   }
+
   if (Object.keys(erros).length > 0) {
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -330,6 +387,7 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
       fields: erros,
     });
   }
+
   return { secoes, introducao: entrada.introducao?.trim() || null, termo, alertas };
 }
 
@@ -344,6 +402,7 @@ export function validarRascunho(entrada, elegiveis, { publicar = false } = {}) {
  */
 export function retratoDosCampos(rascunho, elegiveis) {
   const porId = new Map(elegiveis.map((campo) => [campo.id, campo]));
+
   return Object.fromEntries(
     rascunho.secoes
       .flatMap((secao) => secao.itens)
@@ -351,6 +410,7 @@ export function retratoDosCampos(rascunho, elegiveis) {
       .map((item) => {
         const { campoId } = /** @type {ItemCampo} */ (item);
         const campo = /** @type {CampoElegivel} */ (porId.get(campoId));
+
         return [
           campoId,
           {
@@ -374,11 +434,16 @@ export function retratoDosCampos(rascunho, elegiveis) {
  * @returns {string}
  */
 function canonico(valor) {
-  if (Array.isArray(valor)) return `[${valor.map(canonico).join(',')}]`;
+  if (Array.isArray(valor)) {
+    return `[${valor.map(canonico).join(',')}]`;
+  }
+
   if (valor && typeof valor === 'object') {
     const chaves = Object.keys(valor).sort();
+
     return `{${chaves.map((chave) => `${JSON.stringify(chave)}:${canonico(valor[chave])}`).join(',')}}`;
   }
+
   return JSON.stringify(valor ?? null);
 }
 
@@ -403,7 +468,10 @@ export function comPadroes(secoes) {
  * @param {Pick<VersaoLinha, 'secoes' | 'introducao' | 'termo' | 'alertas'> | undefined} versao
  */
 export function temAlteracoesNaoPublicadas(rascunho, versao) {
-  if (!versao) return true;
+  if (!versao) {
+    return true;
+  }
+
   const atual = {
     ...rascunho,
     secoes: comPadroes(rascunho.secoes),
@@ -415,6 +483,7 @@ export function temAlteracoesNaoPublicadas(rascunho, versao) {
     termo: versao.termo,
     alertas: versao.alertas ?? [],
   };
+
   return canonico(atual) !== canonico(publicado);
 }
 
@@ -427,6 +496,7 @@ const naoEncontrado = () => erroNaoEncontrado('Formulário não encontrado');
 /** @param {string} tenantId */
 async function elegiveisDoTenant(tenantId) {
   const { campos } = await obterSchemaCampos(tenantId);
+
   return camposElegiveis(campos);
 }
 
@@ -462,12 +532,14 @@ async function comVersaoAtual(tenantId, linha) {
   const versao = linha.versao_atual_id
     ? await buscarVersao(tenantId, linha.id, linha.versao_atual_id)
     : undefined;
+
   return paraApi(linha, versao);
 }
 
 /** @param {string} tenantId */
 export async function listarFormularios(tenantId) {
   const linhas = await buscarFormularios(tenantId);
+
   return Promise.all(linhas.map((linha) => comVersaoAtual(tenantId, linha)));
 }
 
@@ -480,11 +552,16 @@ export async function listarFormularios(tenantId) {
  */
 export async function obterFormulario(tenantId, id) {
   const linha = await buscarFormulario(tenantId, id);
-  if (!linha) throw naoEncontrado();
+
+  if (!linha) {
+    throw naoEncontrado();
+  }
+
   const [resumo, versoes] = await Promise.all([
     comVersaoAtual(tenantId, linha),
     buscarVersoes(tenantId, id),
   ]);
+
   return {
     ...resumo,
     rascunho: {
@@ -519,12 +596,15 @@ export async function criarFormulario(tenantId, dados) {
       `No máximo ${LIMITES_FORMULARIO.POR_TENANT} formulários por empresa`,
     );
   }
+
   await garantirNomeLivre(tenantId, dados.nome, null);
+
   const linha = await inserirFormulario(tenantId, {
     nome: dados.nome,
     descricao: dados.descricao ?? null,
     validadeDias: dados.validadeDias ?? LIMITES_FORMULARIO.VALIDADE_PADRAO_DIAS,
   });
+
   return obterFormulario(tenantId, linha.id);
 }
 
@@ -538,13 +618,22 @@ export async function criarFormulario(tenantId, dados) {
  */
 export async function editarFormulario(tenantId, id, mudancas) {
   const atual = await buscarFormulario(tenantId, id);
-  if (!atual) throw naoEncontrado();
-  if (mudancas.nome !== undefined) await garantirNomeLivre(tenantId, mudancas.nome, id);
+
+  if (!atual) {
+    throw naoEncontrado();
+  }
+
+  if (mudancas.nome !== undefined) {
+    await garantirNomeLivre(tenantId, mudancas.nome, id);
+  }
+
   const rascunho =
     mudancas.rascunho === undefined
       ? undefined
       : validarRascunho(mudancas.rascunho, await elegiveisDoTenant(tenantId));
+
   await atualizarFormulario(tenantId, id, { ...mudancas, rascunho });
+
   return obterFormulario(tenantId, id);
 }
 
@@ -557,7 +646,11 @@ export async function editarFormulario(tenantId, id, mudancas) {
  */
 export async function publicarFormulario(tenantId, id, usuarioId) {
   const atual = await buscarFormulario(tenantId, id);
-  if (!atual) throw naoEncontrado();
+
+  if (!atual) {
+    throw naoEncontrado();
+  }
+
   const elegiveis = await elegiveisDoTenant(tenantId);
   const rascunho = validarRascunho(atual.rascunho, elegiveis, { publicar: true });
   const versao = await inserirVersao(tenantId, id, {
@@ -568,7 +661,11 @@ export async function publicarFormulario(tenantId, id, usuarioId) {
     alertas: rascunho.alertas,
     usuarioId,
   });
-  if (!versao) throw naoEncontrado();
+
+  if (!versao) {
+    throw naoEncontrado();
+  }
+
   return versaoParaApi(versao);
 }
 
@@ -602,6 +699,10 @@ function versaoParaApi(versao) {
  */
 export async function obterVersao(tenantId, formId, versaoId) {
   const versao = await buscarVersao(tenantId, formId, versaoId);
-  if (!versao) throw erroNaoEncontrado('Versão não encontrada');
+
+  if (!versao) {
+    throw erroNaoEncontrado('Versão não encontrada');
+  }
+
   return versaoParaApi(versao);
 }

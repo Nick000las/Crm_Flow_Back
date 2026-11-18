@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: layout do lead (M4).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { layoutMeuBodySchema, layoutPadraoBodySchema } from '../schemas/layout.schema.js';
 import { obterLayout, removerMeu, salvarMeu, salvarPadrao } from '../services/layout.service.js';
@@ -24,23 +28,27 @@ export function registrarRotasLayout(app) {
 
   app.get('/crm/layout', qualquerPapel, async (req, reply) => {
     const { tenantId, userId, role } = req.tenantContext;
+
     return sendSuccess(reply, await obterLayout(tenantId, userId, { papel: role }));
   });
 
   app.put('/crm/layout/padrao', apenasGestao, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const layout = layoutPadraoBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarPadrao(tenantId, userId, layout));
   });
 
   app.put('/crm/layout/meu', qualquerPapel, async (req, reply) => {
     const { tenantId, userId, role } = req.tenantContext;
     const parcial = layoutMeuBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarMeu(tenantId, userId, parcial, { papel: role }));
   });
 
   app.delete('/crm/layout/meu', qualquerPapel, async (req, reply) => {
     const { tenantId, userId, role } = req.tenantContext;
+
     return sendSuccess(reply, await removerMeu(tenantId, userId, { papel: role }));
   });
 }

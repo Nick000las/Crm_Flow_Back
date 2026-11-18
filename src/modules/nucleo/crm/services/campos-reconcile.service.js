@@ -1,3 +1,7 @@
+/**
+ * @file Todos os passos de campos em sequência — usado pelo resolver quando encontra um tenant
+ * ainda sem os campos do sistema.
+ */
 import { inserirCamposSistema } from '../adapters/crm-fields.repository.js';
 import { CAMPOS_SISTEMA } from '../constants.js';
 

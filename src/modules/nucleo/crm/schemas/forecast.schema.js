@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de forecast, na área de CRM, antes da execução dos casos
+ * de uso.
+ */
 import { z } from 'zod';
+
 import { PAGINATION } from '#shared/constants/index.js';
+
 import {
   AGRUPAMENTOS_FORECAST,
   BLOCOS_FORECAST,
@@ -79,6 +85,7 @@ export const oportunidadesDoForecastQuerySchema = z
         message: 'Informe um mês ou um bloco (um dos dois)',
       });
     }
+
     if (query.mes && !query.tipo) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

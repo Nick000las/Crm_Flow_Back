@@ -1,10 +1,14 @@
-import { registrarEmailsKanban } from './services/notifications.service.js';
-import { registrarSocketsKanban } from './controllers/realtime.controller.js';
-import { registrarRotasKanbanCompleto } from './controllers/kanban.controller.js';
-import { registrarRotasBoards } from './controllers/boards.controller.js';
-import { registrarRotasQuadros } from './controllers/quadros.controller.js';
-import { registrarRotasVinculos } from './controllers/vinculos.controller.js';
+/**
+ * @file Registra e expõe as integrações de Kanban definidas nesta pasta, preservando o contrato
+ * público do módulo.
+ */
 import { KANBAN_FEATURES, MODULO_KANBAN } from './constants.js';
+import { registrarRotasBoards } from './controllers/boards.controller.js';
+import { registrarRotasKanbanCompleto } from './controllers/kanban.controller.js';
+import { registrarRotasQuadros } from './controllers/quadros.controller.js';
+import { registrarSocketsKanban } from './controllers/realtime.controller.js';
+import { registrarRotasVinculos } from './controllers/vinculos.controller.js';
+import { registrarEmailsKanban } from './services/notifications.service.js';
 
 /** @type {import('#core/types/module.js').Module} */
 export const kanbanUniversalModule = {

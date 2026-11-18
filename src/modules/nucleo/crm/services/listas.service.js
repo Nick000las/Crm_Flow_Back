@@ -1,5 +1,10 @@
+/**
+ * @file SERVICE: listas configuráveis (docs/produto/crm-pessoas-e-campos.md, M3) — Status,
+ * Origem, Motivo de perda, Tipo de atividade e Tag.
+ */
 import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { slugify } from '#shared/text/slugify.js';
+
 import {
   atualizarOpcao as atualizarOpcaoRepository,
   buscarStatusDoPipeline,
@@ -89,6 +94,7 @@ export async function criarOpcao(
 ) {
   const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const nome = garantirLabelLivre(opcoes, label);
+
   validarCategoria(kind, category, { obrigatoria: true });
   validarProbabilidadePadrao(kind, category, probabilidadePadrao);
 
@@ -108,10 +114,14 @@ export async function criarOpcao(
     ],
     pipelineId,
   );
+
   // Outra requisição criou a mesma key entre a leitura e o INSERT.
-  if (!criada) throw erroDeConflito('label', 'Já existe uma opção com esse nome');
+  if (!criada) {
+    throw erroDeConflito('label', 'Já existe uma opção com esse nome');
+  }
 
   await invalidarSchemaCampos(tenantId);
+
   return criada;
 }
 
@@ -129,28 +139,43 @@ export async function criarOpcao(
 export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas, { pipelineId } = {}) {
   const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const atual = opcoes.find((opcao) => opcao.id === opcaoId);
-  if (!atual) throw opcaoNaoEncontrada();
+
+  if (!atual) {
+    throw opcaoNaoEncontrada();
+  }
 
   const label =
     mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
+
   validarCategoria(kind, mudancas.category, { obrigatoria: false });
+
   validarProbabilidadePadrao(
     kind,
     mudancas.category ?? atual.category,
     mudancas.probabilidadePadrao,
   );
+
   await garantirCategoriaLivre(tenantId, kind, atual, mudancas.category, pipelineId);
 
   const depois = { ...atual, ...(mudancas.category && { category: mudancas.category }) };
-  if (mudancas.ativo !== undefined) depois.ativo = mudancas.ativo;
+
+  if (mudancas.ativo !== undefined) {
+    depois.ativo = mudancas.ativo;
+  }
+
   garantirCategoriasObrigatorias(
     kind,
     opcoes.map((opcao) => (opcao.id === opcaoId ? depois : opcao)),
   );
 
   const atualizada = await atualizarOpcaoRepository(tenantId, opcaoId, { ...mudancas, label });
-  if (!atualizada) throw opcaoNaoEncontrada();
+
+  if (!atualizada) {
+    throw opcaoNaoEncontrada();
+  }
+
   await invalidarSchemaCampos(tenantId);
+
   return atualizada;
 }
 
@@ -172,6 +197,7 @@ export async function reordenarLista(tenantId, kind, ids, { pipelineId } = {}) {
     recebidos.size === ids.length &&
     ids.length === esperados.size &&
     ids.every((id) => esperados.has(id));
+
   if (!completa) {
     throw erroDeValidacao(
       'ids',
@@ -181,6 +207,7 @@ export async function reordenarLista(tenantId, kind, ids, { pipelineId } = {}) {
 
   await reordenarOpcoes(tenantId, kind, ids);
   await invalidarSchemaCampos(tenantId);
+
   return opcoesDaLista(tenantId, kind, pipelineId);
 }
 
@@ -196,25 +223,35 @@ export async function reordenarLista(tenantId, kind, ids, { pipelineId } = {}) {
 export async function excluirOpcao(tenantId, kind, opcaoId, { pipelineId } = {}) {
   const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const alvo = opcoes.find((opcao) => opcao.id === opcaoId);
-  if (!alvo) throw opcaoNaoEncontrada();
+
+  if (!alvo) {
+    throw opcaoNaoEncontrada();
+  }
 
   const usos = (await contarUsos(tenantId, kind, pipelineId)).get(alvo.key) ?? 0;
+
   if (usos > 0) {
     throw erroDeConflito(
       'opcao',
       `"${alvo.label}" está em ${usos} lead(s) — desative em vez de excluir`,
     );
   }
+
   if (LISTAS_SEMEADAS.includes(kind) && opcoes.length === 1) {
     throw erroDeConflito('opcao', `A lista ${NOME_DA_LISTA[kind]} precisa de ao menos uma opção`);
   }
+
   garantirCategoriasObrigatorias(
     kind,
     opcoes.filter((opcao) => opcao.id !== opcaoId),
   );
 
-  if (!(await excluirOpcaoRepository(tenantId, opcaoId))) throw opcaoNaoEncontrada();
+  if (!(await excluirOpcaoRepository(tenantId, opcaoId))) {
+    throw opcaoNaoEncontrada();
+  }
+
   await invalidarSchemaCampos(tenantId);
+
   return { removido: true };
 }
 
@@ -228,7 +265,10 @@ export async function excluirOpcao(tenantId, kind, opcaoId, { pipelineId } = {})
  * @returns {string | null}
  */
 export function categoriaDoStatus(listas, statusKey) {
-  if (!statusKey) return null;
+  if (!statusKey) {
+    return null;
+  }
+
   return listas[TIPOS_LISTA.STATUS]?.find((opcao) => opcao.key === statusKey)?.category ?? null;
 }
 
@@ -255,30 +295,45 @@ export async function resolverOpcoesDoLead(listas, input, carregarAtual = async 
   /** @type {Record<string, unknown> | undefined | null} */
   let atual = null;
   const leadAtual = async () => {
-    if (atual === null) atual = (await carregarAtual()) ?? undefined;
+    if (atual === null) {
+      atual = (await carregarAtual()) ?? undefined;
+    }
+
     return atual;
   };
 
   for (const [chave, kind] of Object.entries(LISTA_DO_CAMPO)) {
-    if (kind === TIPOS_LISTA.TAG) continue;
+    if (kind === TIPOS_LISTA.TAG) {
+      continue;
+    }
+
     const valor = input[chave];
-    if (valor === undefined || valor === null) continue;
+
+    if (valor === undefined || valor === null) {
+      continue;
+    }
 
     const opcao = listas[kind]?.find((item) => item.key === valor);
+
     if (!opcao) {
       throw erroDeValidacao(chave, `"${valor}" não é uma opção de ${NOME_DA_LISTA[kind]}`);
     }
+
     if (!opcao.ativo && (await leadAtual())?.[COLUNA_DA_LISTA[kind]] !== valor) {
       throw erroDeValidacao(chave, `"${opcao.label}" está desativada em ${NOME_DA_LISTA[kind]}`);
     }
   }
 
-  if (!Array.isArray(input.tags)) return { input, tagsNovas: [] };
+  if (!Array.isArray(input.tags)) {
+    return { input, tagsNovas: [] };
+  }
+
   const { keys, tagsNovas } = await resolverTags(
     listas[TIPOS_LISTA.TAG] ?? [],
     input.tags,
     leadAtual,
   );
+
   return { input: { ...input, tags: keys }, tagsNovas };
 }
 
@@ -293,9 +348,11 @@ export async function resolverOpcoesDoLead(listas, input, carregarAtual = async 
 export function buscadorDeTags(tags) {
   const porKey = new Map(tags.map((tag) => [tag.key, tag]));
   const porLabel = new Map(tags.map((tag) => [tag.label.trim().toLowerCase(), tag]));
+
   return (bruto) => {
     const texto = bruto.trim();
     const slug = slugify(texto);
+
     return (
       porKey.get(texto) ??
       porLabel.get(texto.toLowerCase()) ??
@@ -322,25 +379,40 @@ async function resolverTags(tags, textos, leadAtual) {
 
   for (const bruto of textos) {
     const texto = bruto.trim();
-    if (!texto) continue;
+
+    if (!texto) {
+      continue;
+    }
+
     const slug = slugify(texto);
     const existente = encontrar(texto);
 
     if (existente) {
       const tagsDoLead = /** @type {string[] | undefined} */ ((await leadAtual())?.tags);
+
       if (!existente.ativo && !tagsDoLead?.includes(existente.key)) {
         throw erroDeValidacao('tags', `A tag "${existente.label}" está desativada`);
       }
-      if (!keys.includes(existente.key)) keys.push(existente.key);
+
+      if (!keys.includes(existente.key)) {
+        keys.push(existente.key);
+      }
+
       continue;
     }
 
     const repetida = tagsNovas.find((nova) => nova.label.toLowerCase() === texto.toLowerCase());
+
     if (repetida) {
-      if (!keys.includes(repetida.key)) keys.push(repetida.key);
+      if (!keys.includes(repetida.key)) {
+        keys.push(repetida.key);
+      }
+
       continue;
     }
+
     const key = chaveUnica(slug || KEY_PADRAO, usadas);
+
     usadas.add(key);
     tagsNovas.push({ key, label: texto });
     keys.push(key);
@@ -357,13 +429,18 @@ async function resolverTags(tags, textos, leadAtual) {
  * @param {{ key: string, label: string }[]} tagsNovas
  */
 export async function gravarTagsNovas(tenantId, tagsNovas) {
-  if (tagsNovas.length === 0) return;
+  if (tagsNovas.length === 0) {
+    return;
+  }
+
   const inicio = await proximaPosicao(tenantId, TIPOS_LISTA.TAG);
+
   await inserirOpcoes(
     tenantId,
     TIPOS_LISTA.TAG,
     tagsNovas.map((tag, indice) => ({ ...tag, position: inicio + indice })),
   );
+
   await invalidarSchemaCampos(tenantId);
 }
 
@@ -377,7 +454,10 @@ export async function gravarTagsNovas(tenantId, tagsNovas) {
  * @param {string} [pipelineId]  status de outro pipeline; sem ele, o padrão
  */
 async function opcoesDaLista(tenantId, kind, pipelineId) {
-  if (pipelineId) return buscarStatusDoPipeline(tenantId, pipelineId);
+  if (pipelineId) {
+    return buscarStatusDoPipeline(tenantId, pipelineId);
+  }
+
   return (await obterSchemaCampos(tenantId)).listas[kind] ?? [];
 }
 
@@ -390,11 +470,19 @@ async function opcoesDaLista(tenantId, kind, pipelineId) {
  */
 function garantirLabelLivre(opcoes, label, ignorarId) {
   const nome = label.trim();
-  if (!nome) throw erroDeValidacao('label', 'Informe o nome da opção');
+
+  if (!nome) {
+    throw erroDeValidacao('label', 'Informe o nome da opção');
+  }
+
   const repetida = opcoes.some(
     (opcao) => opcao.id !== ignorarId && opcao.label.trim().toLowerCase() === nome.toLowerCase(),
   );
-  if (repetida) throw erroDeConflito('label', 'Já existe uma opção com esse nome');
+
+  if (repetida) {
+    throw erroDeConflito('label', 'Já existe uma opção com esse nome');
+  }
+
   return nome;
 }
 
@@ -407,10 +495,13 @@ function garantirLabelLivre(opcoes, label, ignorarId) {
  */
 function validarCategoria(kind, category, { obrigatoria }) {
   if (kind !== TIPOS_LISTA.STATUS) {
-    if (category !== undefined)
+    if (category !== undefined) {
       throw erroDeValidacao('category', 'Só a lista Status tem categoria');
+    }
+
     return;
   }
+
   if (obrigatoria && category === undefined) {
     throw erroDeValidacao('category', 'Informe a categoria do status (aberto, ganho ou perdido)');
   }
@@ -425,11 +516,16 @@ function validarCategoria(kind, category, { obrigatoria }) {
  * @param {number | undefined} probabilidade
  */
 function validarProbabilidadePadrao(kind, categoria, probabilidade) {
-  if (probabilidade === undefined) return;
+  if (probabilidade === undefined) {
+    return;
+  }
+
   if (kind !== TIPOS_LISTA.STATUS) {
     throw erroDeValidacao('probabilidadePadrao', 'Só a lista Status tem probabilidade padrão');
   }
+
   const fixa = categoria ? PROBABILIDADE_PADRAO.FIXA[categoria] : undefined;
+
   if (fixa !== undefined && probabilidade !== fixa) {
     throw erroDeValidacao(
       'probabilidadePadrao',
@@ -449,8 +545,12 @@ function validarProbabilidadePadrao(kind, categoria, probabilidade) {
  * @param {string} [pipelineId]
  */
 async function garantirCategoriaLivre(tenantId, kind, atual, category, pipelineId) {
-  if (kind !== TIPOS_LISTA.STATUS || !category || category === atual.category) return;
+  if (kind !== TIPOS_LISTA.STATUS || !category || category === atual.category) {
+    return;
+  }
+
   const usos = (await contarUsos(tenantId, kind, pipelineId)).get(atual.key) ?? 0;
+
   if (usos > 0) {
     throw erroDeConflito(
       'category',
@@ -467,7 +567,10 @@ async function garantirCategoriaLivre(tenantId, kind, atual, category, pipelineI
  * @param {OpcaoLista[]} opcoesDepois
  */
 function garantirCategoriasObrigatorias(kind, opcoesDepois) {
-  if (kind !== TIPOS_LISTA.STATUS) return;
+  if (kind !== TIPOS_LISTA.STATUS) {
+    return;
+  }
+
   for (const categoria of CATEGORIAS_OBRIGATORIAS) {
     if (!opcoesDepois.some((opcao) => opcao.ativo && opcao.category === categoria)) {
       throw erroDeConflito(
@@ -485,9 +588,16 @@ function garantirCategoriasObrigatorias(kind, opcoesDepois) {
  * @param {Set<string>} usadas
  */
 export function chaveUnica(base, usadas) {
-  if (!usadas.has(base)) return base;
+  if (!usadas.has(base)) {
+    return base;
+  }
+
   let sufixo = PRIMEIRO_SUFIXO;
-  while (usadas.has(`${base}_${sufixo}`)) sufixo += 1;
+
+  while (usadas.has(`${base}_${sufixo}`)) {
+    sufixo += 1;
+  }
+
   return `${base}_${sufixo}`;
 }
 

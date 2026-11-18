@@ -1,3 +1,7 @@
+/**
+ * @file SERVICE: motor dos quadros de entidade (M2), cujo conteúdo vem do módulo dono dos
+ * dados.
+ */
 import { AppError, erroNaoEncontrado } from '#core/errors/app-error.js';
 import {
   provedorDaEntidade,
@@ -7,6 +11,7 @@ import {
 import { moduloAtivo } from '#core/tenant/module-access.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { ACOES_CARD_ENTIDADE, MODOS_QUADRO } from '../constants.js';
 
 /**
@@ -29,9 +34,11 @@ import { ACOES_CARD_ENTIDADE, MODOS_QUADRO } from '../constants.js';
  */
 async function provedorAcessivel(context, boardType) {
   const quadro = provedorDoQuadro(boardType);
+
   if (!quadro || !(await moduloAtivo(context.tenantId, quadro.modulo))) {
     throw erroNaoEncontrado('Quadro não encontrado.');
   }
+
   return quadro;
 }
 
@@ -49,7 +56,9 @@ export async function listarQuadrosDeEntidade(context, logger) {
         if (!(await moduloAtivo(context.tenantId, provedor.modulo))) {
           return [];
         }
+
         const quadros = await provedor.listarQuadros(context);
+
         return quadros.map(({ quadroRef, nome }) => ({
           boardType: provedor.boardType,
           quadroRef,
@@ -58,10 +67,12 @@ export async function listarQuadrosDeEntidade(context, logger) {
         }));
       } catch (erro) {
         logger.warn({ err: erro, boardType: provedor.boardType }, 'Provedor de quadro falhou.');
+
         return [];
       }
     }),
   );
+
   return resultados.flat();
 }
 
@@ -71,6 +82,7 @@ export async function listarQuadrosDeEntidade(context, logger) {
  */
 export async function listarColunas(context, { boardType, quadroRef }) {
   const provedor = await provedorAcessivel(context, boardType);
+
   return provedor.listarColunas(context, quadroRef);
 }
 
@@ -86,6 +98,7 @@ export async function listarColunas(context, { boardType, quadroRef }) {
 export async function listarCards(context, { boardType, quadroRef }, consulta) {
   const provedor = await provedorAcessivel(context, boardType);
   const { itens, proximoCursor } = await provedor.listarCards(context, quadroRef, consulta);
+
   return {
     itens: await comDescricao(context, provedor, itens),
     proximoCursor: proximoCursor ?? null,
@@ -104,6 +117,7 @@ async function comDescricao(context, provedor, itens) {
     itens.map((item) => item.entidadeId),
   );
   const porId = new Map(descricoes.map(({ id, ...descricao }) => [id, descricao]));
+
   return itens.map((item) => ({
     ...item,
     ...(porId.get(item.entidadeId) ?? { restrito: true }),
@@ -121,9 +135,14 @@ async function comDescricao(context, provedor, itens) {
  */
 export async function listarCardsPorIds(context, { boardType, quadroRef }, consulta) {
   const provedor = await provedorAcessivel(context, boardType);
-  if (!provedor.buscarCards) throw erroNaoEncontrado('Quadro não encontrado.');
+
+  if (!provedor.buscarCards) {
+    throw erroNaoEncontrado('Quadro não encontrado.');
+  }
+
   const itens = await provedor.buscarCards(context, quadroRef, consulta);
   const encontrados = new Set(itens.map((item) => item.entidadeId));
+
   return {
     itens: await comDescricao(context, provedor, itens),
     ausentes: consulta.ids.filter((id) => !encontrados.has(id)),
@@ -137,6 +156,7 @@ export async function listarCardsPorIds(context, { boardType, quadroRef }, consu
  */
 export async function resumirColuna(context, { boardType, quadroRef }, consulta) {
   const provedor = await provedorAcessivel(context, boardType);
+
   return provedor.resumoColuna(context, quadroRef, consulta);
 }
 
@@ -147,6 +167,7 @@ export async function resumirColuna(context, { boardType, quadroRef }, consulta)
  */
 export async function listarAcoes(context, { boardType, entidadeId }) {
   const provedor = await provedorAcessivel(context, boardType);
+
   return provedor.acoesPermitidas(context, entidadeId);
 }
 
@@ -162,6 +183,7 @@ export async function listarAcoes(context, { boardType, entidadeId }) {
 export async function moverCard(context, { boardType, quadroRef, entidadeId }, destino) {
   const provedor = await provedorAcessivel(context, boardType);
   const acoes = await provedor.acoesPermitidas(context, entidadeId);
+
   if (!acoes.includes(ACOES_CARD_ENTIDADE.MOVER)) {
     throw new AppError({
       code: ERROR_CODES.FORBIDDEN,
@@ -169,6 +191,7 @@ export async function moverCard(context, { boardType, quadroRef, entidadeId }, d
       message: 'Você não pode mover este card.',
     });
   }
+
   return provedor.mover(context, { quadroRef, entidadeId, ...destino });
 }
 
@@ -179,5 +202,6 @@ export async function moverCard(context, { boardType, quadroRef, entidadeId }, d
  */
 export async function criarCard(context, { boardType, quadroRef }, novo) {
   const provedor = await provedorAcessivel(context, boardType);
+
   return provedor.criar(context, { quadroRef, ...novo });
 }

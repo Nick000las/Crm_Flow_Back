@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { CAMADA } from '../constants.js';
 import { alertasDaResposta } from './formulario-alertas.service.js';
 import { camposElegiveis, validarRascunho, valorDaCondicao } from './formularios.service.js';
@@ -42,6 +43,7 @@ describe('regras de alerta no rascunho', () => {
       ]),
       ELEGIVEIS,
     );
+
     expect(alertas[0]).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       alvo: { campoId: ALERGIAS },
@@ -50,6 +52,7 @@ describe('regras de alerta no rascunho', () => {
       nivel: 'critical',
       texto: 'Atenção',
     });
+
     expect(alertas[1]).toMatchObject({ alvo: { perguntaId: FUMA }, valor: true });
     expect(alertas[2]).not.toHaveProperty('valor');
   });
@@ -83,6 +86,7 @@ describe('regras de alerta no rascunho', () => {
     ).toEqual({
       valor: ['Forte'],
     });
+
     expect(
       valorDaCondicao({ tipo: 'numero', opcoes: null }, 'entre', { de: IDADE_LIMITE }),
     ).toEqual({ valor: { de: IDADE_LIMITE, ate: null } });

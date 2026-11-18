@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+
 import { TIPOS_CAMPO } from '../constants.js';
 import {
-  LIMITE_TEXTO_LONGO,
   converterCelula,
-  textoDeBusca,
+  LIMITE_TEXTO_LONGO,
   normalizarTelefone,
   normalizarValorDoTipo,
+  textoDeBusca,
   valorValidoParaTipo,
 } from './tipos-campo.service.js';
 
@@ -62,6 +63,7 @@ describe('converterCelula (import)', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.MONETARIO), 'R$ 1.234,56')).toEqual({
       valor: VALOR_EM_CENTAVOS_EXATOS,
     });
+
     expect(converterCelula(campo(TIPOS_CAMPO.MONETARIO), 'caro')).toHaveProperty('erro');
   });
 
@@ -75,6 +77,7 @@ describe('converterCelula (import)', () => {
     expect(converterCelula(campo(TIPOS_CAMPO.TELEFONE), '(11) 99999-0000')).toEqual({
       valor: '11999990000',
     });
+
     expect(converterCelula(campo(TIPOS_CAMPO.EMAIL), 'ANA@X.COM')).toEqual({
       valor: 'ana@x.com',
     });
@@ -82,12 +85,15 @@ describe('converterCelula (import)', () => {
 
   it('tipos originais também convertem aqui (uma fonte só)', () => {
     const NUMERO_BR = 1234.5;
+
     expect(converterCelula(campo(TIPOS_CAMPO.TEXTO), 'x')).toEqual({ valor: 'x' });
     expect(converterCelula(campo(TIPOS_CAMPO.NUMERO), '1.234,50')).toEqual({ valor: NUMERO_BR });
     expect(converterCelula(campo(TIPOS_CAMPO.BOOLEANO), 'Sim')).toEqual({ valor: true });
+
     expect(converterCelula({ ...campo(TIPOS_CAMPO.SELECAO), opcoes: ['Alta'] }, 'alta')).toEqual({
       valor: 'Alta',
     });
+
     expect(converterCelula(campo(TIPOS_CAMPO.DATA), '31/02/2026')).toHaveProperty('erro');
     expect(converterCelula(campo('tipo_inexistente'), 'x')).toHaveProperty('erro');
   });
@@ -130,6 +136,7 @@ describe('converterCelula — campo de lista (M3)', () => {
       opcoes: null,
       opcoesLista: [],
     };
+
     expect(converterCelula(tags, 'Feira; VIP')).toEqual({ valor: ['Feira', 'VIP'] });
   });
 });

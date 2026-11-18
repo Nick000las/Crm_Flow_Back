@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: a assertividade do forecast (FC3).
+ */
 import { erroDeValidacao } from '#core/errors/app-error.js';
+
 import { agregarForecast } from '../adapters/crm-forecast.repository.js';
 import { buscarSnapshotsDoPeriodo } from '../adapters/crm-forecast-snapshot.repository.js';
 import { buscarNomesDeUsuarios } from '../adapters/usuarios.repository.js';
@@ -65,18 +69,22 @@ export function periodoDaAssertividade({ de, ate }, hoje) {
   const atual = hoje.slice(0, TAMANHO_DO_MES);
   const fim = ate ?? deslocarMes(atual, -1);
   const periodo = { de: de ?? deslocarMes(fim, 1 - LIMITES_ASSERTIVIDADE.MESES_PADRAO), ate: fim };
+
   if (periodo.de > periodo.ate) {
     throw erroDeValidacao('de', 'O mês inicial precisa vir antes do final');
   }
+
   if (mesesEntre(periodo.de, periodo.ate) > LIMITES_FORECAST.MESES_MAXIMOS) {
     throw erroDeValidacao(
       'ate',
       `Escolha um período de até ${LIMITES_FORECAST.MESES_MAXIMOS} meses`,
     );
   }
+
   if (periodo.ate >= atual) {
     throw erroDeValidacao('ate', 'Só meses fechados: escolha um mês anterior ao atual');
   }
+
   return periodo;
 }
 
@@ -90,13 +98,19 @@ export function periodoDaAssertividade({ de, ate }, hoje) {
 export function snapshotsPorMes(snapshots) {
   /** @type {Map<string, SnapshotGravado>} */
   const escolhidos = new Map();
+
   for (const snapshot of snapshots) {
-    if (snapshot.semana.slice(0, TAMANHO_DO_MES) !== snapshot.mes) continue;
+    if (snapshot.semana.slice(0, TAMANHO_DO_MES) !== snapshot.mes) {
+      continue;
+    }
+
     const atual = escolhidos.get(snapshot.mes);
+
     if (!atual || snapshot.tirado_em.getTime() < atual.tirado_em.getTime()) {
       escolhidos.set(snapshot.mes, snapshot);
     }
   }
+
   return escolhidos;
 }
 
@@ -112,19 +126,29 @@ export function realizadosPorMes(linhas) {
   const meses = new Map();
   const doMes = (mes) => {
     let realizado = meses.get(mes);
+
     if (!realizado) {
       realizado = { total: SEM_CENTAVOS, porDono: new Map() };
       meses.set(mes, realizado);
     }
+
     return realizado;
   };
+
   for (const linha of linhas) {
-    if (linha.realizado_quantidade === 0) continue;
+    if (linha.realizado_quantidade === 0) {
+      continue;
+    }
+
     const realizado = doMes(linha.chave);
-    if (linha.do_total) realizado.total = centavos(linha.realizado_soma);
-    else
+
+    if (linha.do_total) {
+      realizado.total = centavos(linha.realizado_soma);
+    } else {
       realizado.porDono.set(linha.grupo_chave ?? SEM_RESPONSAVEL, centavos(linha.realizado_soma));
+    }
   }
+
   return meses;
 }
 
@@ -137,8 +161,12 @@ export function realizadosPorMes(linhas) {
  * @returns {number | null}
  */
 export function razao(realizado, previsto) {
-  if (previsto === SEM_CENTAVOS) return null;
+  if (previsto === SEM_CENTAVOS) {
+    return null;
+  }
+
   const escalada = (realizado * ESCALA_DA_RAZAO * DOBRO + previsto) / (DOBRO * previsto);
+
   return Number(escalada) / Number(ESCALA_DA_RAZAO);
 }
 
@@ -171,12 +199,18 @@ export function montarPorResponsavel(snapshot, realizadoPorDono, nomes) {
       realizado: reais(realizado),
       assertividade: razao(realizado, previsto),
     };
+
     return { previsto, responsavel };
   });
+
   linhas.sort((a, b) => {
-    if (a.previsto !== b.previsto) return a.previsto > b.previsto ? -1 : 1;
+    if (a.previsto !== b.previsto) {
+      return a.previsto > b.previsto ? -1 : 1;
+    }
+
     return a.responsavel.rotulo.localeCompare(b.responsavel.rotulo, 'pt-BR');
   });
+
   return linhas.map((linha) => linha.responsavel);
 }
 
@@ -190,6 +224,7 @@ export function montarPorResponsavel(snapshot, realizadoPorDono, nomes) {
  */
 export function montarMesDaAssertividade(mes, snapshot, realizadoDoMes, nomes) {
   const realizado = realizadoDoMes?.total ?? SEM_CENTAVOS;
+
   if (!snapshot) {
     return {
       mes,
@@ -203,9 +238,11 @@ export function montarMesDaAssertividade(mes, snapshot, realizadoDoMes, nomes) {
       porResponsavel: [],
     };
   }
+
   const realizadoNoSnapshot = centavos(snapshot.realized);
   const ponderadoNoSnapshot = centavos(snapshot.weighted);
   const previsto = realizadoNoSnapshot + ponderadoNoSnapshot;
+
   return {
     mes,
     semDados: false,
@@ -228,13 +265,21 @@ export function montarMesDaAssertividade(mes, snapshot, realizadoDoMes, nomes) {
  */
 function idsDosResponsaveis(snapshots, realizados) {
   const ids = new Set();
+
   for (const snapshot of snapshots.values()) {
-    for (const chave of Object.keys(snapshot.by_owner)) ids.add(chave);
+    for (const chave of Object.keys(snapshot.by_owner)) {
+      ids.add(chave);
+    }
   }
+
   for (const realizado of realizados.values()) {
-    for (const chave of realizado.porDono.keys()) ids.add(chave);
+    for (const chave of realizado.porDono.keys()) {
+      ids.add(chave);
+    }
   }
+
   ids.delete(SEM_RESPONSAVEL);
+
   return [...ids];
 }
 

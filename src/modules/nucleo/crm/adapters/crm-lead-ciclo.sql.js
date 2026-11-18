@@ -1,4 +1,9 @@
+/**
+ * @file O dia (no fuso do tenant) de uma das datas do ciclo, pra comparar com `AAAA-MM-DD`.
+ * `won_at` é UTC sem fuso: vira instante e depois hora local.
+ */
 import { Prisma } from '@prisma/client';
+
 import { CATEGORIAS_STATUS, CICLOS_DE_VIDA, TIPOS_PIPELINE } from '../constants.js';
 
 /**
@@ -30,6 +35,7 @@ function oportunidadesDaPessoa(ocultos, pessoaNaLixeira) {
   const excluidas = pessoaNaLixeira ? Prisma.empty : Prisma.sql`AND d.deleted_at IS NULL`;
   const visiveis =
     ocultos.length > 0 ? Prisma.sql`AND d.pipeline_id <> ALL(${ocultos}::uuid[])` : Prisma.empty;
+
   return Prisma.sql`d.tenant_id = l.tenant_id AND d.lead_id = l.id ${excluidas} ${visiveis}`;
 }
 

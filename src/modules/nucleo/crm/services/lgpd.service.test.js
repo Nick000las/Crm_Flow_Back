@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   anonimizarLead,
   buscarConfigLgpd,
@@ -25,16 +27,19 @@ vi.mock('#core/tenant/feature-flags.js', () => ({
   featureAtiva: vi.fn(),
   garantirFeature: vi.fn(),
 }));
+
 vi.mock('../adapters/crm-lgpd.repository.js', () => ({
   anonimizarLead: vi.fn(),
   buscarConfigLgpd: vi.fn(),
   buscarSituacaoLgpd: vi.fn(),
   salvarConfigLgpd: vi.fn(),
 }));
+
 vi.mock('./configuracoes-campos.service.js', () => ({
   listarConfiguracaoCampos: vi.fn(),
   atualizarConfiguracaoCampo: vi.fn(),
 }));
+
 vi.mock('./score.service.js', () => ({ recalcularScoreDosLeads: vi.fn() }));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
@@ -88,6 +93,7 @@ describe('comDadosLgpdNaCriacao', () => {
         agora: AGORA,
       },
     );
+
     expect(criado).toEqual({
       nome: 'Ana',
       baseLegal: 'legitimo_interesse',
@@ -95,6 +101,7 @@ describe('comDadosLgpdNaCriacao', () => {
       origemRegistro: 'manual',
       optOutMarketingEm: AGORA,
     });
+
     expect(criado).not.toHaveProperty('optOutMarketing');
 
     const escolhida = comDadosLgpdNaCriacao(
@@ -105,6 +112,7 @@ describe('comDadosLgpdNaCriacao', () => {
         agora: AGORA,
       },
     );
+
     expect(escolhida).toMatchObject({
       baseLegal: 'consentimento',
       baseLegalEm: AGORA,
@@ -112,6 +120,7 @@ describe('comDadosLgpdNaCriacao', () => {
     });
 
     const semBase = comDadosLgpdNaCriacao({ nome: 'Bia' }, ORIGENS_REGISTRO.MANUAL);
+
     expect(semBase.baseLegal).toBeUndefined();
     expect(semBase.baseLegalEm).toBeUndefined();
     expect(semBase.optOutMarketingEm).toBeUndefined();
@@ -134,11 +143,14 @@ describe('salvarConfigLgpd', () => {
       visibilidade: { detail: true, table: true, filter: true, create_form: true },
       obrigatorio: true,
     });
+
     expect(atualizarConfiguracaoCampo).toHaveBeenCalledWith(TENANT, 'f2', {
       visibilidade: { detail: true, table: true, filter: true },
     });
+
     // Opt-out já visível; empresa não é LGPD.
     const atualizados = atualizarConfiguracaoCampo.mock.calls.map(([, id]) => id);
+
     expect(atualizados).not.toContain('f4');
     expect(atualizados).not.toContain('f5');
   });
@@ -161,38 +173,47 @@ describe('anonimização', () => {
     anonimizarLead.mockResolvedValue({ ...RESUMO });
 
     expect(await anonimizarLeadDoTitular(TENANT, LEAD, DONO)).toEqual({ leadId: LEAD, ...RESUMO });
+
     expect(anonimizarLead).toHaveBeenCalledWith(TENANT, LEAD, {
       autorId: DONO,
       mantidos: [ID_SALARIO, ID_SEGMENTO],
     });
+
     expect(recalcularScoreDosLeads).toHaveBeenCalledWith(TENANT, [LEAD]);
   });
 
   it('não existe → 404; já anonimizado (antes ou na corrida) → 409', async () => {
     buscarSituacaoLgpd.mockResolvedValueOnce(undefined);
+
     await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
 
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: true });
+
     await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
 
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: false });
     anonimizarLead.mockResolvedValueOnce(null);
+
     await expect(anonimizarLeadDoTitular(TENANT, LEAD, DONO)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     expect(recalcularScoreDosLeads).not.toHaveBeenCalled();
   });
 
   it('edição sem linha: anonimizado → 409; senão o 404 de quem chamou', async () => {
     const naoEncontrado = new Error('404');
+
     buscarSituacaoLgpd.mockResolvedValueOnce({ anonimizado: true });
+
     expect(await erroDoLeadNaoEditado(TENANT, LEAD, naoEncontrado)).toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     buscarSituacaoLgpd.mockResolvedValueOnce(undefined);
     expect(await erroDoLeadNaoEditado(TENANT, LEAD, naoEncontrado)).toBe(naoEncontrado);
   });

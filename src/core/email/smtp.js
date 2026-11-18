@@ -1,8 +1,14 @@
+/**
+ * @file O conteúdo dinâmico só entra em texto simples; não há HTML fornecido por usuários.
+ */
 import nodemailer from 'nodemailer';
+
 import { LOGIN_MFA, PASSWORD_ACTIVATION } from '#core/auth/constants.js';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
+import { renderVerificationEmail } from './verification-template.js';
 
 /**
  * @param {{
@@ -15,37 +21,34 @@ import { ERROR_CODES } from '#shared/http/error-codes.js';
  * }} config
  * @param {{ to: string, code: string }} input
  */
-export async function sendPasswordActivationCode(config, { to, code }) {
-  const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_TIMEOUT_MS } = config;
-
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    throw emailUnavailableError();
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    connectionTimeout: SMTP_TIMEOUT_MS,
-    greetingTimeout: SMTP_TIMEOUT_MS,
-    socketTimeout: SMTP_TIMEOUT_MS,
+export async function sendPasswordActivationCode(config, input) {
+  return sendVerificationCode(config, {
+    ...input,
+    purpose: 'activation',
+    subject: 'Código para criar sua senha',
+    expirationMinutes: PASSWORD_ACTIVATION.EXPIRATION_MINUTES,
   });
-
-  try {
-    await transporter.sendMail({
-      from: SMTP_USER,
-      to,
-      subject: 'Código para criar sua senha',
-      text: `Seu código de verificação é ${code}. Ele expira em ${PASSWORD_ACTIVATION.EXPIRATION_MINUTES} minutos.`,
-      html: `<p>Seu código de verificação é <strong>${code}</strong>.</p><p>Ele expira em ${PASSWORD_ACTIVATION.EXPIRATION_MINUTES} minutos.</p>`,
-    });
-  } catch (error) {
-    throw emailUnavailableError(error);
-  }
 }
 
-export async function sendLoginMfaCode(config, { to, code }) {
+export async function sendPasswordRecoveryCode(config, input) {
+  return sendVerificationCode(config, {
+    ...input,
+    purpose: 'recovery',
+    subject: 'Código para recuperar sua conta',
+    expirationMinutes: PASSWORD_ACTIVATION.EXPIRATION_MINUTES,
+  });
+}
+
+export async function sendLoginMfaCode(config, input) {
+  return sendVerificationCode(config, {
+    ...input,
+    purpose: 'login',
+    subject: 'Código de verificação de login',
+    expirationMinutes: LOGIN_MFA.EXPIRATION_MINUTES,
+  });
+}
+
+async function sendVerificationCode(config, { to, code, subject, purpose, expirationMinutes }) {
   const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_TIMEOUT_MS } = config;
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
@@ -64,14 +67,15 @@ export async function sendLoginMfaCode(config, { to, code }) {
 
   try {
     await transporter.sendMail({
-      from: SMTP_USER,
+      from: { name: 'Flow CRM', address: SMTP_USER },
       to,
-      subject: 'Código de verificação de login',
-      text: `Seu código de verificação é ${code}. Ele expira em ${LOGIN_MFA.EXPIRATION_MINUTES} minutos.`,
-      html: `<p>Seu código de verificação é <strong>${code}</strong>.</p><p>Ele expira em ${LOGIN_MFA.EXPIRATION_MINUTES} minutos.</p>`,
+      subject,
+      ...renderVerificationEmail({ purpose, code, expirationMinutes }),
     });
   } catch (error) {
     throw emailUnavailableError(error);
+  } finally {
+    transporter.close();
   }
 }
 
@@ -87,18 +91,31 @@ function emailUnavailableError(cause) {
 
 const NOTIFICATION_TITLES = {
   assignment: 'Você recebeu um card',
+  update: 'Um card que você acompanha foi atualizado',
   mention: 'Você foi mencionado em um comentário',
   due: 'Um card seu vence hoje',
+  next_action: 'Você tem uma próxima ação pendente no Kanban',
 };
 
 /** O conteúdo dinâmico só entra em texto simples; não há HTML fornecido por usuários. */
-export async function sendKanbanNotification(config, { email, titulo, quadro, kind, id, boardId }) {
+export async function sendKanbanNotification(
+  config,
+  { email, titulo, quadro, kind, id, boardId, cardId },
+) {
   const title = NOTIFICATION_TITLES[kind];
+
   if (!title || !config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASS) {
     throw emailUnavailableError();
   }
+
   const url = new URL('/kanban', config.FRONTEND_URL);
+
   url.searchParams.set('quadro', boardId);
+
+  if (cardId) {
+    url.searchParams.set('card', cardId);
+  }
+
   const transport = nodemailer.createTransport({
     host: config.SMTP_HOST,
     port: config.SMTP_PORT,
@@ -108,6 +125,7 @@ export async function sendKanbanNotification(config, { email, titulo, quadro, ki
     greetingTimeout: config.SMTP_TIMEOUT_MS,
     socketTimeout: config.SMTP_TIMEOUT_MS,
   });
+
   try {
     await transport.sendMail({
       from: config.SMTP_USER,

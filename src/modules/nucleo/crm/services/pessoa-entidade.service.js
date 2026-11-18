@@ -1,3 +1,7 @@
+/**
+ * @file SERVICE: a pessoa como entidade que outro módulo referencia sem copiar dado (contrato
+ * `ProvedorDeEntidade`, M6).
+ */
 import {
   buscarPessoasPorIds,
   buscarSituacaoDasPessoas,
@@ -29,9 +33,11 @@ export function tituloDaPessoa(lead, identificador, schema) {
   if (!identificador) {
     return lead.nome;
   }
+
   const valor = identificador.coluna
     ? lead[identificador.coluna]
     : customFieldsParaApi(schema.definicoes, lead.custom_fields ?? {})[identificador.chave];
+
   return typeof valor === 'string' && valor.trim() ? valor : lead.nome;
 }
 
@@ -49,6 +55,7 @@ async function descreverPessoas({ tenantId, role }, ids) {
     role,
   );
   const visiveis = ativas.filter((situacao) => permitidas.has(situacao.atual));
+
   if (visiveis.length === 0) {
     return [];
   }
@@ -63,6 +70,7 @@ async function descreverPessoas({ tenantId, role }, ids) {
 
   return visiveis.flatMap(({ origem, atual }) => {
     const lead = porId.get(atual);
+
     return lead
       ? [
           {
@@ -88,9 +96,11 @@ async function descreverPessoas({ tenantId, role }, ids) {
 async function resolverVinculosDePessoas(tenantId, ids) {
   const situacoes = await buscarSituacaoDasPessoas(tenantId, ids);
   const porOrigem = new Map(situacoes.map((situacao) => [situacao.origem, situacao]));
+
   return Object.fromEntries(
     ids.map((id) => {
       const situacao = porOrigem.get(id);
+
       return [id, !situacao || situacao.anonimizado ? null : situacao.atual];
     }),
   );

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   atualizarRegra,
   buscarRegrasDoTenant,
   excluirRegra,
   inserirRegra,
 } from '../adapters/crm-field-rules.repository.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
 import { CAMADA } from '../constants.js';
 import { criarRegra, editarRegra, removerRegra } from './regras.service.js';
 
@@ -13,6 +15,7 @@ import { criarRegra, editarRegra, removerRegra } from './regras.service.js';
 vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
   listarPermissoes: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn(),
   inserirRegra: vi.fn(async () => ({ id: 'nova' })),
@@ -39,6 +42,7 @@ const CAMPOS = [
   },
   { id: 'f-empresa', chave: 'empresa', label: 'Empresa', tipo: 'texto', camada: CAMADA.CAMADA_2 },
 ];
+
 vi.mock('./field-schema.service.js', () => ({
   invalidarSchemaCampos: vi.fn(),
   obterSchemaCampos: vi.fn(async () => ({
@@ -81,6 +85,7 @@ describe('criarRegra', () => {
       campoId: 'f-empresa',
       condicao: { status: ['proposta', 'proposta'] },
     });
+
     expect(inserirRegra).toHaveBeenCalledWith(TENANT, {
       kind: 'required_from_status',
       campoId: 'f-empresa',
@@ -145,6 +150,7 @@ describe('criarRegra', () => {
 describe('editar e remover', () => {
   it('regra do sistema: liga/desliga sim; mudar conteúdo → 409; excluir → 409', async () => {
     await editarRegra(TENANT, 'r-sistema', { ativo: false });
+
     expect(atualizarRegra).toHaveBeenCalledWith(
       TENANT,
       'r-sistema',
@@ -154,9 +160,11 @@ describe('editar e remover', () => {
     await expect(editarRegra(TENANT, 'r-sistema', { campoId: 'f-empresa' })).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     await expect(removerRegra(TENANT, 'r-sistema')).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     expect(excluirRegra).not.toHaveBeenCalled();
   });
 
@@ -164,6 +172,7 @@ describe('editar e remover', () => {
     await editarRegra(TENANT, 'r-usuario', {
       condicao: { campoId: 'f-fonte', operador: 'e_um_dos', valor: ['evento', 'site'] },
     });
+
     expect(atualizarRegra).toHaveBeenCalledWith(
       TENANT,
       'r-usuario',
@@ -172,9 +181,11 @@ describe('editar e remover', () => {
         efeito: { obrigatorio: true, visivel: false },
       }),
     );
+
     await expect(editarRegra(TENANT, 'r-x', { ativo: true })).rejects.toThrow(
       'Regra não encontrada',
     );
+
     await expect(removerRegra(TENANT, 'r-usuario')).resolves.toEqual({ removido: true });
   });
 });

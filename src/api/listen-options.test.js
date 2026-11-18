@@ -1,7 +1,10 @@
 import { get } from 'node:http';
+
 import Fastify from 'fastify';
 import { expect, it } from 'vitest';
+
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { listenOptions } from './listen-options.js';
 
 const API_PORT = 3000;
@@ -17,10 +20,14 @@ function status(url) {
 
 it('a mesma API local atende localhost IPv4 e IPv6', async () => {
   const app = Fastify();
+
   app.get('/health', async () => ({ status: 'ok' }));
+
   try {
     await app.listen(listenOptions({ NODE_ENV: 'development', HOST: '0.0.0.0', PORT: 0 }));
+
     const { port } = app.server.address();
+
     expect(await status(`http://127.0.0.1:${port}/health`)).toBe(HTTP_STATUS.OK);
     expect(await status(`http://[::1]:${port}/health`)).toBe(HTTP_STATUS.OK);
   } finally {
@@ -33,6 +40,7 @@ it('produção e interfaces escolhidas explicitamente preservam seu endereço', 
     host: '0.0.0.0',
     port: API_PORT,
   });
+
   expect(listenOptions({ NODE_ENV: 'development', HOST: '127.0.0.1', PORT: API_PORT })).toEqual({
     host: '127.0.0.1',
     port: API_PORT,

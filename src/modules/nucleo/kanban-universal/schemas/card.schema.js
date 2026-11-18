@@ -1,4 +1,12 @@
+/**
+ * @file Valida a estrutura de entrada de card, na área de Kanban, antes da execução dos casos
+ * de uso.
+ */
+import { Buffer } from 'node:buffer';
+
 import { z } from 'zod';
+
+import { automationSchema, MAX_DEPENDENCIES } from './flow.schema.js';
 
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 20000;
@@ -6,6 +14,33 @@ const MAX_LABELS = 12;
 const MAX_LABEL_NAME = 30;
 const MAX_CHECKLIST_ITEMS = 100;
 const DATE_LENGTH = 10;
+const MAX_LINKS = 20;
+const MAX_URL = 2000;
+
+export const MAX_CARD_FILE_BYTES = 200000;
+
+const BASE64_BYTES = 3;
+const BASE64_CHARS = 4;
+const FILE_PREFIX = 'data:application/octet-stream;base64,';
+const MAX_FILE_DATA =
+  FILE_PREFIX.length + Math.ceil(MAX_CARD_FILE_BYTES / BASE64_BYTES) * BASE64_CHARS;
+const fileContent = z
+  .string()
+  .max(MAX_FILE_DATA)
+  .regex(/^data:application\/octet-stream;base64,[A-Za-z0-9+/]*={0,2}$/)
+  .refine((value) => {
+    const encoded = value.slice(FILE_PREFIX.length);
+    const decoded = Buffer.from(encoded, 'base64');
+
+    return decoded.length <= MAX_CARD_FILE_BYTES && decoded.toString('base64') === encoded;
+  }, 'O anexo deve ter até 200 KB e conteúdo binário válido.');
+const MAX_FILES = 3;
+const MAX_REASON = 500;
+const httpUrl = z
+  .string()
+  .max(MAX_URL)
+  .url()
+  .refine((value) => /^https?:\/\//i.test(value));
 const uuid = z.string().uuid();
 const title = z.string().trim().min(1).max(MAX_TITLE);
 const uniqueIds = (items) => new Set(items.map((item) => item.id)).size === items.length;
@@ -15,6 +50,7 @@ const date = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((value) => {
     const parsed = new Date(`${value}T00:00:00.000Z`);
+
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, DATE_LENGTH) === value;
   }, 'Informe uma data válida.');
 
@@ -22,6 +58,41 @@ const date = z
 // Campos comuns têm contrato explícito e não recebem defaults durante PATCH.
 export const cardDetailsSchema = z
   .object({
+    bloqueio: z.string().trim().max(MAX_REASON).optional(),
+    bloqueioResponsavelId: uuid.nullable().optional(),
+    dependencias: z
+      .array(uuid)
+      .max(MAX_DEPENDENCIES)
+      .refine((ids) => new Set(ids).size === ids.length, 'Não repita dependências.')
+      .optional(),
+    proximaAcao: z
+      .object({ titulo: title, data: date, lembrar: z.boolean(), concluida: z.boolean() })
+      .strict()
+      .nullable()
+      .optional(),
+    leadId: uuid.nullable().optional(),
+    modelo: z.boolean().optional(),
+    recorrencia: z.enum(['nenhuma', 'diaria', 'semanal', 'mensal']).optional(),
+    automacoes: z
+      .array(automationSchema.extend({ colunaId: uuid }))
+      .max(MAX_LINKS)
+      .optional(),
+    links: z
+      .array(z.object({ id: uuid, nome: title, url: httpUrl }).strict())
+      .max(MAX_LINKS)
+      .optional(),
+    anexos: z
+      .array(
+        z
+          .object({
+            id: uuid,
+            nome: title,
+            conteudo: fileContent,
+          })
+          .strict(),
+      )
+      .max(MAX_FILES)
+      .optional(),
     descricao: z.string().max(MAX_DESCRIPTION).optional(),
     prioridade: z.enum(['sem_prioridade', 'baixa', 'media', 'alta', 'urgente']).optional(),
     prazo: date.nullable().optional(),
@@ -67,6 +138,8 @@ export const cardUpdateSchema = cardSchema
   .partial()
   .extend({
     expectedUpdatedAt: z.string().datetime().optional(),
+    // O adapter aceita referências legadas somente quando idênticas às já persistidas.
+    dadosExtras: cardDetailsSchema.extend({ leadId: z.unknown().optional() }).optional(),
   })
   .refine((value) => ['titulo', 'responsavelId', 'dadosExtras'].some((key) => key in value), {
     message: 'Informe pelo menos um campo para atualizar.',

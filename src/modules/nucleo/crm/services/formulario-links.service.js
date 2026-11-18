@@ -1,4 +1,8 @@
-import { erroDeConflito, erroNaoEncontrado, erroDeValidacao } from '#core/errors/app-error.js';
+/**
+ * @file SERVICE: link pessoal de formulário (FM2).
+ */
+import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   buscarFormulariosDisponiveis,
   buscarLinksDaPessoa,
@@ -42,6 +46,7 @@ const IMPEDIMENTOS = Object.freeze({
  */
 export function urlDoLink(token, ambiente = process.env) {
   const base = (ambiente.FRONTEND_URL ?? '').replace(/\/+$/, '');
+
   return `${base}${CAMINHO_PUBLICO_DO_FORMULARIO}${token}`;
 }
 
@@ -83,10 +88,14 @@ export async function criarLinkDoFormulario(tenantId, leadId, formId, opcoes = {
     tokenHash: hashDoToken(token),
     tokenCifrado: cifrarToken(token, chave),
   });
-  if (resultado.impedimento) throw IMPEDIMENTOS[resultado.impedimento]();
+
+  if (resultado.impedimento) {
+    throw IMPEDIMENTOS[resultado.impedimento]();
+  }
 
   const { link, criado } = /** @type {Required<typeof resultado>} */ (resultado);
   const tokenDoLink = criado ? token : decifrarToken(link.token_cifrado, chave);
+
   return { link: paraApi(link), url: urlDoLink(tokenDoLink), criado };
 }
 
@@ -108,11 +117,17 @@ export async function listarLinksDaPessoa(tenantId, leadId) {
  */
 export async function revogarLink(tenantId, leadId, linkId) {
   const revogado = await revogarLinkAtivo(tenantId, leadId, linkId);
+
   if (!revogado) {
     const existe = (await buscarLinksDaPessoa(tenantId, leadId)).some((link) => link.id === linkId);
-    if (!existe) throw erroNaoEncontrado('Link não encontrado');
+
+    if (!existe) {
+      throw erroNaoEncontrado('Link não encontrado');
+    }
+
     throw erroDeConflito('link', 'Só um link ativo pode ser revogado');
   }
+
   return { id: revogado.id };
 }
 

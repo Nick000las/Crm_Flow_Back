@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { cardSchema, cardUpdateSchema } from './card.schema.js';
 
 const id = 'd6b67f66-266b-423e-8c86-c25ae13a739c';
@@ -11,7 +12,7 @@ const details = {
   descricao: 'Contexto',
   etiquetas: [label],
   checklist: [item],
-  leadId: 'legacy-lead',
+  leadId: id,
 };
 
 describe('contrato dos detalhes de cards', () => {
@@ -20,6 +21,7 @@ describe('contrato dos detalhes de cards', () => {
       details,
     );
   });
+
   it.each([
     { prioridade: 'critica' },
     { prazo: '2027-02-29' },
@@ -34,15 +36,19 @@ describe('contrato dos detalhes de cards', () => {
   ])('rejeita detalhes inválidos %j', (dadosExtras) => {
     expect(cardSchema.safeParse({ titulo: 'Entrega', dadosExtras }).success).toBe(false);
   });
+
   it('aceita remoção de prazo e listas vazias sem preencher os campos omitidos', () => {
     const dadosExtras = { prazo: null, etiquetas: [], checklist: [] };
+
     expect(cardUpdateSchema.parse({ dadosExtras }).dadosExtras).toEqual(dadosExtras);
   });
+
   it('rejeita atualização que só contém a versão do card', () => {
     expect(
       cardUpdateSchema.safeParse({ expectedUpdatedAt: '2026-10-15T12:00:00.000Z' }).success,
     ).toBe(false);
   });
+
   it('mantém compatibilidade com cards simples', () => {
     expect(cardSchema.parse({ titulo: 'Tarefa antiga' })).toEqual({ titulo: 'Tarefa antiga' });
   });

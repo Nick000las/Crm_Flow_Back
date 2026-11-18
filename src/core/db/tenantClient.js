@@ -1,3 +1,6 @@
+/**
+ * @file Encerra os pools durante o shutdown gracioso e ao finalizar testes.
+ */
 import { PrismaClient } from '@prisma/client';
 
 /**
@@ -26,6 +29,7 @@ function getTenantPrisma() {
   }
 
   const url = process.env.TENANT_DATABASE_URL;
+
   if (!url) {
     throw new Error(
       'TENANT_DATABASE_URL não configurada — o acesso multi-tenant exige uma conexão com role restrito.',
@@ -33,6 +37,7 @@ function getTenantPrisma() {
   }
 
   tenantPrisma = new PrismaClient({ datasources: { db: { url } } });
+
   return tenantPrisma;
 }
 
@@ -46,8 +51,13 @@ export async function getTenantClient(tenantId, callback) {
   if (!isValidUuid(tenantId)) {
     throw new Error(`tenantId inválido recebido pelo gateway multi-tenant: "${tenantId}"`);
   }
+
   return getTenantPrisma().$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
+    await tx.$executeRaw`
+      SELECT
+        set_config('app.current_tenant', ${tenantId}, TRUE)
+    `;
+
     return callback(tx);
   });
 }

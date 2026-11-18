@@ -1,5 +1,11 @@
+/**
+ * @file SERVICE: job do enriquecimento automático por CNPJ (M11b), rodado pelo worker
+ * (`src/workers/crm.worker.js`, fila `crm-cnpj`, com rate limit).
+ */
 import { UnrecoverableError } from 'bullmq';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
+
 import { atualizarLead, buscarLeadPorId } from '../adapters/leads.repository.js';
 import {
   ACOES_DUPLICIDADE,
@@ -38,21 +44,37 @@ import { chaveDocumento, valorAusente } from './tipos-campo.service.js';
  * @returns {Promise<{ resultado: string, campos?: string[] }>}
  */
 export async function processarEnriquecimento({ tenantId, leadId, cnpj }) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.CNPJ))) return { resultado: 'flag_desligada' };
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.CNPJ))) {
+    return { resultado: 'flag_desligada' };
+  }
+
   const config = await obterConfigCnpj(tenantId);
-  if (!config.ativo || config.modo !== MODOS_CNPJ.AUTOMATICO) return { resultado: 'modo_manual' };
+
+  if (!config.ativo || config.modo !== MODOS_CNPJ.AUTOMATICO) {
+    return { resultado: 'modo_manual' };
+  }
 
   const atual = await buscarLeadPorId(tenantId, leadId);
-  if (!atual || chaveDocumento(atual.cnpj) !== cnpj) return { resultado: 'lead_mudou' };
+
+  if (!atual || chaveDocumento(atual.cnpj) !== cnpj) {
+    return { resultado: 'lead_mudou' };
+  }
 
   let consulta;
+
   try {
     consulta = await consultarCnpj(tenantId, cnpj);
   } catch (erro) {
-    if (/** @type {{ transitorio?: boolean }} */ (erro)?.transitorio) throw erro;
+    if (/** @type {{ transitorio?: boolean }} */ (erro)?.transitorio) {
+      throw erro;
+    }
+
     throw new UnrecoverableError(erro instanceof Error ? erro.message : String(erro));
   }
-  if (consulta.status !== STATUS_CNPJ.OK) return { resultado: consulta.status };
+
+  if (consulta.status !== STATUS_CNPJ.OK) {
+    return { resultado: consulta.status };
+  }
 
   const schema = await obterSchemaCampos(tenantId);
   const sugestao = sugestaoParaLead(consulta.dados, config.mapeamento, schema.campos);
@@ -62,17 +84,23 @@ export async function processarEnriquecimento({ tenantId, leadId, cnpj }) {
     config.sobrescrever,
   );
   const aplicar = await semDuplicidadeBloqueada(tenantId, leadId, semSobrescrever);
-  if (aplicar.length === 0) return { resultado: 'nada_a_preencher' };
+
+  if (aplicar.length === 0) {
+    return { resultado: 'nada_a_preencher' };
+  }
 
   const ignorar = ['ultimaInteracaoEm'];
+
   await atualizarLead(tenantId, leadId, dadosParaGravar(aplicar, schema.definicoes), {
     autorId: null,
     tipo: TIPOS_EVENTO_LEAD.ENRIQUECIDO,
     detalhes: { cnpj, provedor: consulta.provedor },
     montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
   });
+
   // Pontuação (M14): dados novos podem casar regras.
   await recalcularScoreDosLeads(tenantId, [leadId]);
+
   return { resultado: 'enriquecido', campos: aplicar.map((item) => item.chave) };
 }
 
@@ -100,7 +128,10 @@ export function opcoesDoWorkerCnpj(config) {
  * @param {boolean} sobrescrever
  */
 export function filtrarSobrescrita(sugestao, lead, sobrescrever) {
-  if (sobrescrever) return sugestao;
+  if (sobrescrever) {
+    return sugestao;
+  }
+
   return sugestao.filter((item) =>
     valorAusente(
       item.camada === CAMADA.CAMADA_3 ? lead.customFields?.[item.chave] : lead[item.chave],
@@ -126,19 +157,25 @@ async function semDuplicidadeBloqueada(tenantId, leadId, itens) {
   const vigiados = itens.filter(
     (item) => item.camada !== CAMADA.CAMADA_3 && CAMPO_DE_DUPLICIDADE.has(item.chave),
   );
-  if (vigiados.length === 0 || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE)))
+
+  if (vigiados.length === 0 || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) {
     return itens;
+  }
 
   const bloqueados = new Set();
+
   for (const item of vigiados) {
     const candidatos = await encontrarDuplicados(
       tenantId,
       { [item.chave]: item.valor },
       { ignorarId: leadId },
     );
-    if (candidatos.some((candidato) => candidato.acao === ACOES_DUPLICIDADE.BLOQUEAR))
+
+    if (candidatos.some((candidato) => candidato.acao === ACOES_DUPLICIDADE.BLOQUEAR)) {
       bloqueados.add(item.chave);
+    }
   }
+
   return itens.filter((item) => item.camada === CAMADA.CAMADA_3 || !bloqueados.has(item.chave));
 }
 
@@ -155,13 +192,19 @@ export function dadosParaGravar(itens, definicoes) {
   const dados = {};
   /** @type {Record<string, unknown>} */
   const personalizados = {};
+
   for (const item of itens) {
-    if (item.camada === CAMADA.CAMADA_3) personalizados[item.chave] = item.valor;
-    else
+    if (item.camada === CAMADA.CAMADA_3) {
+      personalizados[item.chave] = item.valor;
+    } else {
       dados[item.chave] =
         item.tipo === TIPOS_CAMPO.DATA ? new Date(String(item.valor)) : item.valor;
+    }
   }
-  if (Object.keys(personalizados).length > 0)
+
+  if (Object.keys(personalizados).length > 0) {
     dados.customFields = customFieldsParaArmazenamento(definicoes, personalizados);
+  }
+
   return dados;
 }

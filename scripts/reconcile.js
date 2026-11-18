@@ -1,7 +1,8 @@
 import { z } from 'zod';
+
 import { MODULES } from '#api/modules.js';
 import { encerrarCache } from '#core/cache/cache.js';
-import { getAdminClient, disconnectDatabase } from '#core/db/tenantClient.js';
+import { disconnectDatabase, getAdminClient } from '#core/db/tenantClient.js';
 
 /**
  * Roda a reconciliação idempotente (`Module.reconciliar`) dos módulos em
@@ -51,11 +52,13 @@ async function main() {
       select: { tenantId: true },
       orderBy: { tenantId: 'asc' },
     });
+
     console.log(`\n[${modulo.key}] ${contratos.length} tenant(s)`);
 
     for (const { tenantId } of contratos) {
       try {
         const relatorio = await modulo.reconciliar(tenantId);
+
         console.log(`  ok    ${tenantId}`, JSON.stringify(relatorio));
       } catch (error) {
         falhas += 1;
@@ -76,17 +79,21 @@ function parseArgs() {
   const bruto = Object.fromEntries(
     process.argv.slice(CLI_ARGS_START_INDEX).map((arg) => {
       const [chave, ...valorPartes] = arg.replace(/^--/, '').split('=');
+
       return [chave, valorPartes.join('=')];
     }),
   );
 
   const resultado = argsSchema.safeParse(bruto);
+
   if (!resultado.success) {
     const mensagens = resultado.error.issues
       .map((issue) => `  --${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
+
     throw new Error(`Argumentos inválidos:\n${mensagens}`);
   }
+
   return resultado.data;
 }
 

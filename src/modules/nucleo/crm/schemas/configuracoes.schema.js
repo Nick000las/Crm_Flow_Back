@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de configuracoes, na área de CRM, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { LISTA_CONTEXTOS_VISIBILIDADE } from '../constants.js';
 
 const booleano = (mensagem) =>

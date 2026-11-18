@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   atualizarOpcao as atualizarOpcaoRepository,
   contarUsos,
@@ -29,6 +31,7 @@ vi.mock('../adapters/crm-options.repository.js', async () =>
 // O service lê as listas do resolver; aqui elas vêm direto da fixture,
 // ajustável por teste.
 let listas;
+
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   obterSchemaCampos: vi.fn(async () => ({ listas })),
@@ -64,6 +67,7 @@ describe('criarOpcao', () => {
       label: 'Feira de Negócios',
       color: '#123ABC',
     });
+
     expect(inserirOpcoes).toHaveBeenCalledWith(
       TENANT,
       TIPOS_LISTA.FONTE_LEAD,
@@ -79,6 +83,7 @@ describe('criarOpcao', () => {
       ],
       undefined,
     );
+
     expect(invalidarSchemaCampos).toHaveBeenCalledWith(TENANT);
   });
 
@@ -89,6 +94,7 @@ describe('criarOpcao', () => {
         probabilidadePadrao: PROBABILIDADE_QUALQUER,
       }),
     ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+
     await expect(
       criarOpcao(TENANT, TIPOS_LISTA.STATUS, {
         label: 'Fechado',
@@ -96,14 +102,17 @@ describe('criarOpcao', () => {
         probabilidadePadrao: FORA_DO_FIXO,
       }),
     ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+
     expect(inserirOpcoes).not.toHaveBeenCalled();
 
     inserirOpcoes.mockResolvedValueOnce([{ id: 'nova' }]);
+
     await criarOpcao(TENANT, TIPOS_LISTA.STATUS, {
       label: 'Demonstração',
       category: CATEGORIAS_STATUS.ABERTO,
       probabilidadePadrao: PROBABILIDADE_DO_ABERTO,
     });
+
     expect(inserirOpcoes.mock.calls[0][2][0]).toMatchObject({
       probabilidadePadrao: PROBABILIDADE_DO_ABERTO,
     });
@@ -121,6 +130,7 @@ describe('criarOpcao', () => {
     ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     expect(inserirOpcoes).not.toHaveBeenCalled();
   });
 
@@ -130,6 +140,7 @@ describe('criarOpcao', () => {
     ).rejects.toMatchObject({
       fields: { category: [expect.stringContaining('categoria')] },
     });
+
     await expect(
       criarOpcao(TENANT, TIPOS_LISTA.MOTIVO_PERDA, {
         label: 'Sumiu',
@@ -142,6 +153,7 @@ describe('criarOpcao', () => {
 describe('atualizarOpcao', () => {
   it('desativar o único status "perdido" ativo → 409; com outro perdido ativo, pode', async () => {
     const perdido = opcao(TIPOS_LISTA.STATUS, 'perdido');
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, { ativo: false }),
     ).rejects.toMatchObject({
@@ -150,6 +162,7 @@ describe('atualizarOpcao', () => {
 
     listas.status.push({ ...perdido, id: 'outro-perdido', key: 'desistiu', label: 'Desistiu' });
     atualizarOpcaoRepository.mockResolvedValueOnce({ ...perdido, ativo: false });
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, { ativo: false }),
     ).resolves.toBeTruthy();
@@ -157,6 +170,7 @@ describe('atualizarOpcao', () => {
 
   it('probabilidade padrão de perdido é 0: outro valor dá 400, mesmo mudando a categoria', async () => {
     const perdido = opcao(TIPOS_LISTA.STATUS, 'perdido');
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, {
         probabilidadePadrao: FORA_DO_PERDIDO,
@@ -164,17 +178,20 @@ describe('atualizarOpcao', () => {
     ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
 
     const novo = opcao(TIPOS_LISTA.STATUS, 'novo');
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, novo.id, {
         category: CATEGORIAS_STATUS.PERDIDO,
         probabilidadePadrao: FORA_DO_PERDIDO,
       }),
     ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+
     expect(atualizarOpcaoRepository).not.toHaveBeenCalled();
   });
 
   it('mudar a categoria do único "ganho" pra aberto também é barrado', async () => {
     const ganho = opcao(TIPOS_LISTA.STATUS, 'ganho');
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, ganho.id, { category: CATEGORIAS_STATUS.ABERTO }),
     ).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
@@ -182,18 +199,21 @@ describe('atualizarOpcao', () => {
 
   it('renomear muda só o label — a categoria (e as regras por ela) segue a mesma', async () => {
     const perdido = opcao(TIPOS_LISTA.STATUS, 'perdido');
+
     atualizarOpcaoRepository.mockResolvedValueOnce({ ...perdido, label: 'Não fechou' });
     await atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, { label: 'Não fechou' });
 
     expect(atualizarOpcaoRepository).toHaveBeenCalledWith(TENANT, perdido.id, {
       label: 'Não fechou',
     });
+
     ajustar(TIPOS_LISTA.STATUS, 'perdido', { label: 'Não fechou' });
     expect(categoriaDoStatus(listas, 'perdido')).toBe(CATEGORIAS_STATUS.PERDIDO);
   });
 
   it('opção de outra lista (ou de outro tenant) → 404', async () => {
     const whatsapp = opcao(TIPOS_LISTA.FONTE_LEAD, 'whatsapp');
+
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, whatsapp.id, { label: 'X' }),
     ).rejects.toMatchObject({
@@ -205,6 +225,7 @@ describe('atualizarOpcao', () => {
 describe('reordenarLista', () => {
   it('exige todas as opções da lista, uma vez cada', async () => {
     const ids = listas.motivo_perda.map((item) => item.id);
+
     await expect(
       reordenarLista(TENANT, TIPOS_LISTA.MOTIVO_PERDA, ids.slice(1)),
     ).rejects.toMatchObject({
@@ -212,6 +233,7 @@ describe('reordenarLista', () => {
     });
 
     await reordenarLista(TENANT, TIPOS_LISTA.MOTIVO_PERDA, [...ids].reverse());
+
     expect(reordenarOpcoes).toHaveBeenCalledWith(
       TENANT,
       TIPOS_LISTA.MOTIVO_PERDA,
@@ -223,23 +245,28 @@ describe('reordenarLista', () => {
 describe('excluirOpcao', () => {
   it('opção em uso → 409 sugerindo desativar, sem excluir', async () => {
     const perdido = opcao(TIPOS_LISTA.STATUS, 'perdido');
+
     listas.status.push({ ...perdido, id: 'outro-perdido', key: 'desistiu', label: 'Desistiu' });
     contarUsos.mockResolvedValueOnce(new Map([['perdido', USOS_PERDIDO]]));
 
     await expect(excluirOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id)).rejects.toThrow(
       /desative em vez de excluir/,
     );
+
     expect(excluirOpcaoRepository).not.toHaveBeenCalled();
   });
 
   it('sem uso, exclui; a última opção de uma lista semeada não sai', async () => {
     const evento = opcao(TIPOS_LISTA.FONTE_LEAD, 'evento');
+
     excluirOpcaoRepository.mockResolvedValueOnce({ id: evento.id });
+
     await expect(excluirOpcao(TENANT, TIPOS_LISTA.FONTE_LEAD, evento.id)).resolves.toEqual({
       removido: true,
     });
 
     listas.fonte_lead = [evento];
+
     await expect(excluirOpcao(TENANT, TIPOS_LISTA.FONTE_LEAD, evento.id)).rejects.toThrow(
       /ao menos uma opção/,
     );
@@ -255,19 +282,23 @@ describe('resolverOpcoesDoLead', () => {
 
   it('opção inativa: barrada em lead novo; aceita se o lead já tinha', async () => {
     ajustar(TIPOS_LISTA.FONTE_LEAD, 'evento', { ativo: false });
+
     await expect(resolverOpcoesDoLead(listas, { fonteLead: 'evento' })).rejects.toThrow(
       /desativada/,
     );
 
     const carregarAtual = vi.fn(async () => ({ fonte_lead: 'evento' }));
+
     await expect(
       resolverOpcoesDoLead(listas, { fonteLead: 'evento' }, carregarAtual),
     ).resolves.toBeTruthy();
+
     expect(carregarAtual).toHaveBeenCalledTimes(1);
   });
 
   it('opção ativa não lê o lead atual', async () => {
     const carregarAtual = vi.fn();
+
     await resolverOpcoesDoLead(listas, { status: 'novo', motivoPerda: 'preco' }, carregarAtual);
     expect(carregarAtual).not.toHaveBeenCalled();
   });
@@ -276,9 +307,11 @@ describe('resolverOpcoesDoLead', () => {
     listas.tag = [
       { id: 't1', kind: 'tag', key: 'vip', label: 'Cliente VIP', ativo: true, position: 0 },
     ];
+
     const { input, tagsNovas } = await resolverOpcoesDoLead(listas, {
       tags: ['cliente vip', 'VIP', 'Feira 2026', 'feira 2026', ' '],
     });
+
     expect(input.tags).toEqual(['vip', 'feira_2026']);
     expect(tagsNovas).toEqual([{ key: 'feira_2026', label: 'Feira 2026' }]);
   });
@@ -286,6 +319,7 @@ describe('resolverOpcoesDoLead', () => {
   it('tag desativada: barrada se o lead ainda não a tinha', async () => {
     listas.tag = [{ id: 't1', kind: 'tag', key: 'frio', label: 'Frio', ativo: false, position: 0 }];
     await expect(resolverOpcoesDoLead(listas, { tags: ['Frio'] })).rejects.toThrow(/desativada/);
+
     await expect(
       resolverOpcoesDoLead(listas, { tags: ['frio'] }, async () => ({ tags: ['frio'] })),
     ).resolves.toMatchObject({ input: { tags: ['frio'] } });
@@ -293,9 +327,11 @@ describe('resolverOpcoesDoLead', () => {
 
   it('gravarTagsNovas cria no fim da lista de tags e invalida o schema', async () => {
     await gravarTagsNovas(TENANT, [{ key: 'feira_2026', label: 'Feira 2026' }]);
+
     expect(inserirOpcoes).toHaveBeenCalledWith(TENANT, TIPOS_LISTA.TAG, [
       { key: 'feira_2026', label: 'Feira 2026', position: POSICAO_FINAL },
     ]);
+
     expect(invalidarSchemaCampos).toHaveBeenCalled();
 
     vi.clearAllMocks();

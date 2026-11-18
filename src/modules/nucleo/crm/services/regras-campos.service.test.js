@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { CAMADA } from '../constants.js';
 import casosCompartilhados from '../testing/regras.casos.json';
 import {
@@ -46,6 +47,7 @@ const regraMotivo = {
 describe('casos compartilhados com o front (testing/regras.casos.json)', () => {
   it.each(casosCompartilhados.casos.map((caso) => [caso.nome, caso]))('%s', (_nome, caso) => {
     const { obrigatorios, ocultos } = avaliarRegras(caso.regras, caso.lead, caso.contexto);
+
     expect({ obrigatorios, ocultos }).toEqual(caso.esperado);
   });
 });
@@ -83,6 +85,7 @@ describe('validarRegras', () => {
       condicao: { campo: FONTE, operador: 'igual', valor: 'evento' },
       efeito: { obrigatorio: true, visivel: false },
     };
+
     expect(validarRegras([regraSegmento], { fonteLead: 'evento', customFields: {} })).toEqual([
       {
         campo: 'customFields',
@@ -108,6 +111,7 @@ describe('validarRegras', () => {
       { status: 'perdido_preco' },
       { labelDoStatus: { perdido_preco: 'Perdido: preço' } },
     );
+
     expect(erro.mensagem).toContain('quando o status é Perdido: preço');
   });
 });
@@ -131,6 +135,7 @@ describe('resolverRegras', () => {
       ],
       campos,
     );
+
     expect(regra.condicao).toEqual({ campo: FONTE, operador: 'igual', valor: 'evento' });
     expect(regra.sistema).toBe(false);
   });
@@ -144,7 +149,9 @@ describe('resolverRegras', () => {
       is_active: true,
       system_key: null,
     };
+
     expect(resolverRegras([{ ...base, id: 'r1', field_id: 'f-nao-existe' }], campos)).toEqual([]);
+
     expect(
       resolverRegras(
         [

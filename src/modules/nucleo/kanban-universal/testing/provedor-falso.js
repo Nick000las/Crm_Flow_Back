@@ -1,4 +1,10 @@
+/**
+ * @file Módulo em memória que implementa os dois contratos do M2, para provar o motor sem
+ * depender do CRM. "Perdida" exige `motivo`, como faria uma regra de domínio. Cada chamada cria
+ * um estado novo.
+ */
 import { erroCamposObrigatorios } from '#core/errors/app-error.js';
+
 import { ACOES_CARD_ENTIDADE } from '../constants.js';
 
 export const BOARD_TYPE_FALSO = 'falso_oportunidades';
@@ -36,6 +42,7 @@ export function criarModuloFalso(cardsIniciais = []) {
           const daColuna = cards.filter((card) => card.coluna === colunaRef);
           const inicio = Number(cursor ?? 0);
           const fim = inicio + limite;
+
           return {
             itens: daColuna
               .slice(inicio, fim)
@@ -45,6 +52,7 @@ export function criarModuloFalso(cardsIniciais = []) {
         },
         resumoColuna: async (_ctx, _quadroRef, { colunaRef }) => {
           const daColuna = cards.filter((card) => card.coluna === colunaRef);
+
           return {
             total: daColuna.length,
             soma: daColuna.reduce((soma, card) => soma + (card.valor ?? 0), 0),
@@ -54,15 +62,20 @@ export function criarModuloFalso(cardsIniciais = []) {
           entidadeId === CARD_SO_LEITURA ? [] : [ACOES_CARD_ENTIDADE.MOVER],
         mover: async (_ctx, { entidadeId, colunaDestino }) => {
           const card = cards.find((item) => item.id === entidadeId);
+
           if (colunaDestino === COLUNA_PERDIDA && !card.motivo) {
             throw erroCamposObrigatorios({ motivo: '"Motivo" é obrigatório nesta coluna' });
           }
+
           card.coluna = colunaDestino;
+
           return { entidadeId, colunaRef: colunaDestino };
         },
         criar: async (_ctx, { colunaRef, dados }) => {
           const card = { id: dados.id, coluna: colunaRef };
+
           cards.push(card);
+
           return { entidadeId: card.id, colunaRef };
         },
       },

@@ -1,3 +1,6 @@
+/**
+ * @file STUB — mesma estrutura de crm/ e kanban-universal/. Implementar Bloco 1.6.2.
+ */
 import { authenticateHook } from '#core/auth/rbac.js';
 
 /**

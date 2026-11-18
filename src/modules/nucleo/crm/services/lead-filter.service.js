@@ -1,7 +1,22 @@
+/**
+ * @file SERVICE: traduz o filtro de POST /crm/leads/search em fragmentos SQL parametrizados
+ * (docs/produto/crm-busca-e-dados-em-massa.md).
+ */
 import { Prisma } from '@prisma/client';
+
 import { AppError } from '#core/errors/app-error.js';
 import { FUSO_HORARIO_PADRAO, HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
+import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
+import {
+  cicloDeVidaSql,
+  clienteDesdeSql,
+  diaNoFuso,
+  oportunidadesAbertasSql,
+  ultimaCompraSql,
+} from '../adapters/crm-lead-ciclo.sql.js';
+import { condicaoPessoaVisivel } from '../adapters/crm-lead-read-model.js';
 import {
   CAMADA,
   CAMADA_1_CAMPOS,
@@ -14,15 +29,6 @@ import {
   SITUACOES_LEAD,
   TIPOS_CAMPO,
 } from '../constants.js';
-import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
-import { condicaoPessoaVisivel } from '../adapters/crm-lead-read-model.js';
-import {
-  cicloDeVidaSql,
-  clienteDesdeSql,
-  diaNoFuso,
-  oportunidadesAbertasSql,
-  ultimaCompraSql,
-} from '../adapters/crm-lead-ciclo.sql.js';
 import {
   chaveDocumento,
   normalizarHora,
@@ -139,9 +145,11 @@ export function condicaoDaSituacao(
   if (situacao === SITUACOES_LEAD.LIXEIRA) {
     return Prisma.sql`l.deleted_at >= ${inicioDaLixeira(agora)}`;
   }
+
   if (situacao === SITUACOES_LEAD.ARQUIVADOS) {
     return Prisma.sql`l.deleted_at IS NULL AND l.archived_at IS NOT NULL`;
   }
+
   return comArquivo
     ? Prisma.sql`l.deleted_at IS NULL AND l.archived_at IS NULL`
     : Prisma.sql`l.deleted_at IS NULL`;
@@ -185,8 +193,11 @@ export function montarCondicoes(
   } = {},
 ) {
   const condicoes = [condicaoDaSituacao(filtro.situacao, { comArquivo, agora })];
+
   // D4: condição central, vale para busca, total e exportação.
-  if (pipelinesOcultos.length > 0) condicoes.push(condicaoPessoaVisivel(pipelinesOcultos));
+  if (pipelinesOcultos.length > 0) {
+    condicoes.push(condicaoPessoaVisivel(pipelinesOcultos));
+  }
 
   if (filtro.busca) {
     const padrao = `%${escaparLike(filtro.busca)}%`;
@@ -203,13 +214,17 @@ export function montarCondicoes(
       ...(contato.telefone ? [porTelefone] : []),
       ...(porIdentificador ? [porIdentificador] : []),
     ];
+
     condicoes.push(Prisma.sql`(${Prisma.join(alternativas, ' OR ')})`);
   }
+
   if (filtro.funilEstagioId) {
     condicoes.push(Prisma.sql`l.funil_estagio_id = ${filtro.funilEstagioId}::uuid`);
   }
+
   if (filtro.usuarioResponsavelId && filtro.semResponsavel) {
     const mensagem = 'Use "sem responsável" ou um responsável, não os dois';
+
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
       code: ERROR_CODES.VALIDATION_ERROR,
@@ -217,9 +232,11 @@ export function montarCondicoes(
       fields: { semResponsavel: [mensagem] },
     });
   }
+
   if (filtro.usuarioResponsavelId) {
     condicoes.push(Prisma.sql`${colunaResponsavel} = ${filtro.usuarioResponsavelId}::uuid`);
   }
+
   if (filtro.semResponsavel) {
     // Mesmo critério de `contarEsfriandoPorResponsavel`: responsável
     // desativado conta como sem responsável.
@@ -227,37 +244,55 @@ export function montarCondicoes(
       Prisma.sql`NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = ${colunaResponsavel} AND u.ativo)`,
     );
   }
+
   if (filtro.valorMin !== undefined) {
     condicoes.push(Prisma.sql`l.valor >= ${filtro.valorMin}`);
   }
+
   if (filtro.valorMax !== undefined) {
     condicoes.push(Prisma.sql`l.valor <= ${filtro.valorMax}`);
   }
+
   if (filtro.criadoDe) {
     condicoes.push(Prisma.sql`l.created_at >= ${new Date(filtro.criadoDe)}`);
   }
+
   if (filtro.criadoAte) {
     condicoes.push(Prisma.sql`l.created_at <= ${new Date(filtro.criadoAte)}`);
   }
+
   if (filtro.esfriando) {
     condicoes.push(condicaoEsfriando(agora ?? new Date()));
   }
+
   // M14: `faixaScore` já resolvida em limites (inclusivos) por quem chama.
   if (filtro.faixaDoScore) {
     const { minimo, maximo } = filtro.faixaDoScore;
-    if (minimo !== null) condicoes.push(Prisma.sql`l.lead_score >= ${minimo}`);
-    if (maximo !== null) condicoes.push(Prisma.sql`l.lead_score <= ${maximo}`);
-    if (minimo === null && maximo === null) condicoes.push(Prisma.sql`l.lead_score IS NOT NULL`);
+
+    if (minimo !== null) {
+      condicoes.push(Prisma.sql`l.lead_score >= ${minimo}`);
+    }
+
+    if (maximo !== null) {
+      condicoes.push(Prisma.sql`l.lead_score <= ${maximo}`);
+    }
+
+    if (minimo === null && maximo === null) {
+      condicoes.push(Prisma.sql`l.lead_score IS NOT NULL`);
+    }
   }
+
   condicoes.push(...condicoesDoCiclo(filtro, ocultosDoCiclo, fuso));
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
 
   for (const item of filtro.filtros ?? []) {
     const campo = campoPorChave.get(item.chave);
+
     if (!campo) {
       throw erroDeFiltro(item.chave, `"${item.chave}" não é um campo ativo para filtro`);
     }
+
     condicoes.push(condicaoDoCampo(campo, item));
   }
 
@@ -276,8 +311,10 @@ export function montarCondicoes(
  */
 function condicoesDoCiclo(filtro, ocultos, fuso) {
   const condicoes = [];
+
   if (filtro.cicloDeVida !== undefined) {
     const ciclos = filtro.cicloDeVida;
+
     if (
       !Array.isArray(ciclos) ||
       ciclos.length === 0 ||
@@ -288,36 +325,44 @@ function condicoesDoCiclo(filtro, ocultos, fuso) {
         `Ciclo de vida deve ser um de: ${LISTA_CICLOS_DE_VIDA.join(', ')}`,
       );
     }
+
     condicoes.push(Prisma.sql`${cicloDeVidaSql(ocultos)} = ANY(${ciclos}::text[])`);
   }
 
   for (const { de, ate, expressao } of DATAS_DO_CICLO) {
     const inicio = filtro[de];
     const fim = filtro[ate];
+
     if (inicio !== undefined && fim !== undefined && inicio > fim) {
       throw erroDeValidacaoDoFiltro(de, 'A data inicial não pode ser depois da final');
     }
+
     if (inicio !== undefined) {
       condicoes.push(Prisma.sql`${diaNoFuso(expressao(ocultos), fuso)} >= ${inicio}::date`);
     }
+
     if (fim !== undefined) {
       condicoes.push(Prisma.sql`${diaNoFuso(expressao(ocultos), fuso)} <= ${fim}::date`);
     }
   }
 
   const { oportunidadesAbertasMin: minimo, oportunidadesAbertasMax: maximo } = filtro;
+
   if (minimo !== undefined && maximo !== undefined && minimo > maximo) {
     throw erroDeValidacaoDoFiltro(
       'oportunidadesAbertasMin',
       'O mínimo não pode ser maior que o máximo',
     );
   }
+
   if (minimo !== undefined) {
     condicoes.push(Prisma.sql`${oportunidadesAbertasSql(ocultos)} >= ${minimo}::int`);
   }
+
   if (maximo !== undefined) {
     condicoes.push(Prisma.sql`${oportunidadesAbertasSql(ocultos)} <= ${maximo}::int`);
   }
+
   return condicoes;
 }
 
@@ -352,7 +397,11 @@ export function condicaoDoCampo(campo, item) {
       `Operador "${item.operador}" não se aplica ao campo "${campo.label}"`,
     );
   }
-  if (campo.camada !== CAMADA.CAMADA_3) return condicaoColuna(colunaNativa(campo), campo, item);
+
+  if (campo.camada !== CAMADA.CAMADA_3) {
+    return condicaoColuna(colunaNativa(campo), campo, item);
+  }
+
   // O personalizado é gravado pelo `id` (`camposParaFiltro` já põe o
   // caminho; um campo cru do schema, como o do score, ainda não).
   return condicaoCamada3(
@@ -373,20 +422,30 @@ export function condicaoDoCampo(campo, item) {
  * @returns {Prisma.Sql | null}
  */
 function condicaoBuscaIdentificador(identificador, busca, padrao) {
-  if (!identificador) return null;
+  if (!identificador) {
+    return null;
+  }
 
   if (IDENTIFICADORES_NUMERICOS.includes(identificador.chave)) {
     // Mesma chave da duplicidade (M7): sem pontuação, maiúscula — cobre o
     // CNPJ alfanumérico. Só [0-9A-Z]: não sobra curinga de LIKE pra escapar.
     const chave = chaveDocumento(busca);
-    if (!chave) return null;
+
+    if (!chave) {
+      return null;
+    }
+
     const coluna = Prisma.raw(`l.${CAMPOS_DUPLICIDADE[identificador.chave].coluna}`);
+
     return Prisma.sql`${coluna} LIKE ${`${chave}%`}`;
   }
+
   if (identificador.camada === CAMADA.CAMADA_3 && identificador.id) {
     return Prisma.sql`(l.custom_fields->>${identificador.id}) ILIKE ${padrao}`;
   }
+
   const coluna = CAMADA_2_CAMPOS[identificador.chave];
+
   return coluna ? Prisma.sql`${Prisma.raw(`l.${coluna}`)} ILIKE ${padrao}` : null;
 }
 
@@ -401,19 +460,27 @@ function condicaoBuscaIdentificador(identificador, busca, padrao) {
 function colunaNativa(campo) {
   const coluna =
     campo.camada === CAMADA.CAMADA_1 ? CAMADA_1_CAMPOS[campo.chave] : CAMADA_2_CAMPOS[campo.chave];
+
   if (!coluna) {
     // `campos` sempre vem de constants.js + banco, nunca do cliente — só
     // defesa em profundidade, pra nunca cair num Prisma.raw sem mapa.
     throw erroDeFiltro(campo.chave, `"${campo.chave}" não é um campo filtrável`);
   }
+
   if (campo.tipo === TIPOS_CAMPO.TELEFONE || campo.tipo === TIPOS_CAMPO.CEP) {
     return Prisma.raw(`regexp_replace(l.${coluna}, '[^0-9]', '', 'g')`);
   }
-  if (campo.tipo === TIPOS_CAMPO.EMAIL) return Prisma.raw(`lower(l.${coluna})`);
+
+  if (campo.tipo === TIPOS_CAMPO.EMAIL) {
+    return Prisma.raw(`lower(l.${coluna})`);
+  }
+
   // M11: CPF/CNPJ nativos pela coluna de duplicidade (M7), já sem máscara e
   // em maiúsculas — cobre as linhas antigas gravadas com pontuação.
-  if (campo.tipo === TIPOS_CAMPO.CPF || campo.tipo === TIPOS_CAMPO.CNPJ)
+  if (campo.tipo === TIPOS_CAMPO.CPF || campo.tipo === TIPOS_CAMPO.CNPJ) {
     return Prisma.raw(`l.dedup_${coluna}`);
+  }
+
   return Prisma.raw(`l.${coluna}`);
 }
 
@@ -449,6 +516,7 @@ function condicaoColuna(coluna, campo, { chave, operador, valor }) {
       if (campo.tipo === 'data') {
         return Prisma.sql`${coluna}::date = ${exigirData(chave, valor)}::date`;
       }
+
       return Prisma.sql`${coluna} = ${valorEscalar(campo, chave, valor)}`;
     case 'entre':
       return condicaoEntre(coluna, campo, chave, valor);
@@ -483,24 +551,32 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
       if (campo.tipo === 'selecao_multipla') {
         return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: [exigirTexto(chave, valor)] })}::jsonb`;
       }
+
       if (campo.tipo === TIPOS_CAMPO.ENDERECO) {
         // Só os valores das partes (nunca o nome da chave, ex. "cidade").
         const partes = Prisma.sql`(SELECT string_agg(value, ' ') FROM jsonb_each_text(CASE WHEN jsonb_typeof(${json}) = 'object' THEN ${json} END))`;
+
         return Prisma.sql`${partes} ILIKE ${`%${escaparLike(exigirTexto(chave, valor))}%`}`;
       }
+
       return Prisma.sql`${texto} ILIKE ${`%${escaparLike(textoDoTipo(campo, exigirTexto(chave, valor)))}%`}`;
     case 'e_um_dos':
       if (campo.tipo === 'selecao_multipla') {
         return Prisma.sql`jsonb_exists_any(${json}, ${exigirListaDeTexto(chave, valor)}::text[])`;
       }
+
       return Prisma.sql`${texto} = ANY(${exigirListaDeTexto(chave, valor).map((item) => textoDoTipo(campo, item))}::text[])`;
     case 'igual':
       if (campo.tipo === 'data') {
         return Prisma.sql`${dataCamada3(texto)} = ${exigirData(chave, valor)}::date`;
       }
+
       return Prisma.sql`l.custom_fields @> ${JSON.stringify({ [caminho]: valorEscalar(campo, chave, valor) })}::jsonb`;
     case 'entre':
-      if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS) return condicaoSobrepoe(json, chave, valor);
+      if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
+        return condicaoSobrepoe(json, chave, valor);
+      }
+
       return condicaoEntre(expressaoDeFaixa(campo, json, texto), campo, chave, valor);
     default:
       throw erroDeFiltro(chave, `Operador "${operador}" inválido`);
@@ -513,9 +589,14 @@ function condicaoCamada3(campo, { chave, operador, valor }) {
  * @param {Prisma.Sql} texto
  */
 function expressaoDeFaixa(campo, json, texto) {
-  if (campo.tipo === 'data') return dataCamada3(texto);
-  if (campo.tipo === TIPOS_CAMPO.HORA)
+  if (campo.tipo === 'data') {
+    return dataCamada3(texto);
+  }
+
+  if (campo.tipo === TIPOS_CAMPO.HORA) {
     return Prisma.sql`(CASE WHEN ${texto} ~ '^[0-9]{2}:[0-9]{2}$' THEN ${texto}::time END)`;
+  }
+
   return numeroCamada3(json, texto);
 }
 
@@ -531,18 +612,25 @@ function condicaoSobrepoe(json, chave, valor) {
   const faixa = /** @type {{ de?: unknown, ate?: unknown }} */ (valor ?? {});
   const temDe = faixa.de !== undefined && faixa.de !== null;
   const temAte = faixa.ate !== undefined && faixa.ate !== null;
+
   if (typeof valor !== 'object' || (!temDe && !temAte)) {
     throw erroDeFiltro(chave, 'Informe "de" e/ou "ate" para o filtro de faixa');
   }
+
   const partes = [];
-  if (temAte)
+
+  if (temAte) {
     partes.push(
       Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'de')`)} <= ${exigirData(chave, faixa.ate)}::date`,
     );
-  if (temDe)
+  }
+
+  if (temDe) {
     partes.push(
       Prisma.sql`${dataCamada3(Prisma.sql`(${json}->>'ate')`)} >= ${exigirData(chave, faixa.de)}::date`,
     );
+  }
+
   return Prisma.sql`(${Prisma.join(partes, ' AND ')})`;
 }
 
@@ -584,8 +672,15 @@ function condicaoEntre(expressao, campo, chave, valor) {
 
   const converter = conversorDeFaixa(campo, chave);
   const partes = [];
-  if (temDe) partes.push(Prisma.sql`${expressao} >= ${converter(faixa.de)}`);
-  if (temAte) partes.push(Prisma.sql`${expressao} <= ${converter(faixa.ate)}`);
+
+  if (temDe) {
+    partes.push(Prisma.sql`${expressao} >= ${converter(faixa.de)}`);
+  }
+
+  if (temAte) {
+    partes.push(Prisma.sql`${expressao} <= ${converter(faixa.ate)}`);
+  }
+
   return Prisma.sql`(${Prisma.join(partes, ' AND ')})`;
 }
 
@@ -595,16 +690,25 @@ function condicaoEntre(expressao, campo, chave, valor) {
  * @returns {(valor: unknown) => unknown}
  */
 function conversorDeFaixa(campo, chave) {
-  if (campo.tipo === 'data') return (valor) => exigirData(chave, valor);
-  if (campo.tipo === TIPOS_CAMPO.HORA)
+  if (campo.tipo === 'data') {
+    return (valor) => exigirData(chave, valor);
+  }
+
+  if (campo.tipo === TIPOS_CAMPO.HORA) {
     return (valor) => Prisma.sql`${exigirHora(chave, valor)}::time`;
+  }
+
   return (valor) => exigirNumero(chave, valor);
 }
 
 /** @param {string} chave @param {unknown} valor */
 function exigirHora(chave, valor) {
   const hora = typeof valor === 'string' ? normalizarHora(valor) : null;
-  if (!hora) throw erroDeFiltro(chave, 'Informe uma hora (hh:mm)');
+
+  if (!hora) {
+    throw erroDeFiltro(chave, 'Informe uma hora (hh:mm)');
+  }
+
   return hora;
 }
 
@@ -614,11 +718,18 @@ function exigirHora(chave, valor) {
  * @param {unknown} valor
  */
 function valorEscalar(campo, chave, valor) {
-  if (TIPOS_NUMERICOS.has(campo.tipo)) return exigirNumero(chave, valor);
+  if (TIPOS_NUMERICOS.has(campo.tipo)) {
+    return exigirNumero(chave, valor);
+  }
+
   if (campo.tipo === 'booleano') {
-    if (typeof valor !== 'boolean') throw erroDeFiltro(chave, 'Informe verdadeiro ou falso');
+    if (typeof valor !== 'boolean') {
+      throw erroDeFiltro(chave, 'Informe verdadeiro ou falso');
+    }
+
     return valor;
   }
+
   return textoDoTipo(campo, exigirTexto(chave, valor));
 }
 
@@ -632,8 +743,10 @@ function textoDoTipo(campo, texto) {
 
 /** @param {string} chave @param {unknown} valor */
 function exigirTexto(chave, valor) {
-  if (typeof valor !== 'string' || valor.length === 0)
+  if (typeof valor !== 'string' || valor.length === 0) {
     throw erroDeFiltro(chave, 'Informe um texto');
+  }
+
   return valor;
 }
 
@@ -642,22 +755,31 @@ function exigirListaDeTexto(chave, valor) {
   if (!Array.isArray(valor) || valor.length === 0 || !valor.every((v) => typeof v === 'string')) {
     throw erroDeFiltro(chave, 'Informe uma lista de valores');
   }
+
   return valor;
 }
 
 /** @param {string} chave @param {unknown} valor */
 function exigirNumero(chave, valor) {
-  if (typeof valor !== 'number' || !Number.isFinite(valor))
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) {
     throw erroDeFiltro(chave, 'Informe um número');
+  }
+
   return valor;
 }
 
 /** @param {string} chave @param {unknown} valor */
 function exigirData(chave, valor) {
   const data = valor instanceof Date ? valor : new Date(/** @type {string} */ (valor));
-  if (typeof valor !== 'string' && !(valor instanceof Date))
+
+  if (typeof valor !== 'string' && !(valor instanceof Date)) {
     throw erroDeFiltro(chave, 'Informe uma data');
-  if (Number.isNaN(data.getTime())) throw erroDeFiltro(chave, 'Informe uma data válida');
+  }
+
+  if (Number.isNaN(data.getTime())) {
+    throw erroDeFiltro(chave, 'Informe uma data válida');
+  }
+
   return data;
 }
 

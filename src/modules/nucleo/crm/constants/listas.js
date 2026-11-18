@@ -1,4 +1,8 @@
 /**
+ * @file Padrões sugeridos pela spec (docs/produto/crm-pessoas-e-campos.md) — só pra tenant sem
+ * nenhum lead quando a lista é semeada.
+ */
+/**
  * Listas configuráveis do CRM (docs/produto/crm-pessoas-e-campos.md, M3): cada
  * lista é um `kind` em `modulo_crm.crm_option`. A opção é identificada por
  * `key`, imutável e o que fica gravado no lead; `label`, cor, ordem,

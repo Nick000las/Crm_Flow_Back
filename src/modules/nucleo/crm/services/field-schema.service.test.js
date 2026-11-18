@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
+
 import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
 import { CAMADA, CAMPOS_SISTEMA, LISTA_CONTEXTOS_VISIBILIDADE } from '../constants.js';
 import { reconciliarCampos } from './campos-reconcile.service.js';
-import { montarCondicoes } from './lead-filter.service.js';
 import {
   camposDoContexto,
   camposParaFiltro,
@@ -12,19 +13,23 @@ import {
   invalidarSchemaCampos,
   obterSchemaCampos,
 } from './field-schema.service.js';
+import { montarCondicoes } from './lead-filter.service.js';
 
 // Listas (M3): tenant já semeado com as keys antigas.
 vi.mock('../adapters/crm-options.repository.js', async () =>
   (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes(),
 );
+
 // Regras (M8) e permissões (M13): o schema real lê as duas tabelas — sem mock, o teste ia ao banco.
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn().mockResolvedValue([]),
   semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
 }));
+
 vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
   listarPermissoes: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('../adapters/crm-fields.repository.js', () => ({ buscarCamposDoTenant: vi.fn() }));
 vi.mock('./campos-reconcile.service.js', () => ({ reconciliarCampos: vi.fn() }));
 
@@ -68,6 +73,7 @@ const DEFINICOES = [
 function linhas() {
   const sistema = CAMPOS_SISTEMA.map((campo) => {
     const empresa = campo.systemKey === 'empresa';
+
     return {
       id: `sistema-${campo.systemKey}`,
       system_key: campo.systemKey,
@@ -96,6 +102,7 @@ function linhas() {
     visibilidade: visivelEm(true),
   }));
   const excluido = { ...personalizados[0], id: 'excluido', chave: 'velho', is_active: false };
+
   return [...sistema, ...personalizados, excluido];
 }
 
@@ -130,16 +137,20 @@ describe('obterSchemaCampos', () => {
       ordem: ORDEM_EMPRESA,
       obrigatorio: true,
     });
+
     expect(visibilidade.find((item) => item.coluna === 'cpf')).toEqual({
       coluna: 'cpf',
       visivel: false,
       ordem: CAMPOS_SISTEMA.find((campo) => campo.systemKey === 'cpf').ordemPadrao,
       obrigatorio: false,
     });
+
     expect(definicoes).toEqual(DEFINICOES); // o excluído (inativo) não entra
+
     expect(campos.map((campo) => campo.chave)).toEqual(
       expect.arrayContaining(['nome', 'empresa', 'origem']),
     );
+
     expect(campos.map((campo) => campo.chave)).not.toContain('cpf');
   });
 
@@ -166,6 +177,7 @@ describe('cache', () => {
     await invalidarSchemaCampos(TENANT);
 
     const { definicoes } = await obterSchemaCampos(TENANT);
+
     expect(definicoes.find((definicao) => definicao.chave === 'origem').label).toBe(
       'Canal de origem',
     );
@@ -177,9 +189,11 @@ describe('visibilidade por contexto (M2)', () => {
     buscarCamposDoTenant.mockResolvedValue(
       comAjuste('origem', { visibilidade: { ...visivelEm(true), table: false } }),
     );
+
     const { campos } = await obterSchemaCampos(TENANT);
 
     expect(camposDoContexto(campos, 'table').map((campo) => campo.chave)).not.toContain('origem');
+
     for (const contexto of ['create_form', 'detail', 'filter']) {
       expect(camposDoContexto(campos, contexto).map((campo) => campo.chave)).toContain('origem');
     }
@@ -189,9 +203,11 @@ describe('visibilidade por contexto (M2)', () => {
     buscarCamposDoTenant.mockResolvedValue(
       comAjuste('origem', { visibilidade: { ...visivelEm(true), filter: false } }),
     );
+
     const schema = await obterSchemaCampos(TENANT);
 
     expect(camposParaFiltro(schema).map((campo) => campo.chave)).not.toContain('origem');
+
     expect(() =>
       montarCondicoes(
         { filtros: [{ chave: 'origem', operador: 'igual', valor: 'site' }] },
@@ -204,7 +220,9 @@ describe('visibilidade por contexto (M2)', () => {
     buscarCamposDoTenant.mockResolvedValue(
       comAjuste('fonteLead', { visibilidade: visivelEm(false) }),
     );
+
     const { campos } = await obterSchemaCampos(TENANT);
+
     expect(campos.map((campo) => campo.chave)).not.toContain('fonteLead');
   });
 
@@ -212,7 +230,9 @@ describe('visibilidade por contexto (M2)', () => {
     buscarCamposDoTenant.mockResolvedValue(
       comAjuste('cargo', { visibilidade: { ...visivelEm(false), detail: true } }),
     );
+
     const { visibilidade, campos } = await obterSchemaCampos(TENANT);
+
     expect(visibilidade.find((item) => item.coluna === 'cargo').visivel).toBe(true);
     expect(camposDoContexto(campos, 'detail').map((campo) => campo.chave)).toContain('cargo');
   });
@@ -225,7 +245,9 @@ describe('visibilidade por contexto (M2)', () => {
           : linha,
       ),
     );
+
     const { campos } = await obterSchemaCampos(TENANT);
+
     expect(campos.map((campo) => campo.chave)).toContain('tags');
     expect(campos.map((campo) => campo.chave)).not.toContain('cnpj');
   });
@@ -236,26 +258,34 @@ describe('visibilidade por contexto (M2)', () => {
         linha.system_key === 'status' ? { ...linha, is_required: true } : linha,
       ),
     );
+
     const { campos } = await obterSchemaCampos(TENANT);
+
     expect(campos.find((campo) => campo.chave === 'empresa').label).toBe('Razão social');
     expect(campos.find((campo) => campo.chave === 'status').obrigatorio).toBe(true);
   });
 
   it('ordem configurada vale também pra Camada 1 (reordenar em Configurações)', async () => {
     const ULTIMA = 99;
+
     buscarCamposDoTenant.mockResolvedValue(comAjuste('nome', { position: ULTIMA }));
+
     const { campos } = await obterSchemaCampos(TENANT);
+
     expect(campos.at(-1).chave).toBe('nome');
   });
 
   it('tenant novo: Camada 2 ligada entra depois da Camada 1, na ordem do contrato', () => {
     const ordens = CAMPOS_SISTEMA.map((campo) => campo.ordemPadrao);
+
     expect(ordens).toEqual(CAMPOS_SISTEMA.map((_, indice) => indice));
   });
 
   it('obrigatoriedade fixa do contrato ganha da linha (nome nunca vira opcional)', async () => {
     buscarCamposDoTenant.mockResolvedValue(comAjuste('nome', { is_required: false }));
+
     const { campos } = await obterSchemaCampos(TENANT);
+
     expect(campos.find((campo) => campo.chave === 'nome').obrigatorio).toBe(true);
   });
 });
@@ -268,6 +298,7 @@ describe('custom_fields por id', () => {
         [ID_PRIORIDADE]: null,
       },
     );
+
     expect(customFieldsParaArmazenamento(DEFINICOES, undefined)).toBeUndefined();
   });
 
@@ -277,6 +308,7 @@ describe('custom_fields por id', () => {
 
   it('a leitura volta por chave, só com personalizados ativos', () => {
     const armazenado = { [ID_ORIGEM]: 'site', excluido: 'orfao', origem: 'chave-antiga' };
+
     expect(customFieldsParaApi(DEFINICOES, armazenado)).toEqual({ origem: 'site' });
     expect(customFieldsParaApi(DEFINICOES, null)).toEqual({});
   });
@@ -284,6 +316,7 @@ describe('custom_fields por id', () => {
   it('o filtro lê o personalizado pelo id', async () => {
     const schema = await obterSchemaCampos(TENANT);
     const prioridade = camposParaFiltro(schema).find((campo) => campo.chave === 'prioridade');
+
     expect(prioridade.chaveArmazenamento).toBe(ID_PRIORIDADE);
   });
 });
@@ -292,25 +325,30 @@ describe('listas configuráveis (M3)', () => {
   it('campo de lista traz as keys ativas em opcoes e todas (com selo) em opcoesLista', async () => {
     const { buscarOpcoesDoTenant } = await import('../adapters/crm-options.repository.js');
     const { opcoesSemeadas } = await import('../testing/listas.fixture.js');
+
     buscarOpcoesDoTenant.mockResolvedValueOnce(
       opcoesSemeadas().map((opcao) =>
         opcao.kind === 'status' && opcao.key === 'negociacao' ? { ...opcao, ativo: false } : opcao,
       ),
     );
+
     const { campos, listas } = await obterSchemaCampos(TENANT);
     const status = campos.find((campo) => campo.chave === 'status');
 
     expect(status.lista).toBe('status');
     expect(status.opcoes).not.toContain('negociacao');
+
     expect(status.opcoesLista.find((opcao) => opcao.key === 'negociacao')).toMatchObject({
       ativo: false,
     });
+
     expect(listas.status).toHaveLength(status.opcoesLista.length);
   });
 
   it('tags aceitam valor novo (opcoes null), mas listam as conhecidas', async () => {
     const { campos } = await obterSchemaCampos(TENANT);
     const tags = campos.find((campo) => campo.chave === 'tags');
+
     expect(tags.opcoes).toBeNull();
     expect(tags.opcoesLista).toEqual([]);
   });
@@ -318,6 +356,7 @@ describe('listas configuráveis (M3)', () => {
   it('tenant sem as listas é semeado antes', async () => {
     const { buscarOpcoesDoTenant, inserirOpcoes } =
       await import('../adapters/crm-options.repository.js');
+
     buscarOpcoesDoTenant.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     await obterSchemaCampos(TENANT);
     expect(inserirOpcoes).toHaveBeenCalled();

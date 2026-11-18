@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: Configurações → Duplicidade (M7).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { salvarRegrasDuplicidadeBodySchema } from '../schemas/duplicidade.schema.js';
 import { listarRegras, salvarRegras } from '../services/duplicidade.service.js';
@@ -19,6 +23,7 @@ export function registrarRotasDuplicidade(app) {
 
   app.get('/crm/configuracoes/duplicidade', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarRegras(tenantId));
   });
 
@@ -28,6 +33,7 @@ export function registrarRotasDuplicidade(app) {
     async (req, reply) => {
       const { tenantId } = req.tenantContext;
       const { regras } = salvarRegrasDuplicidadeBodySchema.parse(req.body);
+
       return sendSuccess(reply, await salvarRegras(tenantId, regras));
     },
   );

@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { TenantManagement } from '#core/tenant/management.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   CAMPOS_DO_FORECAST,
   CATEGORIAS_STATUS,
@@ -63,18 +66,23 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const operador = { papel: 'OPERADOR', userId: operadorId };
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
   const pipelines = () => ok(chamar('GET', '/crm/configuracoes/pipelines'));
   const statusDeVendas = async () => (await pipelines()).find((p) => p.id === vendas.id).status;
   const visivelEmTudo = async (chave) => {
     const campo = (await listarConfiguracaoCampos(tenantId)).find((c) => c.chave === chave);
+
     return Object.values(campo.visibilidade).every(Boolean);
   };
 
@@ -91,6 +99,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
       }),
       HTTP_STATUS.CREATED,
     );
+
     return { leadId: lead.id, oportunidade: criada };
   }
 
@@ -102,6 +111,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         subdomain: `smoke-fc1-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -115,7 +125,9 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         role,
       })),
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.PERMISSOES, CRM_FEATURES.QUADRO_COMERCIAL].map((featureKey) => ({
         tenantId,
@@ -123,8 +135,10 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-forecast-fc1',
@@ -134,6 +148,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     [vendas] = await pipelines();
   });
 
@@ -147,25 +162,34 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
 
   describe('flag crm.forecast', () => {
     it('ligar a flag liga Data prevista e Probabilidade; desligar mantém os campos', async () => {
-      for (const chave of CAMPOS_DO_FORECAST) expect(await visivelEmTudo(chave)).toBe(false);
+      for (const chave of CAMPOS_DO_FORECAST) {
+        expect(await visivelEmTudo(chave)).toBe(false);
+      }
 
       await TenantManagement.atualizarFeaturesTenant(tenantId, [
         CRM_FEATURES.PERMISSOES,
         CRM_FEATURES.QUADRO_COMERCIAL,
         CRM_FEATURES.FORECAST,
       ]);
-      for (const chave of CAMPOS_DO_FORECAST) expect(await visivelEmTudo(chave)).toBe(true);
+
+      for (const chave of CAMPOS_DO_FORECAST) {
+        expect(await visivelEmTudo(chave)).toBe(true);
+      }
 
       await TenantManagement.atualizarFeaturesTenant(tenantId, [
         CRM_FEATURES.PERMISSOES,
         CRM_FEATURES.QUADRO_COMERCIAL,
       ]);
-      for (const chave of CAMPOS_DO_FORECAST) expect(await visivelEmTudo(chave)).toBe(true);
+
+      for (const chave of CAMPOS_DO_FORECAST) {
+        expect(await visivelEmTudo(chave)).toBe(true);
+      }
     });
 
     it('religar a flag com um campo desligado pelo dono liga de novo; manter ligada não', async () => {
       const campos = await listarConfiguracaoCampos(tenantId);
       const data = campos.find((c) => c.chave === 'dataPrevistaFechamento');
+
       await atualizarConfiguracaoCampo(tenantId, data.id, {
         visibilidade: { ...TODOS_OS_CONTEXTOS, table: false },
       });
@@ -175,6 +199,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         CRM_FEATURES.QUADRO_COMERCIAL,
         CRM_FEATURES.FORECAST,
       ];
+
       await TenantManagement.atualizarFeaturesTenant(tenantId, comForecast);
       expect(await visivelEmTudo('dataPrevistaFechamento')).toBe(true);
 
@@ -182,6 +207,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
       await atualizarConfiguracaoCampo(tenantId, data.id, {
         visibilidade: { ...TODOS_OS_CONTEXTOS, table: false },
       });
+
       await TenantManagement.atualizarFeaturesTenant(tenantId, comForecast);
       expect(await visivelEmTudo('dataPrevistaFechamento')).toBe(false);
       await atualizarConfiguracaoCampo(tenantId, data.id, { visibilidade: TODOS_OS_CONTEXTOS });
@@ -191,17 +217,20 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
   describe('probabilidade padrão do status', () => {
     it('tenant novo: cada status nasce com o padrão, e ganho e perdido são fixos', async () => {
       const status = await statusDeVendas();
+
       for (const opcao of status) {
         const esperada =
           PROBABILIDADE_PADRAO.FIXA[opcao.category] ??
           PROBABILIDADE_PADRAO.SUGERIDA[opcao.key] ??
           PROBABILIDADE_PADRAO.ABERTO_SEM_SUGESTAO;
+
         expect(opcao.probabilidadePadrao, opcao.key).toBe(esperada);
       }
     });
 
     it('o banco espelha as sugestões de PROBABILIDADE_PADRAO, e chave nova aberta nasce em 10', async () => {
       const criados = {};
+
       for (const label of ['Negociação', 'Demonstração']) {
         const criado = await ok(
           chamar('POST', `/crm/configuracoes/pipelines/${vendas.id}/status`, {
@@ -210,8 +239,10 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
           }),
           HTTP_STATUS.CREATED,
         );
+
         criados[criado.key] = criado.probabilidadePadrao;
       }
+
       expect(criados).toEqual({
         negociacao: PROBABILIDADE_PADRAO.SUGERIDA.negociacao,
         demonstracao: PROBABILIDADE_PADRAO.ABERTO_SEM_SUGESTAO,
@@ -225,13 +256,16 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
       const url = (opcao) => `/crm/configuracoes/pipelines/${vendas.id}/status/${opcao.id}`;
 
       const editado = await ok(chamar('PUT', url(novo), { probabilidadePadrao: PADRAO_EDITADO }));
+
       expect(editado.probabilidadePadrao).toBe(PADRAO_EDITADO);
 
       const fixo = await chamar('PUT', url(ganho), { probabilidadePadrao: FORA_DO_FIXO });
+
       expect(fixo.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(fixo.corpo.error.fields).toHaveProperty('probabilidadePadrao');
 
       const doOperador = await chamar('PUT', url(novo), { probabilidadePadrao: 1 }, operador);
+
       expect(doOperador.status).toBe(HTTP_STATUS.FORBIDDEN);
 
       await ok(
@@ -246,6 +280,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
           AND pipeline_id = ${vendas.id}::uuid
         RETURNING default_probability::int AS p
       `;
+
       expect(aberto.p).toBe(PROBABILIDADE_PADRAO.SUGERIDA.qualificado);
 
       const [ganho] = await prisma.$queryRaw`
@@ -254,6 +289,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
           AND pipeline_id = ${vendas.id}::uuid
         RETURNING default_probability::int AS p
       `;
+
       expect(ganho.p).toBe(PROBABILIDADE_PADRAO.FIXA.ganho);
 
       await expect(prisma.$executeRaw`
@@ -266,13 +302,16 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
   describe('override volta ao padrão quando o status muda', () => {
     it('PATCH de status: limpa o override, avisa, e a efetiva passa a ser a do status', async () => {
       const { oportunidade } = await oportunidadeComOverride();
+
       expect(oportunidade.probabilidadeEfetiva).toBe(OVERRIDE);
 
       const movida = await ok(
         chamar('PATCH', `/crm/oportunidades/${oportunidade.id}/status`, { status: 'proposta' }),
       );
+
       expect(movida.probabilidadeFechamento).toBeNull();
       expect(movida.probabilidadeEfetiva).toBe(PROBABILIDADE_PADRAO.SUGERIDA.proposta);
+
       expect(movida.avisos).toEqual([
         {
           codigo: AVISOS_OPORTUNIDADE.PROBABILIDADE_REDEFINIDA,
@@ -290,6 +329,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
           probabilidadeFechamento: MANDADA,
         }),
       );
+
       expect(movida.probabilidadeFechamento).toBe(MANDADA);
       expect(movida.avisos).toEqual([]);
     });
@@ -297,10 +337,12 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
     it('editar o status pela tabela (PUT do lead) também limpa e avisa', async () => {
       const { leadId } = await oportunidadeComOverride();
       const lead = await ok(chamar('PUT', `/crm/leads/${leadId}`, { status: 'qualificado' }));
+
       expect(lead.probabilidadeFechamento ?? null).toBeNull();
       expect(lead.avisos).toEqual([expect.objectContaining({ anterior: OVERRIDE })]);
 
       const semStatus = await ok(chamar('PUT', `/crm/leads/${leadId}`, { cargo: 'Gerente' }));
+
       expect(semStatus.avisos).toEqual([]);
     });
 
@@ -312,6 +354,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         entidadeId: primeira.oportunidade.id,
         colunaDestino: 'proposta',
       });
+
       expect(movida.avisos).toEqual([expect.objectContaining({ anterior: OVERRIDE })]);
 
       const segunda = await oportunidadeComOverride();
@@ -321,22 +364,27 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
         colunaDestino: 'proposta',
         campos: { probabilidadeFechamento: MANDADA },
       });
+
       expect(comCampo.avisos).toEqual([]);
+
       const [linha] = await prisma.$queryRaw`
         SELECT probability_override::int AS p FROM modulo_crm.crm_deal
         WHERE id = ${segunda.oportunidade.id}::uuid
       `;
+
       expect(linha.p).toBe(MANDADA);
     });
 
     it('quem não vê Probabilidade não recebe o aviso (ele traz o valor anterior)', async () => {
       const campos = await listarConfiguracaoCampos(tenantId);
       const probabilidade = campos.find((c) => c.chave === 'probabilidadeFechamento');
+
       await ok(
         chamar('PUT', '/crm/configuracoes/permissoes', {
           OPERADOR: { [probabilidade.id]: 'hidden' },
         }),
       );
+
       const { oportunidade } = await oportunidadeComOverride();
       const movida = await ok(
         chamar(
@@ -346,6 +394,7 @@ rodar('FC1: probabilidade padrão (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, ()
           operador,
         ),
       );
+
       expect(movida.avisos).toEqual([]);
       expect(movida).not.toHaveProperty('probabilidadeEfetiva');
     });

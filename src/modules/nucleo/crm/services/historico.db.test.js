@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { arquivarLead, desarquivarLead } from './arquivo.service.js';
 import { listarHistorico } from './historico.service.js';
@@ -47,6 +50,7 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
         subdomain: `smoke-tl-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         {
@@ -67,7 +71,9 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
         },
       ],
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.ARQUIVO, CRM_FEATURES.TIMELINE].map((featureKey) => ({
         tenantId,
@@ -75,6 +81,7 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
 
@@ -83,6 +90,7 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
       { nome: 'Lead timeline', email: 'tl@smoke.test' },
       donoId,
     ));
+
     await atualizarLeadExistente(tenantId, leadId, { status: 'perdido' }, donoId);
     await atualizarLeadExistente(tenantId, leadId, { usuarioResponsavelId: vendedorId }, donoId);
     // Inativo depois: o histórico antigo ainda mostra o nome.
@@ -99,7 +107,9 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
 
   it('sem filtro: tudo, cada evento com as suas categorias', async () => {
     const { itens, total } = await historico();
+
     expect(total).toBe(EVENTOS);
+
     expect(itens.map((evento) => [evento.tipo, evento.categorias])).toEqual([
       ['desarquivado', ['ciclo']],
       ['arquivado', ['ciclo']],
@@ -111,7 +121,9 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
 
   it('atribuição: só a troca de responsável, com os nomes (inativo também)', async () => {
     const { itens, total } = await historico(['atribuicao']);
+
     expect(total).toBe(1);
+
     expect(itens[0].diff).toEqual([
       expect.objectContaining({
         chave: 'usuarioResponsavelId',
@@ -124,14 +136,17 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
 
   it('ciclo de vida, e mais de uma categoria (OU); total bate com a página', async () => {
     const ciclo = await historico(['ciclo']);
+
     expect(ciclo.itens.map((evento) => evento.tipo)).toEqual([
       'desarquivado',
       'arquivado',
       'criado',
     ]);
+
     expect(ciclo.total).toBe(EVENTOS_DO_CICLO);
 
     const misto = await historico(['ciclo', 'atribuicao']);
+
     expect(misto.total).toBe(EVENTOS_DO_CICLO + 1);
     expect(await historico(['mesclagem'])).toMatchObject({ itens: [], total: 0 });
   });
@@ -140,6 +155,7 @@ rodar('timeline do lead no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () 
     await prisma.tenantModuleFeature.deleteMany({
       where: { tenantId, featureKey: CRM_FEATURES.TIMELINE },
     });
+
     await invalidarFeatures(tenantId);
     await expect(historico(['ciclo'])).rejects.toMatchObject({ statusCode: HTTP_STATUS.FORBIDDEN });
     expect((await historico()).total).toBe(EVENTOS);

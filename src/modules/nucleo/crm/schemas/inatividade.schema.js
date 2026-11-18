@@ -1,4 +1,8 @@
+/**
+ * @file PUT /crm/configuracoes/inatividade — `{ status: { <key>: dias | null } }`.
+ */
 import { z } from 'zod';
+
 import { DIAS_ESFRIAR } from '../constants.js';
 
 // Lead esfriando (M9). Forma só: se a key existe e se o status esfria

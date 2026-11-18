@@ -1,24 +1,28 @@
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppError } from '#core/errors/app-error.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
 import { registrarModulos } from '#core/registry/modules.js';
 import { garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { AppError } from '#core/errors/app-error.js';
+
 import { QUADRO_ENTIDADE } from '../constants.js';
 import {
   BOARD_TYPE_FALSO,
   COLUNA_ABERTA,
   COLUNA_PERDIDA,
-  QUADRO_FALSO,
   criarModuloFalso,
+  QUADRO_FALSO,
 } from '../testing/provedor-falso.js';
 import { registrarRotasQuadros } from './quadros.controller.js';
 
 vi.mock('#core/tenant/module-access.js', () => ({ moduloAtivo: vi.fn().mockResolvedValue(true) }));
+
 vi.mock('#core/tenant/feature-flags.js', () => {
   const garantir = vi.fn();
+
   return {
     garantirFeature: garantir,
     exigirFeature: (chave) => async (req) => garantir(req.tenantContext.tenantId, chave),
@@ -30,11 +34,15 @@ const TENANT = 'd6b67f66-266b-423e-8c86-c25ae13a739c';
 
 async function appForTest() {
   const app = Fastify();
+
   registerErrorHandlers(app);
+
   app.addHook('preHandler', async (request) => {
     request.tenantContext = { tenantId: TENANT, userId: TENANT, role: 'OPERADOR' };
   });
+
   registrarRotasQuadros(app);
+
   return app;
 }
 
@@ -52,8 +60,10 @@ describe('rotas de quadro de entidade', () => {
         message: 'Desligada',
       }),
     );
+
     const app = await appForTest();
     const resposta = await app.inject({ method: 'GET', url: `${URL}/colunas` });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(garantirFeature).toHaveBeenCalledWith(TENANT, 'kanban_universal.quadros_entidade');
     await app.close();
@@ -67,6 +77,7 @@ describe('rotas de quadro de entidade', () => {
       url: `${URL}/cards/busca`,
       payload: { colunaRef: COLUNA_ABERTA },
     });
+
     expect(busca.json().data.itens.map((card) => card.entidadeId)).toEqual(['a']);
 
     const criado = await app.inject({
@@ -74,6 +85,7 @@ describe('rotas de quadro de entidade', () => {
       url: `${URL}/cards`,
       payload: { colunaRef: COLUNA_ABERTA, dados: { id: 'b' } },
     });
+
     expect(criado.statusCode).toBe(HTTP_STATUS.CREATED);
 
     const movido = await app.inject({
@@ -81,6 +93,7 @@ describe('rotas de quadro de entidade', () => {
       url: `${URL}/cards/a/mover`,
       payload: { colunaDestino: COLUNA_ABERTA },
     });
+
     expect(movido.statusCode).toBe(HTTP_STATUS.OK);
     await app.close();
   });
@@ -92,11 +105,14 @@ describe('rotas de quadro de entidade', () => {
       url: `${URL}/cards/a/mover`,
       payload: { colunaDestino: COLUNA_PERDIDA },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
+
     expect(resposta.json().error).toMatchObject({
       code: ERROR_CODES.CAMPOS_OBRIGATORIOS,
       fields: { motivo: [expect.any(String)] },
     });
+
     await app.close();
   });
 
@@ -117,10 +133,13 @@ describe('rotas de quadro de entidade', () => {
         payload: { colunaRef: COLUNA_ABERTA },
       },
     ];
+
     for (const { url, payload } of invalidos) {
       const resposta = await app.inject({ method: 'POST', url, payload });
+
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+
     await app.close();
   });
 
@@ -132,13 +151,16 @@ describe('rotas de quadro de entidade', () => {
       { method: 'DELETE', url: `${URL}/colunas/${COLUNA_ABERTA}` },
       { method: 'DELETE', url: `${URL}/cards/a` },
     ];
+
     for (const rota of proibidas) {
       const resposta = await app.inject({
         ...rota,
         payload: rota.method === 'DELETE' ? undefined : {},
       });
+
       expect(resposta.statusCode, rota.url).toBe(HTTP_STATUS.NOT_FOUND);
     }
+
     await app.close();
   });
 });

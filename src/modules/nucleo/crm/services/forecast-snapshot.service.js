@@ -1,11 +1,15 @@
+/**
+ * @file SERVICE: o snapshot semanal do forecast (FC3).
+ */
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { listarTenantsAtivosDoModulo } from '#core/tenant/module-access.js';
+
 import { agregarForecast } from '../adapters/crm-forecast.repository.js';
 import {
   existeSnapshotDaSemana,
   gravarSnapshot,
 } from '../adapters/crm-forecast-snapshot.repository.js';
-import { agendarSnapshotSemanal } from '../adapters/manutencao-queue.repository.js';
+import { agendarSnapshotSemanal } from '../adapters/manutencao-queue.adapter.js';
 import {
   AGRUPAMENTOS_FORECAST,
   CRM_FEATURES,
@@ -55,7 +59,9 @@ export function segundaDaSemana(data) {
   const dataUtc = new Date(Date.UTC(ano, mes - 1, dia));
   const diaDaSemana = dataUtc.getUTCDay();
   const desdeSegunda = diaDaSemana === DOMINGO ? DIAS_NA_SEMANA - 1 : diaDaSemana - 1;
+
   dataUtc.setUTCDate(dataUtc.getUTCDate() - desdeSegunda);
+
   return dataUtc.toISOString().slice(0, TAMANHO_DA_DATA);
 }
 
@@ -71,6 +77,7 @@ export function segundaDaSemana(data) {
 export function momentoDoSnapshot(agora, fuso) {
   const { data, hora } = dataEHoraLocal(agora, fuso);
   const semana = segundaDaSemana(data);
+
   return { hoje: data, semana, cedo: data === semana && hora < SNAPSHOT_FORECAST.HORA_LOCAL };
 }
 
@@ -85,6 +92,7 @@ export function textoDeCentavos(valor) {
   const sinal = valor < SEM_CENTAVOS ? '-' : '';
   const absoluto = valor < SEM_CENTAVOS ? -valor : valor;
   const fracao = String(absoluto % CENTAVOS_POR_REAL).padStart(CASAS_DECIMAIS, '0');
+
   return `${sinal}${absoluto / CENTAVOS_POR_REAL}.${fracao}`;
 }
 
@@ -124,10 +132,15 @@ export function linhasDoSnapshot(linhas, meses) {
     const total = doMes.find((linha) => linha.do_total);
     /** @type {Record<string, NumerosDoSnapshot>} */
     const porDono = {};
+
     for (const linha of doMes) {
-      if (linha.do_total) continue;
+      if (linha.do_total) {
+        continue;
+      }
+
       porDono[linha.grupo_chave ?? SNAPSHOT_FORECAST.CHAVE_SEM_RESPONSAVEL] = numerosDaLinha(linha);
     }
+
     return {
       mes: primeiroDia(mes),
       ...(total ? numerosDaLinha(total) : NUMEROS_ZERADOS),
@@ -149,12 +162,20 @@ export function linhasDoSnapshot(linhas, meses) {
  * @returns {Promise<string>} um de `RESULTADOS_SNAPSHOT`
  */
 export async function tirarSnapshotDoTenant(tenantId, agora) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.FORECAST))) return RESULTADOS_SNAPSHOT.SEM_FLAG;
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.FORECAST))) {
+    return RESULTADOS_SNAPSHOT.SEM_FLAG;
+  }
 
   const fuso = await fusoDoTenant(tenantId);
   const { hoje, semana, cedo } = momentoDoSnapshot(agora, fuso);
-  if (cedo) return RESULTADOS_SNAPSHOT.CEDO;
-  if (await existeSnapshotDaSemana(tenantId, semana)) return RESULTADOS_SNAPSHOT.JA_EXISTIA;
+
+  if (cedo) {
+    return RESULTADOS_SNAPSHOT.CEDO;
+  }
+
+  if (await existeSnapshotDaSemana(tenantId, semana)) {
+    return RESULTADOS_SNAPSHOT.JA_EXISTIA;
+  }
 
   const atual = hoje.slice(0, TAMANHO_DO_MES);
   const ultimo = deslocarMes(atual, SNAPSHOT_FORECAST.MESES_A_FRENTE);
@@ -175,6 +196,7 @@ export async function tirarSnapshotDoTenant(tenantId, agora) {
     agora,
     linhasDoSnapshot(linhas, mesesDoPeriodo(atual, ultimo)),
   );
+
   return gravadas > 0 ? RESULTADOS_SNAPSHOT.GRAVADO : RESULTADOS_SNAPSHOT.JA_EXISTIA;
 }
 
@@ -193,8 +215,12 @@ export async function executarSnapshotsDoForecast(agora = new Date()) {
   for (const { tenantId } of tenants) {
     try {
       const resultado = await tirarSnapshotDoTenant(tenantId, agora);
-      if (resultado === RESULTADOS_SNAPSHOT.GRAVADO) relatorio.gravados += 1;
-      else relatorio.pulados += 1;
+
+      if (resultado === RESULTADOS_SNAPSHOT.GRAVADO) {
+        relatorio.gravados += 1;
+      } else {
+        relatorio.pulados += 1;
+      }
     } catch (erro) {
       relatorio.falhas.push({
         tenantId,
@@ -202,6 +228,7 @@ export async function executarSnapshotsDoForecast(agora = new Date()) {
       });
     }
   }
+
   return relatorio;
 }
 

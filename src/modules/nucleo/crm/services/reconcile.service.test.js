@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+
 import { reconciliarTenant } from './reconcile.service.js';
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
@@ -19,6 +20,7 @@ describe('reconciliarTenant', () => {
 
     expect(ordem).toEqual(['primeiro', 'segundo']);
     expect(passos[0].executar).toHaveBeenCalledWith(TENANT);
+
     expect(relatorio).toEqual([
       { passo: 'primeiro', resultado: 'a' },
       { passo: 'segundo', resultado: 'b' },

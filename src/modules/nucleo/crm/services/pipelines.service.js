@@ -1,5 +1,15 @@
+/**
+ * @file SERVICE: pipelines comerciais (M2.5). Todo tenant nasce com Vendas (padrão) e
+ * Atendimento. O dono pode renomear ou desativar, e o reconcile não recria: Atendimento conta
+ * como existente se houver qualquer pipeline `service`.
+ */
 import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
-import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
+
+import {
+  buscarStatusDoPipeline,
+  contarUsos,
+  inserirOpcoes,
+} from '../adapters/crm-options.repository.js';
 import {
   buscarPipelines,
   contarOportunidadesPorPipeline,
@@ -9,11 +19,7 @@ import {
   inserirPipelinePadrao,
   salvarPipeline,
 } from '../adapters/crm-pipelines.repository.js';
-import {
-  buscarStatusDoPipeline,
-  contarUsos,
-  inserirOpcoes,
-} from '../adapters/crm-options.repository.js';
+import { buscarUsuarioAtivoDoTenant } from '../adapters/usuarios.repository.js';
 import {
   CATEGORIAS_STATUS,
   PIPELINES,
@@ -44,6 +50,7 @@ async function criarAtendimento(tenantId, proximaPosicao) {
     statusInicial: STATUS_DO_ATENDIMENTO[0].key,
     regraDoDono: PIPELINES.DONO_DO_ATENDIMENTO,
   });
+
   await inserirOpcoes(
     tenantId,
     TIPOS_LISTA.STATUS,
@@ -61,15 +68,18 @@ async function criarAtendimento(tenantId, proximaPosicao) {
  */
 export async function reconciliarPipelines(tenantId) {
   const antes = await buscarPipelines(tenantId);
+
   await inserirPipelinePadrao(tenantId, {
     nome: PIPELINES.NOME_VENDAS,
     tipo: TIPOS_PIPELINE.VENDAS,
   });
 
   const temAtendimento = antes.some((pipeline) => pipeline.tipo === TIPOS_PIPELINE.ATENDIMENTO);
+
   if (!temAtendimento) {
     await criarAtendimento(tenantId, (await buscarPipelines(tenantId)).length);
   }
+
   return { criados: (await buscarPipelines(tenantId)).length - antes.length };
 }
 
@@ -86,6 +96,7 @@ function formatarPipeline(pipeline) {
     visivel_operador: visivelOperador,
     ...dados
   } = pipeline;
+
   return {
     ...dados,
     visivelOperador,
@@ -106,12 +117,14 @@ export async function listarPipelines(tenantId, { papel } = {}) {
     pipelinesOcultos(tenantId, papel),
   ]);
   const visiveis = pipelines.filter((pipeline) => !ocultos.includes(pipeline.id));
+
   return Promise.all(
     visiveis.map(async (pipeline) => {
       const [status, usos] = await Promise.all([
         buscarStatusDoPipeline(tenantId, pipeline.id),
         contarUsos(tenantId, TIPOS_LISTA.STATUS, pipeline.id),
       ]);
+
       return {
         ...formatarPipeline(pipeline),
         oportunidades: oportunidades.get(pipeline.id) ?? 0,
@@ -135,12 +148,14 @@ export async function criarPipeline(tenantId, dados) {
     PIPELINES.LIMITE_POR_TENANT,
     dados.tipo === TIPOS_PIPELINE.ATENDIMENTO ? STATUS_DO_ATENDIMENTO : STATUS_DE_VENDAS_NOVO,
   );
+
   if (!criado) {
     throw erroDeValidacao(
       'pipeline',
       `O limite é de ${PIPELINES.LIMITE_POR_TENANT} pipelines, incluindo Vendas e Atendimento`,
     );
   }
+
   return formatarPipeline(criado);
 }
 
@@ -151,7 +166,11 @@ export async function criarPipeline(tenantId, dados) {
 async function pipelineExistente(tenantId, id) {
   const pipelines = await buscarPipelines(tenantId);
   const pipeline = pipelines.find((item) => item.id === id);
-  if (!pipeline) throw erroNaoEncontrado('Pipeline não encontrado');
+
+  if (!pipeline) {
+    throw erroNaoEncontrado('Pipeline não encontrado');
+  }
+
   return { pipeline, pipelines };
 }
 
@@ -166,15 +185,22 @@ async function pipelineExistente(tenantId, id) {
  */
 async function validarAutomacao(tenantId, id, pipelines, automacao) {
   const origem = pipelines.find((item) => item.id === automacao.origemId);
+
   if (!origem || !origem.ativo || origem.tipo !== TIPOS_PIPELINE.VENDAS) {
     throw erroDeValidacao('automacao.origemId', 'Escolha um pipeline de vendas ativo');
   }
+
   const status = await buscarStatusDoPipeline(tenantId, id);
   const inicial = status.find((opcao) => opcao.key === automacao.statusInicial);
+
   if (!inicial || !inicial.ativo || inicial.category !== CATEGORIAS_STATUS.ABERTO) {
     throw erroDeValidacao('automacao.statusInicial', 'Escolha um status aberto deste pipeline');
   }
-  if (automacao.regraDoDono !== REGRAS_DONO_ATENDIMENTO.USUARIO) return;
+
+  if (automacao.regraDoDono !== REGRAS_DONO_ATENDIMENTO.USUARIO) {
+    return;
+  }
+
   if (!automacao.donoId || !(await buscarUsuarioAtivoDoTenant(tenantId, automacao.donoId))) {
     throw erroDeValidacao('automacao.donoId', 'Escolha um usuário ativo desta conta');
   }
@@ -197,16 +223,21 @@ export async function atualizarPipeline(
   { nome, ativo, visivelOperador, automacao = {} },
 ) {
   const { pipeline, pipelines } = await pipelineExistente(tenantId, id);
+
   if (pipeline.padrao && ativo === false) {
     throw erroDeConflito('ativo', 'O pipeline padrão não pode ser desativado');
   }
+
   if (pipeline.tipo !== TIPOS_PIPELINE.ATENDIMENTO && Object.keys(automacao).length > 0) {
     throw erroDeValidacao('automacao', 'Só pipeline de atendimento tem automação');
   }
 
   const atual = formatarPipeline(pipeline).automacao;
   const final = { ...atual, ...automacao };
-  if (final.ativa) await validarAutomacao(tenantId, id, pipelines, final);
+
+  if (final.ativa) {
+    await validarAutomacao(tenantId, id, pipelines, final);
+  }
 
   const salvo = await salvarPipeline(tenantId, id, {
     nome: nome ?? pipeline.nome,
@@ -218,7 +249,11 @@ export async function atualizarPipeline(
     regraDoDono: final.regraDoDono,
     donoId: final.regraDoDono === REGRAS_DONO_ATENDIMENTO.USUARIO ? final.donoId : null,
   });
-  if (!salvo) throw erroNaoEncontrado('Pipeline não encontrado');
+
+  if (!salvo) {
+    throw erroNaoEncontrado('Pipeline não encontrado');
+  }
+
   return formatarPipeline(salvo);
 }
 
@@ -236,10 +271,15 @@ const BLOQUEIOS_DE_EXCLUSAO = Object.freeze({
  */
 export async function excluirPipeline(tenantId, id) {
   const resultado = await excluirPipelineRepository(tenantId, id);
-  if (resultado === 'nao_encontrado') throw erroNaoEncontrado('Pipeline não encontrado');
+
+  if (resultado === 'nao_encontrado') {
+    throw erroNaoEncontrado('Pipeline não encontrado');
+  }
+
   if (resultado !== 'removido') {
     throw erroDeConflito('pipeline', BLOQUEIOS_DE_EXCLUSAO[resultado]);
   }
+
   return { removido: true };
 }
 
@@ -253,6 +293,7 @@ export async function excluirPipeline(tenantId, id) {
  */
 export async function criarStatus(tenantId, pipelineId, dados) {
   await pipelineExistente(tenantId, pipelineId);
+
   return criarOpcao(tenantId, TIPOS_LISTA.STATUS, dados, { pipelineId });
 }
 
@@ -264,6 +305,7 @@ export async function criarStatus(tenantId, pipelineId, dados) {
  */
 export async function atualizarStatus(tenantId, pipelineId, opcaoId, mudancas) {
   await pipelineExistente(tenantId, pipelineId);
+
   return atualizarOpcao(tenantId, TIPOS_LISTA.STATUS, opcaoId, mudancas, { pipelineId });
 }
 
@@ -274,6 +316,7 @@ export async function atualizarStatus(tenantId, pipelineId, opcaoId, mudancas) {
  */
 export async function reordenarStatus(tenantId, pipelineId, ids) {
   await pipelineExistente(tenantId, pipelineId);
+
   return reordenarLista(tenantId, TIPOS_LISTA.STATUS, ids, { pipelineId });
 }
 
@@ -284,6 +327,7 @@ export async function reordenarStatus(tenantId, pipelineId, ids) {
  */
 export async function excluirStatus(tenantId, pipelineId, opcaoId) {
   await pipelineExistente(tenantId, pipelineId);
+
   return excluirOpcao(tenantId, TIPOS_LISTA.STATUS, opcaoId, { pipelineId });
 }
 

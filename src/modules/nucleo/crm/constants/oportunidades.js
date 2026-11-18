@@ -1,3 +1,6 @@
+/**
+ * @file Regra de quem assume o atendimento criado pela venda.
+ */
 /** `crm_event.entidade`. */
 export const ENTIDADE_OPORTUNIDADE = 'deal';
 

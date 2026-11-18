@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { inserirCamposSistema } from '../adapters/crm-fields.repository.js';
 import { CAMPOS_SISTEMA } from '../constants.js';
 import {
@@ -20,17 +21,21 @@ describe('reconciliarCamposSistema', () => {
     await reconciliarCamposSistema(TENANT);
 
     const [[, campos]] = inserirCamposSistema.mock.calls;
+
     expect(campos).toHaveLength(CAMPOS_SISTEMA.length);
+
     // Camada 1: visível, obrigatoriedade do contrato.
     expect(campos.find((campo) => campo.systemKey === 'nome')).toMatchObject({
       visivel: true,
       isRequired: true,
     });
+
     // Camada 2: nasce oculta, o tenant liga.
     expect(campos.find((campo) => campo.systemKey === 'cargo')).toMatchObject({
       visivel: false,
       isRequired: false,
     });
+
     // Exceção (P0): sem o campo ligado, a regra de motivo em Perdido some.
     expect(campos.find((campo) => campo.systemKey === 'motivoPerda')).toMatchObject({
       visivel: true,
@@ -40,9 +45,11 @@ describe('reconciliarCamposSistema', () => {
 
   it('devolve quantos campos nasceram (0 na segunda rodada)', async () => {
     inserirCamposSistema.mockResolvedValueOnce(CAMPOS_SISTEMA.length).mockResolvedValueOnce(0);
+
     await expect(reconciliarCamposSistema(TENANT)).resolves.toEqual({
       criados: CAMPOS_SISTEMA.length,
     });
+
     await expect(reconciliarCamposSistema(TENANT)).resolves.toEqual({ criados: 0 });
   });
 

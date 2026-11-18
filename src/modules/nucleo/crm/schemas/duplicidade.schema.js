@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de duplicidade, na área de CRM, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { LISTA_ACOES_DUPLICIDADE, LISTA_CAMPOS_DUPLICIDADE } from '../constants.js';
 
 const enumDe = (valores, mensagem) =>

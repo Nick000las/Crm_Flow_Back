@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { TenantManagement } from '#core/tenant/management.js';
 import { FUSO_HORARIO_PADRAO, HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CATEGORIAS_STATUS, CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
@@ -39,6 +42,7 @@ const formatarMs = (valor) => `${valor.toFixed(CASAS_DECIMAIS)} ms`;
 function percentil(amostras, fracao) {
   const ordenadas = [...amostras].sort((a, b) => a - b);
   const posicao = Math.ceil(fracao * ordenadas.length) - 1;
+
   return ordenadas[Math.max(0, posicao)];
 }
 
@@ -60,18 +64,23 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
     });
     const duracao = performance.now() - inicio;
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data, duracao };
   }
 
   /** Mede `quantidade` pedidos sem acertar o cache (cache zerado antes de cada um). */
   async function medir(url, quantidade) {
     const amostras = [];
+
     for (let i = 0; i < quantidade; i += 1) {
       await encerrarCache();
+
       const resposta = await chamar(url);
+
       expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(HTTP_STATUS.OK);
       amostras.push(resposta.duracao);
     }
+
     return amostras;
   }
 
@@ -83,6 +92,7 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
     const abertos = chaves(CATEGORIAS_STATUS.ABERTO);
     const [ganho] = chaves(CATEGORIAS_STATUS.GANHO);
     const [perdido] = chaves(CATEGORIAS_STATUS.PERDIDO);
+
     expect(abertos.length).toBeGreaterThan(0);
 
     await prisma.$executeRaw`
@@ -90,6 +100,7 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
       SELECT ${tenantId}::uuid, 'Pessoa ' || g, g || '-' || ${tenantId}::text || '@smoke.test'
       FROM generate_series(1, ${TOTAL_PESSOAS}::int) g
     `;
+
     // Resto 0..5 aberta (60%), 6..8 ganha (30%), 9 perdida (10%).
     await prisma.$executeRaw`
       WITH pessoas AS (
@@ -117,6 +128,7 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
         CASE WHEN g % 2 = 0 THEN ${donoId}::uuid ELSE ${operadorId}::uuid END
       FROM base
     `;
+
     await prisma.$executeRaw`ANALYZE modulo_crm.crm_deal`;
     await prisma.$executeRaw`ANALYZE modulo_crm.leads`;
     await prisma.$executeRaw`ANALYZE modulo_crm.crm_option`;
@@ -130,6 +142,7 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
         subdomain: `smoke-fcc-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -143,7 +156,9 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
         role,
       })),
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.PERMISSOES, CRM_FEATURES.QUADRO_COMERCIAL].map((featureKey) => ({
         tenantId,
@@ -151,8 +166,10 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-forecast-carga',
@@ -162,11 +179,13 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     await TenantManagement.atualizarFeaturesTenant(tenantId, [
       CRM_FEATURES.PERMISSOES,
       CRM_FEATURES.QUADRO_COMERCIAL,
       CRM_FEATURES.FORECAST,
     ]);
+
     [vendas] = (await chamar('/crm/configuracoes/pipelines')).dados;
     await semear();
   });
@@ -183,6 +202,7 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
     const [{ total }] = await prisma.$queryRaw`
       SELECT count(*)::int AS total FROM modulo_crm.crm_deal WHERE tenant_id = ${tenantId}::uuid
     `;
+
     expect(total).toBe(TOTAL_OPORTUNIDADES);
   });
 
@@ -214,35 +234,45 @@ rodar('FC2: carga do forecast (CRM_DB_TESTS=1 CRM_CARGA=1)', { timeout: TIMEOUT_
       GROUP BY GROUPING SETS ((mes_ganho, status_category), (mes_previsto, status_category), (status_category))
     `;
     const texto = plano.map((linha) => linha['QUERY PLAN']).join('\n');
+
     console.info(`\n[carga] EXPLAIN (ANALYZE, BUFFERS):\n${texto}\n`);
+
     console.info(
       `[carga] usa idx_crm_deal_previsao/ganhas: ${/idx_crm_deal_(previsao|ganhas)/.test(texto)}`,
     );
+
     expect(texto.length).toBeGreaterThan(0);
   });
 
   it('GET /crm/forecast agrupar=total: p95 abaixo de 500 ms sem cache', async () => {
     // Aquecimento: conexão, plano preparado e módulos carregados.
     await chamar('/crm/forecast');
+
     const amostras = await medir('/crm/forecast?agrupar=total', PEDIDOS_TOTAL);
     const p95 = percentil(amostras, PERCENTIL);
     const mediana = percentil(amostras, MEDIANA);
+
     console.info(
       `[carga] total x${PEDIDOS_TOTAL}: mediana ${formatarMs(mediana)}, p95 ${formatarMs(p95)}, ` +
         `max ${formatarMs(Math.max(...amostras))}`,
     );
+
     const resposta = await chamar('/crm/forecast?agrupar=total');
+
     expect(resposta.dados.vazio).toBe(false);
     expect(p95).toBeLessThan(LIMITE_P95_MS);
   });
 
   it('GET /crm/forecast agrupar=responsavel: registra os tempos', async () => {
     const amostras = await medir('/crm/forecast?agrupar=responsavel', PEDIDOS_RESPONSAVEL);
+
     console.info(
       `[carga] responsavel x${PEDIDOS_RESPONSAVEL}: mediana ${formatarMs(percentil(amostras, MEDIANA))}, ` +
         `p95 ${formatarMs(percentil(amostras, PERCENTIL))}`,
     );
+
     const resposta = await chamar('/crm/forecast?agrupar=responsavel');
+
     expect(resposta.dados.grupos.length).toBeGreaterThan(0);
     console.info(JSON.stringify(resposta.dados.blocos, null, INDENTACAO_JSON));
   });

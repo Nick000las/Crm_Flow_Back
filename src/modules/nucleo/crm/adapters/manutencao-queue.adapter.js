@@ -1,5 +1,12 @@
+/**
+ * @file ADAPTER: agenda os jobs de manutenção do CRM na fila (BullMQ) — a purga diária da
+ * lixeira (M5), o resumo de leads esfriando, de hora em hora (M9), e o snapshot semanal do
+ * forecast, também de hora em hora (FC3).
+ */
 import { Queue } from 'bullmq';
+
 import { criarConexaoRedis } from '#core/queue/connection.js';
+
 import {
   MANUTENCAO_FILA,
   NOTIFICACAO_ESFRIANDO,
@@ -26,6 +33,7 @@ async function agendar(redisUrl, agendamentoId, repeticao, nomeDoJob) {
   const fila = new Queue(MANUTENCAO_FILA, {
     connection: criarConexaoRedis({ paraWorker: true, redisUrl }),
   });
+
   try {
     await fila.upsertJobScheduler(agendamentoId, repeticao, {
       name: nomeDoJob,

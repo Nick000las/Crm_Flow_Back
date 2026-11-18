@@ -1,5 +1,12 @@
+/**
+ * @file Regra de alerta (FM5): quando a resposta do alvo casa, a pessoa ganha um alerta. O alvo
+ * é um item do próprio rascunho; pergunta nova precisa ser salva antes (é quando ganha o id).
+ * Operador e valor são conferidos contra o tipo do alvo no service.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import {
   FILTRO_OPERADORES,
   LIMITE_NOME_RESPONSAVEL,
@@ -103,8 +110,15 @@ const itemPergunta = z
 const item = z.unknown().transform((valor, ctx) => {
   const ehPergunta = Boolean(valor) && typeof valor === 'object' && 'pergunta' in valor;
   const resultado = (ehPergunta ? itemPergunta : itemCampo).safeParse(valor);
-  if (resultado.success) return resultado.data;
-  for (const problema of resultado.error.issues) ctx.addIssue(problema);
+
+  if (resultado.success) {
+    return resultado.data;
+  }
+
+  for (const problema of resultado.error.issues) {
+    ctx.addIssue(problema);
+  }
+
   return z.NEVER;
 });
 

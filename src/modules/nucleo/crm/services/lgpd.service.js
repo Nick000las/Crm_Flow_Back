@@ -1,5 +1,9 @@
+/**
+ * @file SERVICE: base legal LGPD (M15).
+ */
 import { erroDeConflito, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
+
 import {
   anonimizarLead,
   buscarConfigLgpd,
@@ -57,6 +61,7 @@ export function comDadosLgpdNaCriacao(
 ) {
   const { [CAMPOS_LGPD.OPT_OUT]: optOut, ...resto } = input;
   const baseLegal = resto[CAMPOS_LGPD.BASE_LEGAL] ?? basePadrao ?? undefined;
+
   return {
     ...resto,
     [CAMPOS_LGPD.BASE_LEGAL]: baseLegal,
@@ -73,7 +78,10 @@ export function comDadosLgpdNaCriacao(
  * @returns {Promise<string | null>}
  */
 export async function basePadraoDoTenant(tenantId) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.LGPD))) return null;
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.LGPD))) {
+    return null;
+  }
+
   return (await buscarConfigLgpd(tenantId))?.base_legal_padrao ?? null;
 }
 
@@ -84,7 +92,9 @@ export async function basePadraoDoTenant(tenantId) {
  * @param {string | undefined} baseLote
  */
 export async function garantirBaseDoLote(tenantId, baseLote) {
-  if (baseLote !== undefined) await garantirFeature(tenantId, CRM_FEATURES.LGPD);
+  if (baseLote !== undefined) {
+    await garantirFeature(tenantId, CRM_FEATURES.LGPD);
+  }
 }
 
 /**
@@ -98,6 +108,7 @@ export async function obterConfigLgpd(tenantId) {
     listarConfiguracaoCampos(tenantId),
   ]);
   const baseLegal = campos.find((campo) => campo.chave === CAMPOS_LGPD.BASE_LEGAL);
+
   return {
     basePadrao: config?.base_legal_padrao ?? null,
     obrigatoria: baseLegal?.obrigatorio ?? false,
@@ -125,6 +136,7 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
     CAMPOS_LGPD.ORIGEM_REGISTRO,
     CAMPOS_LGPD.OPT_OUT_EM,
   ];
+
   for (const campo of campos.filter((item) => chavesLgpd.includes(item.chave))) {
     const ehBaseLegal = campo.chave === CAMPOS_LGPD.BASE_LEGAL;
     const contextos = ehBaseLegal
@@ -132,7 +144,11 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
       : CONTEXTOS_DE_LEITURA;
     const faltando = contextos.filter((contexto) => !campo.visibilidade[contexto]);
     const mudaObrigatorio = ehBaseLegal && campo.obrigatorio !== obrigatoria;
-    if (faltando.length === 0 && !mudaObrigatorio) continue;
+
+    if (faltando.length === 0 && !mudaObrigatorio) {
+      continue;
+    }
+
     await atualizarConfiguracaoCampo(tenantId, campo.id, {
       ...(faltando.length > 0
         ? { visibilidade: Object.fromEntries(faltando.map((contexto) => [contexto, true])) }
@@ -140,6 +156,7 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
       ...(mudaObrigatorio ? { obrigatorio: obrigatoria } : {}),
     });
   }
+
   return obterConfigLgpd(tenantId);
 }
 
@@ -171,18 +188,29 @@ export function personalizadosMantidos(definicoes) {
  */
 export async function anonimizarLeadDoTitular(tenantId, leadId, usuarioId) {
   const situacao = await buscarSituacaoLgpd(tenantId, leadId);
-  if (!situacao) throw erroNaoEncontrado('Lead não encontrado');
-  if (situacao.anonimizado) throw jaAnonimizado();
+
+  if (!situacao) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
+
+  if (situacao.anonimizado) {
+    throw jaAnonimizado();
+  }
 
   const { definicoes } = await obterSchemaCampos(tenantId);
   const resumo = await anonimizarLead(tenantId, leadId, {
     autorId: usuarioId,
     mantidos: personalizadosMantidos(definicoes),
   });
+
   // Outra requisição anonimizou entre a checagem e a transação.
-  if (!resumo) throw jaAnonimizado();
+  if (!resumo) {
+    throw jaAnonimizado();
+  }
+
   // O score pode depender de um campo apagado.
   await recalcularScoreDosLeads(tenantId, [leadId]);
+
   return { leadId, ...resumo };
 }
 
@@ -196,6 +224,7 @@ export async function anonimizarLeadDoTitular(tenantId, leadId, usuarioId) {
  */
 export async function erroDoLeadNaoEditado(tenantId, leadId, naoEncontrado) {
   const situacao = await buscarSituacaoLgpd(tenantId, leadId);
+
   return situacao?.anonimizado ? leadAnonimizadoNaoEditavel() : naoEncontrado;
 }
 

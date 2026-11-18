@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { MODULES } from '#api/modules.js';
+
 import { assertModule } from './module.js';
 
 const base = { key: 'crm', name: 'CRM', registerRoutes() {} };
@@ -26,6 +28,7 @@ describe('assertModule — featureFlags e reconciliar', () => {
 
   it('registerPublicRoutes é opcional, mas se vier precisa ser função', () => {
     expect(() => assertModule({ ...base, registerPublicRoutes() {} })).not.toThrow();
+
     expect(() => assertModule({ ...base, registerPublicRoutes: '/f' })).toThrow(
       /registerPublicRoutes/,
     );
@@ -50,15 +53,19 @@ describe('assertModule — featureFlags e reconciliar', () => {
       tipo: 'oportunidade',
       ...metodos(['descrever', 'rotaFicha', 'resolverVinculos']),
     };
+
     expect(() => assertModule({ ...base, quadros: [quadro], entidades: [entidade] })).not.toThrow();
 
     expect(() => assertModule({ ...base, quadros: quadro })).toThrow(/deve ser um array/);
+
     expect(() => assertModule({ ...base, quadros: [{ ...quadro, mover: undefined }] })).toThrow(
       /método `mover`/,
     );
+
     expect(() => assertModule({ ...base, quadros: [{ ...quadro, entidadeTipo: '' }] })).toThrow(
       /`entidadeTipo`/,
     );
+
     expect(() =>
       assertModule({ ...base, entidades: [{ ...entidade, descrever: undefined }] }),
     ).toThrow(/método `descrever`/);
@@ -67,6 +74,7 @@ describe('assertModule — featureFlags e reconciliar', () => {
   it('todo módulo registrado passa no contrato e as flags não se repetem', () => {
     const modulos = MODULES.map(assertModule);
     const flags = modulos.flatMap((modulo) => modulo.featureFlags ?? []);
+
     expect(new Set(flags).size).toBe(flags.length);
   });
 });

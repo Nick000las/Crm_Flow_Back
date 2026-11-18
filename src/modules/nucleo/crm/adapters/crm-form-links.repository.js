@@ -1,5 +1,11 @@
+/**
+ * @file ADAPTER: links de formulário (`modulo_crm.crm_form_link`, migration 0044). Criar,
+ * revogar e o evento no outbox entram na mesma transação.
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import {
   ENTIDADE_LINK_FORMULARIO,
   EVENTOS_FORMULARIO,
@@ -55,51 +61,112 @@ const JUNCOES_SQL = Prisma.sql`
  */
 export function criarOuReaproveitarLink(tenantId, dados) {
   const { leadId, formId, dealId, usuarioId, tokenHash, tokenCifrado } = dados;
+
   return getTenantClient(tenantId, async (tx) => {
     const [pessoa] = await tx.$queryRaw`
-      SELECT anonimizado_em, archived_at FROM modulo_crm.leads
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${leadId}::uuid AND deleted_at IS NULL
+      SELECT
+        anonimizado_em,
+        archived_at
+      FROM
+        modulo_crm.leads
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${leadId}::uuid
+        AND deleted_at IS NULL
       FOR SHARE
     `;
-    if (!pessoa) return { impedimento: 'pessoa' };
-    if (pessoa.anonimizado_em) return { impedimento: 'anonimizada' };
-    if (pessoa.archived_at) return { impedimento: 'arquivada' };
+
+    if (!pessoa) {
+      return { impedimento: 'pessoa' };
+    }
+
+    if (pessoa.anonimizado_em) {
+      return { impedimento: 'anonimizada' };
+    }
+
+    if (pessoa.archived_at) {
+      return { impedimento: 'arquivada' };
+    }
 
     const [formulario] = await tx.$queryRaw`
-      SELECT current_version_id::text AS versao_id, link_ttl_days AS validade
-      FROM modulo_crm.crm_form
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${formId}::uuid
-        AND is_active AND current_version_id IS NOT NULL
+      SELECT
+        current_version_id::text AS versao_id,
+        link_ttl_days AS validade
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${formId}::uuid
+        AND is_active
+        AND current_version_id IS NOT NULL
     `;
-    if (!formulario) return { impedimento: 'formulario' };
+
+    if (!formulario) {
+      return { impedimento: 'formulario' };
+    }
 
     if (dealId) {
       const [deal] = await tx.$queryRaw`
-        SELECT 1 FROM modulo_crm.crm_deal
-        WHERE tenant_id = ${tenantId}::uuid AND id = ${dealId}::uuid
-          AND lead_id = ${leadId}::uuid AND deleted_at IS NULL
+        SELECT
+          1
+        FROM
+          modulo_crm.crm_deal
+        WHERE
+          tenant_id = ${tenantId}::uuid
+          AND id = ${dealId}::uuid
+          AND lead_id = ${leadId}::uuid
+          AND deleted_at IS NULL
       `;
-      if (!deal) return { impedimento: 'oportunidade' };
+
+      if (!deal) {
+        return { impedimento: 'oportunidade' };
+      }
     }
 
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_form_link SET status = ${STATUS_LINK.EXPIRADO}
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${leadId}::uuid
-        AND form_id = ${formId}::uuid AND status = ${STATUS_LINK.ATIVO}
+      UPDATE modulo_crm.crm_form_link
+      SET
+        status = ${STATUS_LINK.EXPIRADO}
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ${leadId}::uuid
+        AND form_id = ${formId}::uuid
+        AND status = ${STATUS_LINK.ATIVO}
         AND expires_at < CURRENT_TIMESTAMP
     `;
+
     const [novo] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_form_link
-        (tenant_id, form_id, form_version_id, lead_id, deal_id, token_hash, token_encrypted,
-         expires_at, created_by)
-      VALUES (
-        ${tenantId}::uuid, ${formId}::uuid, ${formulario.versao_id}::uuid, ${leadId}::uuid,
-        ${dealId}::uuid, ${tokenHash}, ${tokenCifrado},
-        CURRENT_TIMESTAMP + make_interval(days => ${formulario.validade}::int), ${usuarioId}::uuid
-      )
-      ON CONFLICT (tenant_id, lead_id, form_id) WHERE status = 'active' DO NOTHING
-      RETURNING id::text
+      INSERT INTO
+        modulo_crm.crm_form_link (
+          tenant_id,
+          form_id,
+          form_version_id,
+          lead_id,
+          deal_id,
+          token_hash,
+          token_encrypted,
+          expires_at,
+          created_by
+        )
+      VALUES
+        (
+          ${tenantId}::uuid,
+          ${formId}::uuid,
+          ${formulario.versao_id}::uuid,
+          ${leadId}::uuid,
+          ${dealId}::uuid,
+          ${tokenHash},
+          ${tokenCifrado},
+          CURRENT_TIMESTAMP + make_interval(days => ${formulario.validade}::int),
+          ${usuarioId}::uuid
+        )
+      ON CONFLICT (tenant_id, lead_id, form_id)
+      WHERE
+        status = 'active' DO NOTHING
+      RETURNING
+        id::text
     `;
+
     if (novo) {
       await publicarEvento(tx, tenantId, {
         tipo: EVENTOS_FORMULARIO.LINK_CRIADO,
@@ -108,12 +175,20 @@ export function criarOuReaproveitarLink(tenantId, dados) {
         payload: { formularioId: formId, leadId },
       });
     }
+
     const [link] = await tx.$queryRaw`
-      SELECT ${RETORNO_LINK_SQL}, k.token_encrypted AS token_cifrado
-      FROM modulo_crm.crm_form_link k ${JUNCOES_SQL}
-      WHERE k.tenant_id = ${tenantId}::uuid AND k.lead_id = ${leadId}::uuid
-        AND k.form_id = ${formId}::uuid AND k.status = ${STATUS_LINK.ATIVO}
+      SELECT
+        ${RETORNO_LINK_SQL},
+        k.token_encrypted AS token_cifrado
+      FROM
+        modulo_crm.crm_form_link k ${JUNCOES_SQL}
+      WHERE
+        k.tenant_id = ${tenantId}::uuid
+        AND k.lead_id = ${leadId}::uuid
+        AND k.form_id = ${formId}::uuid
+        AND k.status = ${STATUS_LINK.ATIVO}
     `;
+
     return { impedimento: null, link, criado: Boolean(novo) };
   });
 }
@@ -127,10 +202,16 @@ export function buscarLinksDaPessoa(tenantId, leadId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_LINK_SQL}
-      FROM modulo_crm.crm_form_link k ${JUNCOES_SQL}
-      WHERE k.tenant_id = ${tenantId}::uuid AND k.lead_id = ${leadId}::uuid
-      ORDER BY k.created_at DESC, k.id
+      SELECT
+        ${RETORNO_LINK_SQL}
+      FROM
+        modulo_crm.crm_form_link k ${JUNCOES_SQL}
+      WHERE
+        k.tenant_id = ${tenantId}::uuid
+        AND k.lead_id = ${leadId}::uuid
+      ORDER BY
+        k.created_at DESC,
+        k.id
     `,
   );
 }
@@ -147,11 +228,19 @@ export function revogarLinkAtivo(tenantId, leadId, linkId) {
   return getTenantClient(tenantId, async (tx) => {
     const [revogado] = await tx.$queryRaw`
       UPDATE modulo_crm.crm_form_link
-      SET status = ${STATUS_LINK.REVOGADO}, revoked_at = CURRENT_TIMESTAMP
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${leadId}::uuid
-        AND id = ${linkId}::uuid AND status = ${STATUS_LINK.ATIVO}
-      RETURNING id::text, form_id::text AS formulario_id
+      SET
+        status = ${STATUS_LINK.REVOGADO},
+        revoked_at = CURRENT_TIMESTAMP
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ${leadId}::uuid
+        AND id = ${linkId}::uuid
+        AND status = ${STATUS_LINK.ATIVO}
+      RETURNING
+        id::text,
+        form_id::text AS formulario_id
     `;
+
     if (revogado) {
       await publicarEvento(tx, tenantId, {
         tipo: EVENTOS_FORMULARIO.LINK_REVOGADO,
@@ -160,6 +249,7 @@ export function revogarLinkAtivo(tenantId, leadId, linkId) {
         payload: { formularioId: revogado.formulario_id, leadId },
       });
     }
+
     return revogado;
   });
 }
@@ -174,12 +264,22 @@ export function buscarFormulariosDisponiveis(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT f.id::text, f.name AS nome, f.description AS descricao,
-        f.link_ttl_days AS validade_dias, v.version AS versao
-      FROM modulo_crm.crm_form f
-      JOIN modulo_crm.crm_form_version v ON v.tenant_id = f.tenant_id AND v.id = f.current_version_id
-      WHERE f.tenant_id = ${tenantId}::uuid AND f.is_active
-      ORDER BY lower(f.name), f.id
+      SELECT
+        f.id::text,
+        f.name AS nome,
+        f.description AS descricao,
+        f.link_ttl_days AS validade_dias,
+        v.version AS versao
+      FROM
+        modulo_crm.crm_form f
+        JOIN modulo_crm.crm_form_version v ON v.tenant_id = f.tenant_id
+        AND v.id = f.current_version_id
+      WHERE
+        f.tenant_id = ${tenantId}::uuid
+        AND f.is_active
+      ORDER BY
+        lower(f.name),
+        f.id
     `,
   );
 }

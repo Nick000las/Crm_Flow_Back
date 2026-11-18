@@ -1,12 +1,16 @@
+/**
+ * @file SERVICE: edição em massa (M10, `PATCH /crm/leads/bulk`).
+ */
 import { AppError, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
-import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
-import { atualizarLeadExistente } from './leads.service.js';
-import { garantirPessoaVisivel } from './visibilidade-pipeline.service.js';
-import { buscadorDeTags } from './listas.service.js';
 import { TIPOS_LISTA } from '../constants.js';
+import { atualizarLeadExistente } from './leads.service.js';
+import { buscadorDeTags } from './listas.service.js';
+import { garantirEscritaPermitida, obterSchemaDoPapel } from './permissoes.service.js';
+import { garantirPessoaVisivel } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: edição em massa (M10, `PATCH /crm/leads/bulk`).
@@ -40,28 +44,37 @@ import { TIPOS_LISTA } from '../constants.js';
  */
 export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioId, acesso = {}) {
   const schema = await obterSchemaDoPapel(tenantId, acesso.papel);
+
   // Uma vez, antes de mexer em qualquer lead (e não o mesmo 403 repetido no relatório).
   garantirEscritaPermitida(schema, {
     status: alteracoes.status,
     fonteLead: alteracoes.fonteLead,
     tags: alteracoes.tags,
   });
+
   const { listas } = schema;
   const encontrarTag = buscadorDeTags(listas[TIPOS_LISTA.TAG] ?? []);
 
   /** @type {ResultadoEmMassa[]} */
   const resultados = [];
+
   for (const id of ids) {
     try {
       await garantirPessoaVisivel(tenantId, id, acesso.papel);
+
       const atual = await buscarLeadPorId(tenantId, id);
-      if (!atual) throw erroNaoEncontrado('Lead não encontrado');
+
+      if (!atual) {
+        throw erroNaoEncontrado('Lead não encontrado');
+      }
 
       const input = alteracoesDoLead(atual, alteracoes, encontrarTag);
+
       if (Object.keys(input).length === 0) {
         resultados.push({ id, ok: true, inalterado: true });
         continue;
       }
+
       await atualizarLeadExistente(tenantId, id, input, usuarioId, acesso);
       resultados.push({ id, ok: true });
     } catch (erro) {
@@ -71,6 +84,7 @@ export async function editarLeadsEmMassa(tenantId, { ids, alteracoes }, usuarioI
 
   const falhas = resultados.filter((resultado) => !resultado.ok).length;
   const inalterados = resultados.filter((resultado) => resultado.inalterado).length;
+
   return {
     total: ids.length,
     atualizados: ids.length - falhas - inalterados,
@@ -97,8 +111,15 @@ export function alteracoesDoLead(
 ) {
   /** @type {Record<string, unknown>} */
   const input = {};
-  if (status !== undefined && status !== atual.status) input.status = status;
-  if (fonteLead !== undefined && fonteLead !== atual.fonte_lead) input.fonteLead = fonteLead;
+
+  if (status !== undefined && status !== atual.status) {
+    input.status = status;
+  }
+
+  if (fonteLead !== undefined && fonteLead !== atual.fonte_lead) {
+    input.fonteLead = fonteLead;
+  }
+
   if (usuarioResponsavelId !== undefined && usuarioResponsavelId !== atual.usuario_responsavel_id) {
     input.usuarioResponsavelId = usuarioResponsavelId;
   }
@@ -113,17 +134,27 @@ export function alteracoesDoLead(
     const keys = atuais.filter((key) => !removidas.has(key));
     /** @type {string[]} */
     const novas = [];
+
     for (const texto of tags.adicionar ?? []) {
       const key = encontrarTag(texto)?.key;
-      if (key === undefined) novas.push(texto);
-      else if (!keys.includes(key)) keys.push(key);
+
+      if (key === undefined) {
+        novas.push(texto);
+      } else if (!keys.includes(key)) {
+        keys.push(key);
+      }
     }
+
     const mudou =
       novas.length > 0 ||
       keys.length !== atuais.length ||
       keys.some((key) => !atuais.includes(key));
-    if (mudou) input.tags = [...keys, ...novas];
+
+    if (mudou) {
+      input.tags = [...keys, ...novas];
+    }
   }
+
   return input;
 }
 
@@ -142,6 +173,7 @@ function erroDoRelatorio(erro) {
       ...(erro.fields ? { fields: erro.fields } : {}),
     };
   }
+
   return {
     statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
     code: ERROR_CODES.INTERNAL_ERROR,

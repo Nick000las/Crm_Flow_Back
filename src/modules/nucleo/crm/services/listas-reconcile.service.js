@@ -1,3 +1,7 @@
+/**
+ * @file Reconciliação das listas (docs/produto/crm-pessoas-e-campos.md, M3): garante que o
+ * tenant tem as listas semeadas e que toda tag já usada num lead existe como opção.
+ */
 import {
   buscarOpcoesDoTenant,
   buscarTagsDosLeads,
@@ -41,8 +45,12 @@ export async function reconciliarListas(tenantId) {
   const kindsExistentes = new Set(existentes.map((opcao) => opcao.kind));
 
   let criadas = 0;
+
   for (const kind of LISTAS_SEMEADAS) {
-    if (kindsExistentes.has(kind)) continue;
+    if (kindsExistentes.has(kind)) {
+      continue;
+    }
+
     const padrao = (temLeads && OPCOES_LEGADAS[kind]) || OPCOES_SUGERIDAS[kind];
     const inseridas = await inserirOpcoes(
       tenantId,
@@ -53,6 +61,7 @@ export async function reconciliarListas(tenantId) {
         ...(kind === TIPOS_LISTA.STATUS && { staleDays: SUGESTAO_DIAS_ESFRIAR[opcao.key] ?? null }),
       })),
     );
+
     criadas += inseridas.length;
   }
 
@@ -66,6 +75,7 @@ export async function reconciliarListas(tenantId) {
     TIPOS_LISTA.TAG,
     tagsNovas.map((tag, indice) => ({ key: tag, label: tag, position: posicaoInicial + indice })),
   );
+
   criadas += inseridas.length;
 
   return { criadas };

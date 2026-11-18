@@ -1,7 +1,11 @@
+/**
+ * @file SERVICE: duplicidade de leads (M7).
+ */
 import { AppError } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
   buscarCandidatos,
   buscarCandidatosEmLote,
@@ -44,9 +48,11 @@ const CHAVE_DO_CAMPO = Object.freeze({
 export async function obterRegras(tenantId) {
   const gravadas = await buscarRegras(tenantId);
   const porCampo = new Map(gravadas.map((regra) => [regra.campo, regra]));
+
   return {
     regras: REGRAS_DUPLICIDADE_PADRAO.map((padrao) => {
       const { acao, ativo } = porCampo.get(padrao.campo) ?? padrao;
+
       return { campo: padrao.campo, acao, ativo };
     }),
     configurado: gravadas.length > 0,
@@ -60,6 +66,7 @@ export async function obterRegras(tenantId) {
  */
 export async function listarRegras(tenantId) {
   const { regras, configurado } = await obterRegras(tenantId);
+
   return {
     regras: regras.map((regra) => ({ ...regra, label: CAMPOS_DUPLICIDADE[regra.campo].label })),
     configurado,
@@ -75,6 +82,7 @@ export async function listarRegras(tenantId) {
  */
 export async function salvarRegras(tenantId, regras) {
   await salvarRegrasRepository(tenantId, regras);
+
   return listarRegras(tenantId);
 }
 
@@ -100,9 +108,13 @@ export async function encontrarDuplicados(tenantId, dados, { ignorarId = null, r
       ])
       .filter(([, chave]) => chave),
   );
-  if (Object.keys(chaves).length === 0) return [];
+
+  if (Object.keys(chaves).length === 0) {
+    return [];
+  }
 
   const candidatos = await buscarCandidatos(tenantId, chaves, ignorarId);
+
   return candidatos.map((candidato) => ({
     id: candidato.id,
     nome: candidato.nome,
@@ -121,8 +133,10 @@ export async function encontrarDuplicados(tenantId, dados, { ignorarId = null, r
  * @returns {Promise<RegraDuplicidade[]>}
  */
 export async function regrasDoImport(tenantId) {
-  if (await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))
+  if (await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE)) {
     return (await obterRegras(tenantId)).regras;
+  }
+
   return REGRAS_DUPLICIDADE_PADRAO.map((regra) => ({ ...regra }));
 }
 
@@ -148,10 +162,13 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
 
   /** @type {Record<string, Set<string>>} */
   const chavesPorCampo = {};
+
   for (const item of itens) {
-    for (const [campo, chave] of chavesDe(item.dados))
+    for (const [campo, chave] of chavesDe(item.dados)) {
       (chavesPorCampo[campo] ??= new Set()).add(chave);
+    }
   }
+
   const candidatos = await buscarCandidatosEmLote(
     tenantId,
     Object.fromEntries(
@@ -160,6 +177,7 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
   );
 
   const resultado = [];
+
   for (const item of itens) {
     const chaves = chavesDe(item.dados);
     const leads = candidatos
@@ -179,14 +197,20 @@ export async function duplicadosDasLinhas(tenantId, itens, regras) {
           ? ACOES_DUPLICIDADE.BLOQUEAR
           : ACOES_DUPLICIDADE.AVISAR,
       }));
-    if (leads.length === 0) continue;
+
+    if (leads.length === 0) {
+      continue;
+    }
+
     const bloqueia = leads.some((lead) => lead.acao === ACOES_DUPLICIDADE.BLOQUEAR);
+
     resultado.push({
       linha: item.linha,
       acao: bloqueia ? ACOES_DUPLICIDADE.BLOQUEAR : ACOES_DUPLICIDADE.AVISAR,
       leads,
     });
   }
+
   return resultado;
 }
 
@@ -205,7 +229,10 @@ export async function garantirSemDuplicados(
   { ignorarId = null, ignorarDuplicados = false } = {},
 ) {
   const duplicados = await encontrarDuplicados(tenantId, dados, { ignorarId });
-  if (duplicados.length === 0) return;
+
+  if (duplicados.length === 0) {
+    return;
+  }
 
   if (duplicados.some((duplicado) => duplicado.acao === ACOES_DUPLICIDADE.BLOQUEAR)) {
     throw new AppError({
@@ -215,6 +242,7 @@ export async function garantirSemDuplicados(
       details: { duplicados },
     });
   }
+
   if (!ignorarDuplicados) {
     throw new AppError({
       statusCode: HTTP_STATUS.CONFLICT,
@@ -236,10 +264,18 @@ export async function garantirSemDuplicados(
  */
 export function camposDeDuplicidadeAlterados(input, atual) {
   const alterados = {};
+
   for (const [campo, { chave }] of Object.entries(CAMPOS_DUPLICIDADE)) {
-    if (input[chave] === undefined || input[chave] === null) continue;
+    if (input[chave] === undefined || input[chave] === null) {
+      continue;
+    }
+
     const normalizar = CHAVE_DO_CAMPO[campo];
-    if (normalizar(input[chave]) !== normalizar(atual[chave])) alterados[chave] = input[chave];
+
+    if (normalizar(input[chave]) !== normalizar(atual[chave])) {
+      alterados[chave] = input[chave];
+    }
   }
+
   return alterados;
 }

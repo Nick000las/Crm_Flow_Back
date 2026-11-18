@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { provedorBrasilApi } from '../adapters/cnpj-brasilapi.provider.js';
-import { enfileirarEnriquecimentos } from '../adapters/cnpj-queue.repository.js';
+import { enfileirarEnriquecimentos } from '../adapters/cnpj-queue.adapter.js';
 import {
   buscarCacheCnpj,
   buscarConfigCnpj,
@@ -21,13 +23,16 @@ import {
 } from './cnpj.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
+
 vi.mock('../adapters/cnpj-brasilapi.provider.js', () => ({
   provedorBrasilApi: { nome: 'brasilapi', consultar: vi.fn() },
 }));
-vi.mock('../adapters/cnpj-queue.repository.js', () => ({
+
+vi.mock('../adapters/cnpj-queue.adapter.js', () => ({
   enfileirarEnriquecimentos: vi.fn(),
   encerrarFilaCnpj: vi.fn(),
 }));
+
 vi.mock('../adapters/crm-cnpj.repository.js', () => ({
   buscarCacheCnpj: vi.fn(),
   gravarCacheCnpj: vi.fn(),
@@ -82,16 +87,20 @@ describe('consultarCnpj (cache de 30 dias)', () => {
       dados: DADOS,
       provedor: 'brasilapi',
     });
+
     const resultado = await consultarCnpj(TENANT, '11.222.333/0001-81');
+
     expect(resultado).toMatchObject({ cnpj: CNPJ, emCache: true, dados: DADOS });
     expect(provedorBrasilApi.consultar).not.toHaveBeenCalled();
   });
 
   it('sem cache: consulta, grava (inclusive "não encontrado") e só olha cache dos últimos 30 dias', async () => {
     const agora = new Date('2026-10-18T12:00:00Z');
+
     provedorBrasilApi.consultar.mockResolvedValue({ status: 'nao_encontrado', dados: {} });
     await consultarCnpj(TENANT, CNPJ, agora);
     expect(buscarCacheCnpj).toHaveBeenCalledWith(TENANT, CNPJ, new Date('2026-09-18T12:00:00Z'));
+
     expect(gravarCacheCnpj).toHaveBeenCalledWith(
       TENANT,
       expect.objectContaining({ cnpj: CNPJ, status: 'nao_encontrado' }),
@@ -108,6 +117,7 @@ describe('consultarCnpj (cache de 30 dias)', () => {
     await expect(consultarCnpj(TENANT, '11222333000182')).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
+
     expect(provedorBrasilApi.consultar).not.toHaveBeenCalled();
   });
 });
@@ -115,7 +125,9 @@ describe('consultarCnpj (cache de 30 dias)', () => {
 describe('lupa', () => {
   it('devolve dados e sugestão pelo mapeamento padrão (campos do sistema)', async () => {
     const resposta = await consultarParaLupa(TENANT, CNPJ);
+
     expect(resposta.status).toBe('ok');
+
     expect(resposta.sugestao).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ chave: 'empresa', valor: 'ACME LTDA' }),
@@ -129,6 +141,7 @@ describe('lupa', () => {
     provedorBrasilApi.consultar.mockRejectedValue(
       Object.assign(new Error('timeout'), { transitorio: true }),
     );
+
     await expect(consultarParaLupa(TENANT, CNPJ)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
       code: ERROR_CODES.EXTERNAL_SERVICE_UNAVAILABLE,
@@ -139,6 +152,7 @@ describe('lupa', () => {
 describe('sugestaoParaLead', () => {
   it('converte pro tipo do destino: endereço como objeto, telefone em dígitos', () => {
     const sugestao = sugestaoParaLead(DADOS, { endereco: ID_ENTREGA, telefone: ID_FONE }, CAMPOS);
+
     expect(sugestao).toEqual([
       expect.objectContaining({
         chave: 'entrega',
@@ -162,6 +176,7 @@ describe('sugestaoParaLead', () => {
       { endereco: ID_EMPRESA, telefone: ID_FONE },
       CAMPOS,
     );
+
     expect(sugestao).toEqual([
       expect.objectContaining({ chave: 'empresa', valor: 'RUA X, 10 - CENTRO, RECIFE/PE' }),
     ]);
@@ -171,12 +186,14 @@ describe('sugestaoParaLead', () => {
 describe('configuração', () => {
   it('sem linha: padrão (manual, sem sobrescrever), mapeando pros campos do sistema ativos', async () => {
     const config = await obterConfigCnpj(TENANT);
+
     expect(config).toMatchObject({
       ativo: true,
       modo: 'manual',
       sobrescrever: false,
       configurado: false,
     });
+
     // `uf` e `endereco` nativos não estão ativos neste tenant: ficam de fora.
     expect(config.mapeamento).toEqual({
       razaoSocial: ID_EMPRESA,
@@ -192,22 +209,26 @@ describe('configuração', () => {
       sobrescrever: true,
       mapeamento: { razaoSocial: ID_EMPRESA, nomeFantasia: '00000000-0000-0000-0000-00000000dead' },
     });
+
     expect((await obterConfigCnpj(TENANT)).mapeamento).toEqual({ razaoSocial: ID_EMPRESA });
   });
 
   it('salvar: destino de tipo incompatível ou repetido → 400', async () => {
     const base = { ativo: true, modo: 'automatico', sobrescrever: false };
+
     await expect(
       salvarConfigCnpj(TENANT, { ...base, mapeamento: { razaoSocial: ID_CEP } }),
     ).rejects.toMatchObject({
       fields: { 'mapeamento.razaoSocial': [expect.stringContaining('não cabe')] },
     });
+
     await expect(
       salvarConfigCnpj(TENANT, {
         ...base,
         mapeamento: { razaoSocial: ID_EMPRESA, nomeFantasia: ID_EMPRESA },
       }),
     ).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+
     expect(gravarConfig).not.toHaveBeenCalled();
   });
 });
@@ -218,9 +239,11 @@ describe('agendarEnriquecimento (automático)', () => {
 
   it('modo automático: enfileira com o CNPJ normalizado', async () => {
     buscarConfigCnpj.mockResolvedValue(automatico);
+
     expect(
       await agendarEnriquecimento(TENANT, [{ leadId: LEAD, cnpj: '11.222.333/0001-81' }]),
     ).toBe(1);
+
     expect(enfileirarEnriquecimentos).toHaveBeenCalledWith([
       { tenantId: TENANT, leadId: LEAD, cnpj: CNPJ },
     ]);
@@ -253,10 +276,12 @@ describe('lupa com o enriquecimento desligado nas configurações', () => {
       sobrescrever: false,
       mapeamento: {},
     });
+
     await expect(consultarParaLupa(TENANT, CNPJ)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.FORBIDDEN,
       message: 'A consulta de CNPJ está desligada nas configurações',
     });
+
     expect(provedorBrasilApi.consultar).not.toHaveBeenCalled();
   });
 });

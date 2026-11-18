@@ -68,7 +68,7 @@ model Usuario {
 }
 
 // Código descartável hasheado vinculado a um usuário — genérico por
-// `proposito` ('ativacao_senha' | 'login_mfa'), não uma tabela por
+// `proposito` ('ativacao_senha' | 'login_mfa' | 'recuperacao_senha'), não uma tabela por
 // finalidade (ver docs/plano-mfa-email.md). Novo propósito = novo valor
 // aceito no CHECK da migration, não uma tabela nova.
 model CodigoVerificacao {

@@ -1,4 +1,7 @@
 /**
+ * @file Tenant que nunca salvou: desligado (o criador vira o responsável, como antes).
+ */
+/**
  * Distribuição automática de leads (M12, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 

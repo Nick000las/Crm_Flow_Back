@@ -1,3 +1,8 @@
+/**
+ * @file SERVICE: export síncrono — gera o .xlsx no próprio request e o controller devolve o
+ * binário (decisão: sem storage de arquivo). O limite de linhas protege a memória do processo
+ * HTTP.
+ */
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
@@ -8,6 +13,7 @@ import {
   formatarTelefoneBR,
 } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   CAMADA,
@@ -47,6 +53,7 @@ const MASCARAS = Object.freeze({
 /** `AAAA-MM-DD` → `dd/mm/aaaa` (sem fuso: é um dia, não um instante). @param {unknown} dia */
 function diaBR(dia) {
   const [ano, mes, dd] = String(dia ?? '').split('-');
+
   return ano && mes && dd ? `${dd}/${mes}/${ano}` : '';
 }
 
@@ -59,6 +66,7 @@ function enderecoEmLinha({ cep, logradouro, numero, complemento, bairro, cidade,
     local,
     cep ? `CEP ${formatarCep(cep)}` : '',
   ];
+
   return partes.filter(Boolean).join(', ');
 }
 
@@ -85,21 +93,25 @@ export async function exportarLeads(
   if (filtro.situacao === SITUACOES_LEAD.LIXEIRA) {
     throw erroDeValidacao('situacao', 'A lixeira não pode ser exportada');
   }
+
   if (formato === FORMATOS_EXPORTACAO.CSV) {
     await garantirFeature(tenantId, CRM_FEATURES.MASSA);
   }
+
   const campos = [
     ...(await listarCamposDoTenant(tenantId)),
     ...CAMPOS_EXTRAS_PLANILHA,
     ...CAMPOS_SO_EXPORTACAO,
   ];
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
+
   // Campo sensível (FM1) só sai se for pedido pelo nome, nunca no padrão.
   colunas ??= (await colunasPadrao(tenantId, usuarioId)).filter(
     (chave) => !(/** @type {{ sensivel?: boolean }} */ (campoPorChave.get(chave))?.sensivel),
   );
 
   const desconhecidas = colunas.filter((chave) => !campoPorChave.has(chave));
+
   if (desconhecidas.length > 0) {
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -113,6 +125,7 @@ export async function exportarLeads(
     limite: EXPORTACAO.MAX_LINHAS,
     offset: 0,
   });
+
   if (total > EXPORTACAO.MAX_LINHAS) {
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -136,6 +149,7 @@ export async function exportarLeads(
   const linhas = itens.map((lead) =>
     camposExportados.map((campo) => valorParaPlanilha(lead, campo, { responsaveis })),
   );
+
   return formato === FORMATOS_EXPORTACAO.CSV
     ? gerarCsv(cabecalho, linhas)
     : gerarPlanilha(cabecalho, linhas);
@@ -154,7 +168,9 @@ async function colunasPadrao(tenantId, usuarioId) {
   if (!usuarioId || !(await featureAtiva(tenantId, CRM_FEATURES.MASSA))) {
     throw erroDeValidacao('colunas', 'Escolha as colunas do export');
   }
+
   const { efetivo } = await obterLayout(tenantId, usuarioId);
+
   return [efetivo.identificador, ...efetivo.colunas].filter(Boolean).map((item) => item.chave);
 }
 
@@ -166,37 +182,70 @@ async function colunasPadrao(tenantId, usuarioId) {
  */
 export function valorParaPlanilha(lead, campo, { responsaveis = new Map() } = {}) {
   let valor;
-  if (campo.chave === 'funilEstagio') valor = lead.estagio_nome;
-  else if (campo.chave === 'usuarioResponsavelId')
-    valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
-  else if (campo.chave === 'createdAt') valor = lead.created_at;
-  else if (campo.camada === CAMADA.CAMADA_3) valor = lead.custom_fields?.[campo.chave];
-  else valor = lead[CAMADA_1_CAMPOS[campo.chave] ?? CAMADA_2_CAMPOS[campo.chave]];
 
-  if (valor === null || valor === undefined) return null;
+  if (campo.chave === 'funilEstagio') {
+    valor = lead.estagio_nome;
+  } else if (campo.chave === 'usuarioResponsavelId') {
+    valor = responsaveis.get(lead.usuario_responsavel_id) ?? null;
+  } else if (campo.chave === 'createdAt') {
+    valor = lead.created_at;
+  } else if (campo.camada === CAMADA.CAMADA_3) {
+    valor = lead.custom_fields?.[campo.chave];
+  } else {
+    valor = lead[CAMADA_1_CAMPOS[campo.chave] ?? CAMADA_2_CAMPOS[campo.chave]];
+  }
+
+  if (valor === null || valor === undefined) {
+    return null;
+  }
+
   // Campo de lista (M3): a planilha mostra o nome da opção, não a key.
   if (campo.opcoesLista) {
     const nomes = new Map(campo.opcoesLista.map((opcao) => [opcao.key, opcao.label]));
-    if (Array.isArray(valor))
+
+    if (Array.isArray(valor)) {
       return valor.map((key) => nomes.get(key) ?? key).join(SEPARADOR_LISTA);
+    }
+
     return nomes.get(valor) ?? valor;
   }
-  if (Array.isArray(valor)) return valor.join(SEPARADOR_LISTA);
-  if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
+
+  if (Array.isArray(valor)) {
+    return valor.join(SEPARADOR_LISTA);
+  }
+
+  if (typeof valor === 'boolean') {
+    return valor ? 'Sim' : 'Não';
+  }
+
   // NUMERIC chega como Prisma.Decimal.
-  if (typeof valor === 'object' && typeof valor.toNumber === 'function') return valor.toNumber();
+  if (typeof valor === 'object' && typeof valor.toNumber === 'function') {
+    return valor.toNumber();
+  }
+
   // Telefone/documentos são gravados sem máscara; na planilha saem com ela.
-  if (typeof valor === 'string' && MASCARAS[campo.tipo]) return MASCARAS[campo.tipo](valor);
+  if (typeof valor === 'string' && MASCARAS[campo.tipo]) {
+    return MASCARAS[campo.tipo](valor);
+  }
+
   // M11: usuário pelo nome; endereço e período numa linha.
-  if (campo.tipo === TIPOS_CAMPO.USUARIO) return responsaveis.get(String(valor)) ?? null;
-  if (campo.tipo === TIPOS_CAMPO.ENDERECO && typeof valor === 'object')
+  if (campo.tipo === TIPOS_CAMPO.USUARIO) {
+    return responsaveis.get(String(valor)) ?? null;
+  }
+
+  if (campo.tipo === TIPOS_CAMPO.ENDERECO && typeof valor === 'object') {
     return enderecoEmLinha(valor);
+  }
+
   if (campo.tipo === TIPOS_CAMPO.INTERVALO_DATAS && typeof valor === 'object') {
     return `${diaBR(valor.de)}${SEPARADOR_PERIODO}${diaBR(valor.ate)}`;
   }
+
   if (campo.tipo === 'data' && typeof valor === 'string') {
     const data = new Date(valor);
+
     return Number.isNaN(data.getTime()) ? valor : data;
   }
+
   return valor;
 }

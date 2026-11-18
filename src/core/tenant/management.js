@@ -1,11 +1,15 @@
+/**
+ * @file Hard delete de verdade — com onDelete: Cascade no schema, isso apaga usuários, módulos,
+ * assinaturas, cobranças e audit log desse tenant PERMANENTEMENTE.
+ */
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
-import { ERROR_CODES } from '#shared/http/error-codes.js';
+import { modulosRegistrados, validarModuleKeys } from '#core/registry/modules.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
 import { avisarFeaturesLigadas, reconciliarModulos } from '#core/tenant/reconcile.js';
-import { modulosRegistrados, validarModuleKeys } from '#core/registry/modules.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+import { ERROR_CODES } from '#shared/http/error-codes.js';
 
 /**
  * Catálogo de feature flags: o que cada módulo declara em `featureFlags`.
@@ -22,6 +26,7 @@ export function listarCatalogoFeatures() {
 function validarFeatureKeys(featureKeys) {
   const catalogo = new Set(listarCatalogoFeatures().map((item) => item.featureKey));
   const invalidas = featureKeys.filter((featureKey) => !catalogo.has(featureKey));
+
   if (invalidas.length > 0) {
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -47,7 +52,11 @@ function erroTenantNaoEncontrado(tenantId) {
  */
 async function buscarTenantOuFalhar(prisma, tenantId) {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  if (!tenant) throw erroTenantNaoEncontrado(tenantId);
+
+  if (!tenant) {
+    throw erroTenantNaoEncontrado(tenantId);
+  }
+
   return tenant;
 }
 
@@ -75,6 +84,7 @@ export class TenantManagement {
         modulosAtivos: { where: { disabledAt: null }, select: { moduleKey: true } },
       },
     });
+
     return tenants.map(({ modulosAtivos, ...tenant }) => ({
       ...tenant,
       modulosContratados: chavesContratadas(modulosAtivos),
@@ -99,8 +109,13 @@ export class TenantManagement {
         featureFlags: { select: { featureKey: true }, orderBy: { featureKey: 'asc' } },
       },
     });
-    if (!tenant) throw erroTenantNaoEncontrado(tenantId);
+
+    if (!tenant) {
+      throw erroTenantNaoEncontrado(tenantId);
+    }
+
     const { featureFlags, ...resto } = tenant;
+
     // `modulosAtivos` segue com as linhas cruas (inclui `disabledAt`, o
     // histórico); `modulosContratados` é a lista pronta pra UI.
     return {
@@ -121,14 +136,18 @@ export class TenantManagement {
    */
   static async atualizarTenant(tenantId, data) {
     const prisma = getAdminClient();
+
     await buscarTenantOuFalhar(prisma, tenantId);
+
     return prisma.tenant.update({ where: { id: tenantId }, data });
   }
 
   /** @param {string} tenantId @param {string} status */
   static async atualizarStatusTenant(tenantId, status) {
     const prisma = getAdminClient();
+
     await buscarTenantOuFalhar(prisma, tenantId);
+
     return prisma.tenant.update({ where: { id: tenantId }, data: { status } });
   }
 
@@ -141,6 +160,7 @@ export class TenantManagement {
    */
   static async atualizarModulosTenant(tenantId, modulosContratados) {
     validarModuleKeys(modulosContratados);
+
     const prisma = getAdminClient();
 
     let adicionados = [];
@@ -164,17 +184,20 @@ export class TenantManagement {
       if (paraRemover.length > 0) {
         await tx.tenantModule.deleteMany({ where: { tenantId, moduleKey: { in: paraRemover } } });
       }
+
       if (paraReativar.length > 0) {
         await tx.tenantModule.updateMany({
           where: { tenantId, moduleKey: { in: paraReativar } },
           data: { disabledAt: null, enabledAt: new Date() },
         });
       }
+
       if (paraAdicionar.length > 0) {
         await tx.tenantModule.createMany({
           data: paraAdicionar.map((moduleKey) => ({ tenantId, moduleKey })),
         });
       }
+
       adicionados = [...paraAdicionar, ...paraReativar];
 
       return tx.tenant.findUnique({
@@ -184,8 +207,12 @@ export class TenantManagement {
     });
 
     await invalidarAcessoModulo(tenantId);
+
     // Módulo recém-contratado (ou reativado) ganha o estado inicial (best-effort).
-    if (adicionados.length > 0) await reconciliarModulos(tenantId, adicionados);
+    if (adicionados.length > 0) {
+      await reconciliarModulos(tenantId, adicionados);
+    }
+
     return resultado;
   }
 
@@ -201,6 +228,7 @@ export class TenantManagement {
    */
   static async atualizarFeaturesTenant(tenantId, featureKeys) {
     validarFeatureKeys(featureKeys);
+
     const moduloDaFeature = new Map(
       listarCatalogoFeatures().map((item) => [item.featureKey, item.moduleKey]),
     );
@@ -208,13 +236,16 @@ export class TenantManagement {
 
     const antes = await prisma.$transaction(async (tx) => {
       await buscarTenantOuFalhar(tx, tenantId);
+
       const ligadasAntes = await tx.tenantModuleFeature.findMany({
         where: { tenantId },
         select: { featureKey: true },
       });
+
       await tx.tenantModuleFeature.deleteMany({
         where: { tenantId, featureKey: { notIn: featureKeys } },
       });
+
       await tx.tenantModuleFeature.createMany({
         data: featureKeys.map((featureKey) => ({
           tenantId,
@@ -223,16 +254,20 @@ export class TenantManagement {
         })),
         skipDuplicates: true,
       });
+
       return new Set(ligadasAntes.map((linha) => linha.featureKey));
     });
 
     await invalidarFeatures(tenantId);
+
     const ligadas = [...new Set(featureKeys)].sort();
+
     // Depois do commit e da invalidação: o módulo lê a flag já ligada.
     await avisarFeaturesLigadas(
       tenantId,
       ligadas.filter((chave) => !antes.has(chave)),
     );
+
     return ligadas;
   }
 
@@ -243,6 +278,7 @@ export class TenantManagement {
       where: { tenantId, moduleKey, disabledAt: null },
       data: { disabledAt: new Date() },
     });
+
     if (resultado.count === 0) {
       throw new AppError({
         statusCode: HTTP_STATUS.NOT_FOUND,
@@ -250,7 +286,9 @@ export class TenantManagement {
         message: `Tenant "${tenantId}" não tem o módulo "${moduleKey}" ativo`,
       });
     }
+
     await invalidarAcessoModulo(tenantId);
+
     return { tenantId, moduleKey, disabled: true };
   }
 
@@ -269,7 +307,9 @@ export class TenantManagement {
    */
   static async deleteTenant(tenantId) {
     const prisma = getAdminClient();
+
     await buscarTenantOuFalhar(prisma, tenantId);
+
     return prisma.tenant.delete({ where: { id: tenantId } });
   }
 }

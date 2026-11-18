@@ -1,3 +1,6 @@
+/**
+ * @file 409 `RESOURCE_CONFLICT` de um campo (ex: nome repetido).
+ */
 import { HTTP_ERROR_STATUS_RANGE, HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 

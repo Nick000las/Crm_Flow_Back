@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { signAccessToken } from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
@@ -13,6 +14,7 @@ vi.mock('#core/db/tenantClient.js', () => ({
 
 vi.mock('#core/tenant/management.js', async (importOriginal) => {
   const original = await importOriginal();
+
   return {
     ...original,
     TenantManagement: { atualizarTenant: vi.fn(), atualizarFeaturesTenant: vi.fn() },
@@ -35,6 +37,7 @@ beforeAll(async () => {
     }),
     logger: false,
   });
+
   tokenMaster = signAccessToken(app, { tenantId: TENANT, userId: 'u-m', role: 'MASTER' });
   tokenDono = signAccessToken(app, { tenantId: TENANT, userId: 'u-d', role: 'DONO' });
 });
@@ -52,6 +55,7 @@ describe('feature flags no admin', () => {
       url: '/admin/features',
       headers: comoMaster(),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
     expect(resposta.json().data).toContainEqual({ moduleKey: 'crm', featureKey: 'crm.layout' });
   });
@@ -63,18 +67,21 @@ describe('feature flags no admin', () => {
       headers: { authorization: `Bearer ${tokenDono}` },
       payload: { features: [] },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(TenantManagement.atualizarFeaturesTenant).not.toHaveBeenCalled();
   });
 
   it('PUT /admin/tenants/:id/features repassa a lista e devolve as ligadas', async () => {
     TenantManagement.atualizarFeaturesTenant.mockResolvedValue(['crm.listas']);
+
     const resposta = await app.inject({
       method: 'PUT',
       url: `/admin/tenants/${TENANT}/features`,
       headers: comoMaster(),
       payload: { features: ['crm.listas'] },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
     expect(resposta.json().data).toEqual({ features: ['crm.listas'] });
     expect(TenantManagement.atualizarFeaturesTenant).toHaveBeenCalledWith(TENANT, ['crm.listas']);
@@ -87,6 +94,7 @@ describe('feature flags no admin', () => {
       headers: comoMaster(),
       payload: {},
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -94,13 +102,16 @@ describe('feature flags no admin', () => {
 describe('fuso horário do tenant', () => {
   it('aceita nome IANA e grava a forma canônica', async () => {
     TenantManagement.atualizarTenant.mockResolvedValue({ id: TENANT });
+
     const resposta = await app.inject({
       method: 'PUT',
       url: `/admin/tenants/${TENANT}`,
       headers: comoMaster(),
       payload: { fusoHorario: 'america/manaus' },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(TenantManagement.atualizarTenant).toHaveBeenCalledWith(TENANT, {
       fusoHorario: 'America/Manaus',
     });
@@ -113,6 +124,7 @@ describe('fuso horário do tenant', () => {
       headers: comoMaster(),
       payload: { fusoHorario: 'Marte/Olympus' },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(resposta.json().error.fields).toHaveProperty('fusoHorario');
     expect(TenantManagement.atualizarTenant).not.toHaveBeenCalled();

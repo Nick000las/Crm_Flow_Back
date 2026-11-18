@@ -1,4 +1,9 @@
+/**
+ * @file Valida a estrutura de entrada de quadro, na área de Kanban, antes da execução dos casos
+ * de uso.
+ */
 import { z } from 'zod';
+
 import { QUADRO_ENTIDADE } from '../constants.js';
 
 // Quadros de entidade (M2). Os valores são opacos para o motor: quem sabe o

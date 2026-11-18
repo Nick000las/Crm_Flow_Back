@@ -1,24 +1,30 @@
-import { requireRole } from '#core/auth/rbac.js';
+/**
+ * @file CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`. Upload multipart só existe
+ * nestas rotas — o plugin é registrado aqui, no escopo do módulo, não globalmente no app.
+ */
 import multipart from '@fastify/multipart';
+
+import { requireRole } from '#core/auth/rbac.js';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { EXPORTACAO, FORMATOS_EXPORTACAO, IMPORTACAO, PAPEIS_GESTAO } from '../constants.js';
 import {
-  previsualizarImportacao,
-  validarImportacao,
-  confirmarImportacao,
-  obterStatusImportacao,
-  encerrarImportacao,
-} from '../services/import.service.js';
+  confirmarImportacaoBodySchema,
+  exportarLeadsBodySchema,
+  importJobIdParamSchema,
+  validarImportacaoCamposSchema,
+} from '../schemas/import-export.schema.js';
 import { exportarLeads } from '../services/export.service.js';
 import {
-  validarImportacaoCamposSchema,
-  confirmarImportacaoBodySchema,
-  importJobIdParamSchema,
-  exportarLeadsBodySchema,
-} from '../schemas/import-export.schema.js';
+  confirmarImportacao,
+  encerrarImportacao,
+  obterStatusImportacao,
+  previsualizarImportacao,
+  validarImportacao,
+} from '../services/import.service.js';
 
 const EXTENSAO_XLSX = '.xlsx';
 
@@ -31,14 +37,17 @@ const EXTENSAO_XLSX = '.xlsx';
  */
 export async function registrarRotasImportExport(app) {
   const apenasGestao = { preHandler: requireRole(PAPEIS_GESTAO) };
+
   await app.register(multipart, {
     limits: { fileSize: IMPORTACAO.TAMANHO_MAXIMO_ARQUIVO_BYTES, files: 1 },
   });
+
   app.addHook('onClose', async () => encerrarImportacao());
 
   app.post('/crm/import/preview', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { arquivo } = await lerMultipart(req);
+
     return sendSuccess(reply, await previsualizarImportacao(tenantId, arquivo));
   });
 
@@ -46,6 +55,7 @@ export async function registrarRotasImportExport(app) {
     const { tenantId, userId } = req.tenantContext;
     const { arquivo, campos } = await lerMultipart(req);
     const opcoes = validarImportacaoCamposSchema.parse(campos);
+
     return sendSuccess(reply, await validarImportacao(tenantId, userId, arquivo, opcoes));
   });
 
@@ -53,12 +63,14 @@ export async function registrarRotasImportExport(app) {
     const { tenantId } = req.tenantContext;
     const { jobId } = importJobIdParamSchema.parse(req.params);
     const body = confirmarImportacaoBodySchema.parse(req.body ?? {});
+
     return sendSuccess(reply, await confirmarImportacao(tenantId, jobId, body));
   });
 
   app.get('/crm/import/:jobId', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { jobId } = importJobIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await obterStatusImportacao(tenantId, jobId));
   });
 
@@ -67,6 +79,7 @@ export async function registrarRotasImportExport(app) {
     const body = exportarLeadsBodySchema.parse(req.body ?? {});
     const arquivo = await exportarLeads(tenantId, body, userId);
     const csv = body.formato === FORMATOS_EXPORTACAO.CSV;
+
     return reply
       .header('Content-Type', csv ? EXPORTACAO.CONTENT_TYPE_CSV : EXPORTACAO.CONTENT_TYPE)
       .header(
@@ -98,6 +111,7 @@ async function lerMultipart(req) {
       if (!parte.filename.toLowerCase().endsWith(EXTENSAO_XLSX)) {
         throw erroDeArquivo('Envie um arquivo .xlsx');
       }
+
       arquivo = await parte.toBuffer();
     } else {
       campos[parte.fieldname] = String(parte.value);
@@ -107,6 +121,7 @@ async function lerMultipart(req) {
   if (!arquivo) {
     throw erroDeArquivo('Envie a planilha no campo "arquivo"');
   }
+
   return { arquivo, campos };
 }
 

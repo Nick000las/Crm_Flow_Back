@@ -1,3 +1,6 @@
+/**
+ * @file STUB — implementar checkout conversacional Pix/cartão/boleto in-chat.
+ */
 import { authenticateHook } from '#core/auth/rbac.js';
 
 /**

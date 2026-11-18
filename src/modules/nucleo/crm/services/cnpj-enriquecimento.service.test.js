@@ -1,21 +1,23 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { UnrecoverableError } from 'bullmq';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { atualizarLead, buscarLeadPorId } from '../adapters/leads.repository.js';
+
 import {
   converterRespostaBrasilApi,
   provedorBrasilApi,
 } from '../adapters/cnpj-brasilapi.provider.js';
+import { atualizarLead, buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CAMADA, ENRIQUECIMENTO_CNPJ } from '../constants.js';
 import { consultarCnpj, obterConfigCnpj } from './cnpj.service.js';
-import { encontrarDuplicados } from './duplicidade.service.js';
 import {
   dadosParaGravar,
   filtrarSobrescrita,
   opcoesDoWorkerCnpj,
   processarEnriquecimento,
 } from './cnpj-enriquecimento.service.js';
+import { encontrarDuplicados } from './duplicidade.service.js';
 
 // M14: a pontuação tem teste próprio; aqui ela não grava nada.
 vi.mock('./score.service.js', async (importOriginal) => ({
@@ -23,13 +25,16 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
   garantirScoreNaoEditado: vi.fn(),
 }));
+
 vi.mock('./duplicidade.service.js', () => ({ encontrarDuplicados: vi.fn().mockResolvedValue([]) }));
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
+
 vi.mock('../adapters/leads.repository.js', () => ({
   buscarLeadPorId: vi.fn(),
   atualizarLead: vi.fn(),
 }));
+
 vi.mock('./cnpj.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   consultarCnpj: vi.fn(),
@@ -61,6 +66,7 @@ const CAMPOS = [
     coluna: 'cidade',
   },
 ];
+
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   obterSchemaCampos: vi.fn(async () => ({ campos: CAMPOS, definicoes: [] })),
@@ -77,6 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   featureAtiva.mockResolvedValue(true);
   obterConfigCnpj.mockResolvedValue(CONFIG);
+
   // Empresa já preenchida à mão; cidade vazia.
   buscarLeadPorId.mockResolvedValue({
     id: LEAD,
@@ -84,6 +91,7 @@ beforeEach(() => {
     empresa: 'Acme (nome comercial)',
     cidade: null,
   });
+
   consultarCnpj.mockResolvedValue({
     cnpj: CNPJ,
     status: 'ok',
@@ -97,8 +105,11 @@ describe('processarEnriquecimento (job do worker)', () => {
     const resultado = await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ });
 
     expect(resultado).toEqual({ resultado: 'enriquecido', campos: ['cidade'] });
+
     const [, , dados, historico] = atualizarLead.mock.calls[0];
+
     expect(dados).toEqual({ cidade: 'RECIFE' });
+
     expect(historico).toMatchObject({
       autorId: null,
       tipo: 'enriquecido',
@@ -114,16 +125,19 @@ describe('processarEnriquecimento (job do worker)', () => {
 
   it('confere tudo de novo na hora do job: flag, modo, lead e CNPJ', async () => {
     featureAtiva.mockResolvedValueOnce(false);
+
     expect(await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ })).toEqual({
       resultado: 'flag_desligada',
     });
 
     obterConfigCnpj.mockResolvedValueOnce({ ...CONFIG, modo: 'manual' });
+
     expect(
       (await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ })).resultado,
     ).toBe('modo_manual');
 
     buscarLeadPorId.mockResolvedValueOnce({ id: LEAD, cnpj: '00000000000191' });
+
     expect(
       (await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ })).resultado,
     ).toBe('lead_mudou');
@@ -136,17 +150,21 @@ describe('processarEnriquecimento (job do worker)', () => {
     consultarCnpj.mockRejectedValue(
       Object.assign(new Error('BrasilAPI respondeu 429'), { transitorio: true }),
     );
+
     await expect(
       processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ }),
     ).rejects.toThrow('429');
+
     expect(atualizarLead).not.toHaveBeenCalled();
   });
 
   it('nada vazio pra preencher: não grava', async () => {
     buscarLeadPorId.mockResolvedValue({ id: LEAD, cnpj: CNPJ, empresa: 'X', cidade: 'Y' });
+
     expect(
       (await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ })).resultado,
     ).toBe('nada_a_preencher');
+
     expect(atualizarLead).not.toHaveBeenCalled();
   });
 });
@@ -154,6 +172,7 @@ describe('processarEnriquecimento (job do worker)', () => {
 describe('filtrarSobrescrita', () => {
   it('olha o campo personalizado em customFields', () => {
     const sugestao = [{ chave: 'site', camada: CAMADA.CAMADA_3, valor: 'x' }];
+
     expect(filtrarSobrescrita(sugestao, { customFields: { site: 'y' } }, false)).toEqual([]);
     expect(filtrarSobrescrita(sugestao, { customFields: {} }, false)).toEqual(sugestao);
   });
@@ -171,6 +190,7 @@ describe('rate limit do worker', () => {
         duration: ENRIQUECIMENTO_CNPJ.LIMITE_JANELA_MS,
       },
     });
+
     expect(
       opcoesDoWorkerCnpj({ CNPJ_LIMITE_MAX: MAX_ENV, CNPJ_LIMITE_JANELA_MS: JANELA_ENV }).limiter,
     ).toEqual({
@@ -182,6 +202,7 @@ describe('rate limit do worker', () => {
 
 describe('provedor BrasilAPI', () => {
   const fetchFalso = vi.fn();
+
   beforeEach(() => vi.stubGlobal('fetch', fetchFalso));
   afterEach(() => vi.unstubAllGlobals());
 
@@ -207,8 +228,11 @@ describe('provedor BrasilAPI', () => {
         nome_fantasia: '',
       }),
     );
+
     const { status, dados } = await provedorBrasilApi.consultar(CNPJ);
+
     expect(status).toBe('ok');
+
     expect(dados).toEqual({
       razaoSocial: 'ACME LTDA',
       logradouro: 'RUA DAS FLORES',
@@ -219,6 +243,7 @@ describe('provedor BrasilAPI', () => {
       email: 'contato@acme.com',
       cnae: '6201501 - Desenvolvimento de software',
     });
+
     expect(fetchFalso.mock.calls[0][0]).toBe(`https://brasilapi.com.br/api/cnpj/v1/${CNPJ}`);
   });
 
@@ -257,6 +282,7 @@ describe('revisão da M11b', () => {
       ],
       [{ id: 'def-fundacao', chave: 'fundacao' }],
     );
+
     expect(dados.dataConversao).toEqual(new Date('2010-05-12'));
     expect(dados.customFields).toEqual({ 'def-fundacao': '2010-05-12' });
   });
@@ -266,6 +292,7 @@ describe('revisão da M11b', () => {
       ...CONFIG,
       mapeamento: { ...CONFIG.mapeamento, email: ID_EMAIL },
     });
+
     CAMPOS.push({
       id: ID_EMAIL,
       chave: 'email',
@@ -274,29 +301,36 @@ describe('revisão da M11b', () => {
       camada: CAMADA.CAMADA_1,
       coluna: 'email',
     });
+
     consultarCnpj.mockResolvedValue({
       cnpj: CNPJ,
       status: 'ok',
       provedor: 'brasilapi',
       dados: { municipio: 'RECIFE', email: 'contato@acme.com' },
     });
+
     try {
       encontrarDuplicados.mockResolvedValueOnce([
         { id: 'outro', nome: 'Outro', campos: [{ campo: 'email' }], acao: 'block' },
       ]);
+
       await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ });
+
       expect(encontrarDuplicados).toHaveBeenCalledWith(
         TENANT,
         { email: 'contato@acme.com' },
         { ignorarId: LEAD },
       );
+
       expect(atualizarLead.mock.calls[0][2]).toEqual({ cidade: 'RECIFE' });
 
       // Só avisar: o sistema não tem como confirmar, então grava.
       encontrarDuplicados.mockResolvedValueOnce([
         { id: 'outro', nome: 'Outro', campos: [{ campo: 'email' }], acao: 'warn' },
       ]);
+
       await processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ });
+
       expect(atualizarLead.mock.calls[1][2]).toEqual({
         cidade: 'RECIFE',
         email: 'contato@acme.com',
@@ -308,6 +342,7 @@ describe('revisão da M11b', () => {
 
   it('erro que não é transitório não é repetido pela fila (UnrecoverableError)', async () => {
     consultarCnpj.mockRejectedValue(new Error('BrasilAPI recusou a consulta (400)'));
+
     await expect(
       processarEnriquecimento({ tenantId: TENANT, leadId: LEAD, cnpj: CNPJ }),
     ).rejects.toBeInstanceOf(UnrecoverableError);

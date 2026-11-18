@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { getTenantClient, getAdminClient } from '#core/db/tenantClient.js';
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
 
 /** BLOQUEADOR DE MERGE (Bloco 2.1). Tenta ativamente vazar dado entre dois tenants de teste. */
 
@@ -26,11 +28,13 @@ describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vaza
         },
       ],
     });
+
     await getTenantClient(tenantA, (tx) =>
       tx.usuario.create({
         data: { tenantId: tenantA, nome: 'A', email: 'a@teste.com', senhaHash: 'x' },
       }),
     );
+
     await getTenantClient(tenantB, (tx) =>
       tx.usuario.create({
         data: { tenantId: tenantB, nome: 'B', email: 'b@teste.com', senhaHash: 'x' },
@@ -41,9 +45,11 @@ describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vaza
   afterAll(async () => {
     await prisma.tenant.deleteMany({ where: { id: { in: [tenantA, tenantB] } } });
   });
+
   it('contexto do tenant A NUNCA deve enxergar usuário do tenant B', async () => {
     const resultado = await getTenantClient(tenantA, (tx) => tx.$queryRaw`SELECT id FROM usuarios`);
     const usuarioB = await prisma.usuario.findFirst({ where: { tenantId: tenantB } });
+
     expect(resultado.map((r) => r.id)).not.toContain(usuarioB?.id);
   });
 
@@ -53,6 +59,7 @@ describeWithDatabase('Isolamento de dados entre tenants (tentativa ativa de vaza
       tenantA,
       (tx) => tx.$queryRaw`SELECT id FROM usuarios WHERE id = ${usuarioB.id}::uuid`,
     );
+
     expect(resultado).toHaveLength(0);
   });
 });

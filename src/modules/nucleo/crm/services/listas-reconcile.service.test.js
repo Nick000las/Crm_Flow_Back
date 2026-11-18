@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   buscarOpcoesDoTenant,
   buscarTagsDosLeads,
@@ -34,10 +35,13 @@ describe('reconciliarListas', () => {
     await reconciliarListas(TENANT);
 
     const porLista = inseridas();
+
     expect(porLista[TIPOS_LISTA.STATUS]).toEqual(
       OPCOES_LEGADAS[TIPOS_LISTA.STATUS].map((o) => o.key),
     );
+
     expect(porLista[TIPOS_LISTA.STATUS]).toContain('negociacao');
+
     // Tipo de atividade não existia antes: entra o padrão da spec.
     expect(porLista[TIPOS_LISTA.TIPO_ATIVIDADE]).toEqual(
       OPCOES_SUGERIDAS[TIPOS_LISTA.TIPO_ATIVIDADE].map((o) => o.key),
@@ -47,7 +51,9 @@ describe('reconciliarListas', () => {
   it('tenant sem lead: os padrões sugeridos pela spec', async () => {
     tenantTemLeads.mockResolvedValue(false);
     await reconciliarListas(TENANT);
+
     const porLista = inseridas();
+
     for (const kind of LISTAS_SEMEADAS) {
       expect(porLista[kind]).toEqual(OPCOES_SUGERIDAS[kind].map((o) => o.key));
     }
@@ -64,6 +70,7 @@ describe('reconciliarListas', () => {
       ...opcoesSemeadas(),
       { id: 't', kind: TIPOS_LISTA.TAG, key: 'VIP', label: 'VIP', ativo: true, position: 0 },
     ]);
+
     buscarTagsDosLeads.mockResolvedValue(['VIP', 'Indicação forte']);
     await reconciliarListas(TENANT);
 

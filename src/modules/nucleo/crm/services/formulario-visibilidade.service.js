@@ -1,3 +1,8 @@
+/**
+ * @file Quem vê o quê de um formulário respondido (FM4 e FM5), a mesma regra para "Ver
+ * respostas" e para os alertas: - gestão vê tudo; - campo do CRM: quem o tem no schema do seu
+ * papel (o sensível já sai oculto para o OPERADOR, `permissoes.service.js`).
+ */
 import { PAPEIS_GESTAO } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { obterSchemaDoPapel } from './permissoes.service.js';
@@ -23,6 +28,7 @@ export async function regraDeVisibilidade(tenantId, papel) {
   ]);
   const visiveis = new Set(doPapel.campos.map((campo) => campo.id));
   const existentes = new Set(todos.campos.map((campo) => campo.id));
+
   return {
     gestao,
     /** @param {string} campoId @param {{ sensivel?: boolean } | undefined} retrato */

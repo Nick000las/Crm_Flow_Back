@@ -1,4 +1,9 @@
+/**
+ * @file SERVICE (puro): o que muda quando uma oportunidade troca de status. Ganhar, perder e
+ * reabrir são o mesmo caminho: quem define é a categoria da opção.
+ */
 import { erroDeValidacao } from '#core/errors/app-error.js';
+
 import { CATEGORIAS_STATUS } from '../constants.js';
 import {
   CAMPOS_COMERCIAIS,
@@ -37,7 +42,10 @@ export const AVISOS_OPORTUNIDADE = Object.freeze({
  * @returns {number | null}
  */
 export function probabilidadeEfetiva(override, padrao) {
-  if (override !== null && override !== undefined) return Number(override);
+  if (override !== null && override !== undefined) {
+    return Number(override);
+  }
+
   return padrao === null || padrao === undefined ? null : Number(padrao);
 }
 
@@ -50,7 +58,11 @@ export function probabilidadeEfetiva(override, padrao) {
  */
 export function avisosDoPlano(plano) {
   const anterior = plano?.probabilidadeRedefinida;
-  if (anterior === null || anterior === undefined) return [];
+
+  if (anterior === null || anterior === undefined) {
+    return [];
+  }
+
   return [
     {
       codigo: AVISOS_OPORTUNIDADE.PROBABILIDADE_REDEFINIDA,
@@ -87,7 +99,11 @@ export function planejarStatus(deal, opcao, { motivoPerda }, agora) {
   // Override esquecido de uma etapa anterior é a maior fonte de forecast
   // inflado: trocar o status volta à probabilidade padrão do novo (FC1).
   const override = deal.probability_override ?? null;
-  if (statusMudou) mudancas.probability_override = null;
+
+  if (statusMudou) {
+    mudancas.probability_override = null;
+  }
+
   const evento =
     (mudouCategoria && EVENTO_DA_CATEGORIA[destino]) ||
     (reabriu ? EVENTOS_OPORTUNIDADE.REABERTA : EVENTOS_OPORTUNIDADE.STATUS_MUDOU);
@@ -106,8 +122,14 @@ export function planejarStatus(deal, opcao, { motivoPerda }, agora) {
 
 /** Para comparar: `Decimal` do driver vira número, `Date` vira texto. */
 function normalizar(valor) {
-  if (valor === undefined || valor === null) return null;
-  if (valor instanceof Date) return valor.toISOString();
+  if (valor === undefined || valor === null) {
+    return null;
+  }
+
+  if (valor instanceof Date) {
+    return valor.toISOString();
+  }
+
   return typeof valor === 'object' ? Number(valor) : valor;
 }
 
@@ -120,9 +142,13 @@ function normalizar(valor) {
  */
 export function diffDaOportunidade(deal, mudancas, campoDaColuna) {
   return Object.entries(campoDaColuna).flatMap(([coluna, campo]) => {
-    if (!(coluna in mudancas)) return [];
+    if (!(coluna in mudancas)) {
+      return [];
+    }
+
     const antes = normalizar(deal[coluna]);
     const depois = normalizar(mudancas[coluna]);
+
     return antes === depois ? [] : [{ campo, antes, depois }];
   });
 }
@@ -137,9 +163,11 @@ export function diffDaOportunidade(deal, mudancas, campoDaColuna) {
  */
 export function opcaoDoStatus(opcoes, status, statusAtual) {
   const opcao = opcoes.find((item) => item.key === status);
+
   if (!opcao || (!opcao.ativo && status !== statusAtual)) {
     throw erroDeValidacao('status', `"${status}" não é uma opção de Status deste pipeline`);
   }
+
   return opcao;
 }
 
@@ -158,10 +186,15 @@ export function primeiroStatusAberto(opcoes) {
 export function separarComerciais(dados) {
   const comerciais = {};
   const contato = {};
+
   for (const [chave, valor] of Object.entries(dados)) {
-    if (valor === undefined) continue;
+    if (valor === undefined) {
+      continue;
+    }
+
     (CAMPOS_COMERCIAIS.includes(chave) ? comerciais : contato)[chave] = valor;
   }
+
   return { comerciais, contato };
 }
 
@@ -172,10 +205,14 @@ export function separarComerciais(dados) {
  * @param {ComerciaisDoLead} comerciais
  */
 export function validarComerciais({ status, valor, probabilidadeFechamento }) {
-  if (status === null) throw erroDeValidacao('status', 'O status não pode ser limpo');
+  if (status === null) {
+    throw erroDeValidacao('status', 'O status não pode ser limpo');
+  }
+
   if (typeof valor === 'number' && (valor < 0 || valor > LIMITES_OPORTUNIDADE.VALOR_MAXIMO)) {
     throw erroDeValidacao('valor', 'Informe um valor entre zero e o limite aceito');
   }
+
   if (
     typeof probabilidadeFechamento === 'number' &&
     (!Number.isInteger(probabilidadeFechamento) ||
@@ -199,10 +236,20 @@ export function validarComerciais({ status, valor, probabilidadeFechamento }) {
  * @returns {OpcaoDeStatus | null}
  */
 function opcaoPedida(opcoes, { status, funilEstagioId }, statusAtual) {
-  if (status) return opcaoDoStatus(opcoes, status, statusAtual);
-  if (!funilEstagioId) return null;
+  if (status) {
+    return opcaoDoStatus(opcoes, status, statusAtual);
+  }
+
+  if (!funilEstagioId) {
+    return null;
+  }
+
   const opcao = opcoes.find((item) => item.id === funilEstagioId);
-  if (!opcao) throw erroDeValidacao('funilEstagioId', 'Escolha um estágio deste pipeline');
+
+  if (!opcao) {
+    throw erroDeValidacao('funilEstagioId', 'Escolha um estágio deste pipeline');
+  }
+
   return opcaoDoStatus(opcoes, opcao.key, statusAtual);
 }
 
@@ -224,8 +271,13 @@ function garantirDataDeConversao(dataConversao, categoria) {
  */
 export function novaOportunidadeDoLead(opcoes, comerciais) {
   const opcao = opcaoPedida(opcoes, comerciais) ?? primeiroStatusAberto(opcoes);
-  if (!opcao) throw erroDeValidacao('status', 'Este pipeline não tem status aberto ativo');
+
+  if (!opcao) {
+    throw erroDeValidacao('status', 'Este pipeline não tem status aberto ativo');
+  }
+
   garantirDataDeConversao(comerciais.dataConversao, opcao.category);
+
   return {
     status: opcao.key,
     categoria: opcao.category,
@@ -250,6 +302,7 @@ export function novaOportunidadeDoLead(opcoes, comerciais) {
 export function planejarEdicaoDoLead(deal, opcoes, dados, agora) {
   const opcao = opcaoPedida(opcoes, dados, deal.status);
   const base = opcao ? planejarStatus(deal, opcao, dados, agora) : { mudancas: {} };
+
   garantirDataDeConversao(dados.dataConversao, opcao?.category ?? deal.status_category);
 
   const campos = {
@@ -267,7 +320,11 @@ export function planejarEdicaoDoLead(deal, opcoes, dados, agora) {
   const mudou = Object.entries(mudancas).some(
     ([coluna, valor]) => normalizar(deal[coluna]) !== normalizar(valor),
   );
-  if (!mudou) return null;
+
+  if (!mudou) {
+    return null;
+  }
+
   return {
     ...base,
     mudancas,

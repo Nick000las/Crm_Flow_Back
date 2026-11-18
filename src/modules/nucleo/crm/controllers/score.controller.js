@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: Configurações → pontuação de leads (M14).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { salvarScoreBodySchema } from '../schemas/score.schema.js';
 import { obterConfigScore, recalcularTodos, salvarConfigScore } from '../services/score.service.js';
@@ -26,17 +30,20 @@ export function registrarRotasScore(app) {
 
   app.get('/crm/configuracoes/score', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await obterConfigScore(tenantId));
   });
 
   app.put('/crm/configuracoes/score', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = salvarScoreBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarConfigScore(tenantId, body));
   });
 
   app.post('/crm/configuracoes/score/recalcular', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await recalcularTodos(tenantId));
   });
 }

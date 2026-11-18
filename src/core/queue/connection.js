@@ -1,3 +1,7 @@
+/**
+ * @file Conexão Redis compartilhada pelas filas BullMQ (infra cross-cutting, mesmo critério de
+ * `#core/db/tenantClient.js` — não é exclusiva de um módulo).
+ */
 import { Redis } from 'ioredis';
 
 /**

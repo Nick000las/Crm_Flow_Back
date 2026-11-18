@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
+import { inserirOpcoes } from '../adapters/crm-options.repository.js';
 import {
   buscarPipelines,
   inserirPipelineDeAtendimento,
   inserirPipelineDentroDoLimite,
   inserirPipelinePadrao,
 } from '../adapters/crm-pipelines.repository.js';
-import { inserirOpcoes } from '../adapters/crm-options.repository.js';
 import {
   PIPELINES,
   STATUS_DE_VENDAS_NOVO,
@@ -21,6 +23,7 @@ vi.mock('../adapters/crm-pipelines.repository.js', () => ({
   inserirPipelineDentroDoLimite: vi.fn(),
   inserirPipelinePadrao: vi.fn(),
 }));
+
 vi.mock('../adapters/crm-options.repository.js', () => ({ inserirOpcoes: vi.fn() }));
 
 const TENANT = 'tenant';
@@ -47,6 +50,7 @@ describe('reconciliarPipelines', () => {
       TENANT,
       expect.objectContaining({ statusInicial: STATUS_DO_ATENDIMENTO[0].key, position: 1 }),
     );
+
     expect(inserirOpcoes).toHaveBeenCalledWith(
       TENANT,
       'status',
@@ -72,6 +76,7 @@ describe('criarPipeline', () => {
   it('cria respeitando o limite', async () => {
     vi.mocked(inserirPipelineDentroDoLimite).mockResolvedValue(VENDAS);
     await expect(criarPipeline(TENANT, dados)).resolves.toMatchObject(VENDAS);
+
     expect(inserirPipelineDentroDoLimite).toHaveBeenCalledWith(
       TENANT,
       dados,
@@ -82,6 +87,7 @@ describe('criarPipeline', () => {
 
   it('acima do limite: 400 no campo pipeline', async () => {
     vi.mocked(inserirPipelineDentroDoLimite).mockResolvedValue(undefined);
+
     await expect(criarPipeline(TENANT, dados)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { pipeline: [expect.stringContaining(String(PIPELINES.LIMITE_POR_TENANT))] },

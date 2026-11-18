@@ -1,4 +1,8 @@
+/**
+ * @file ADAPTER: pipelines comerciais (`modulo_crm.crm_pipeline`, migration 0036).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
 
 /**
@@ -42,9 +46,16 @@ export function buscarPipelines(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_PIPELINE_SQL} FROM modulo_crm.crm_pipeline
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY position, created_at, id
+      SELECT
+        ${RETORNO_PIPELINE_SQL}
+      FROM
+        modulo_crm.crm_pipeline
+      WHERE
+        tenant_id = ${tenantId}::uuid
+      ORDER BY
+        position,
+        created_at,
+        id
     `,
   );
 }
@@ -58,9 +69,13 @@ export function inserirPipelinePadrao(tenantId, { nome, tipo }) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_pipeline (tenant_id, name, type, is_default)
-      VALUES (${tenantId}::uuid, ${nome}, ${tipo}, true)
-      ON CONFLICT (tenant_id) WHERE is_default DO NOTHING
+      INSERT INTO
+        modulo_crm.crm_pipeline (tenant_id, name, type, is_default)
+      VALUES
+        (${tenantId}::uuid, ${nome}, ${tipo}, TRUE)
+      ON CONFLICT (tenant_id)
+      WHERE
+        is_default DO NOTHING
     `,
   );
 }
@@ -74,18 +89,35 @@ export function inserirPipelinePadrao(tenantId, { nome, tipo }) {
  */
 export function inserirPipelineDeAtendimento(tenantId, dados) {
   const { nome, tipo, position, statusInicial, regraDoDono } = dados;
+
   return getTenantClient(tenantId, async (tx) => {
     const [criado] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_pipeline (
-        tenant_id, name, type, position, auto_create_enabled, auto_create_from_pipeline_id,
-        auto_create_initial_status, auto_create_owner_rule
-      )
-      VALUES (
-        ${tenantId}::uuid, ${nome}, ${tipo}, ${position}, true, ${pipelinePadraoSql(tenantId)},
-        ${statusInicial}, ${regraDoDono}
-      )
-      RETURNING ${RETORNO_PIPELINE_SQL}
+      INSERT INTO
+        modulo_crm.crm_pipeline (
+          tenant_id,
+          name,
+          type,
+          position,
+          auto_create_enabled,
+          auto_create_from_pipeline_id,
+          auto_create_initial_status,
+          auto_create_owner_rule
+        )
+      VALUES
+        (
+          ${tenantId}::uuid,
+          ${nome},
+          ${tipo},
+          ${position},
+          TRUE,
+          ${pipelinePadraoSql(tenantId)},
+          ${statusInicial},
+          ${regraDoDono}
+        )
+      RETURNING
+        ${RETORNO_PIPELINE_SQL}
     `;
+
     return criado;
   });
 }
@@ -104,28 +136,55 @@ export function inserirPipelineDeAtendimento(tenantId, dados) {
 export function inserirPipelineDentroDoLimite(tenantId, { nome, tipo }, limite, status) {
   return getTenantClient(tenantId, async (tx) => {
     await travarPipelines(tx, tenantId);
+
     const [criado] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_pipeline (tenant_id, name, type, position)
-      SELECT ${tenantId}::uuid, ${nome}, ${tipo}, total
-      FROM (
-        SELECT count(*)::int AS total FROM modulo_crm.crm_pipeline
-        WHERE tenant_id = ${tenantId}::uuid
-      ) atual
-      WHERE total < ${limite}
-      RETURNING ${RETORNO_PIPELINE_SQL}
+      INSERT INTO
+        modulo_crm.crm_pipeline (tenant_id, name, type, position)
+      SELECT
+        ${tenantId}::uuid,
+        ${nome},
+        ${tipo},
+        total
+      FROM
+        (
+          SELECT
+            count(*)::int AS total
+          FROM
+            modulo_crm.crm_pipeline
+          WHERE
+            tenant_id = ${tenantId}::uuid
+        ) atual
+      WHERE
+        total < ${limite}
+      RETURNING
+        ${RETORNO_PIPELINE_SQL}
     `;
-    if (!criado) return undefined;
+
+    if (!criado) {
+      return undefined;
+    }
+
     await tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, position)
-      SELECT ${tenantId}::uuid, 'status', ${criado.id}::uuid, o.key, o.label, o.color, o.category,
-             o.posicao - 1
-      FROM unnest(
-        ${status.map((opcao) => opcao.key)}::varchar[],
-        ${status.map((opcao) => opcao.label)}::varchar[],
-        ${status.map((opcao) => opcao.color)}::varchar[],
-        ${status.map((opcao) => opcao.category)}::varchar[]
-      ) WITH ORDINALITY AS o(key, label, color, category, posicao)
+      INSERT INTO
+        modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, position)
+      SELECT
+        ${tenantId}::uuid,
+        'status',
+        ${criado.id}::uuid,
+        o.key,
+        o.label,
+        o.color,
+        o.category,
+        o.posicao - 1
+      FROM
+        unnest(
+          ${status.map((opcao) => opcao.key)}::VARCHAR[],
+          ${status.map((opcao) => opcao.label)}::VARCHAR[],
+          ${status.map((opcao) => opcao.color)}::VARCHAR[],
+          ${status.map((opcao) => opcao.category)}::VARCHAR[]
+        ) WITH ORDINALITY AS o (key, label, color, category, posicao)
     `;
+
     return criado;
   });
 }
@@ -133,7 +192,11 @@ export function inserirPipelineDentroDoLimite(tenantId, { nome, tipo }, limite, 
 /** Criar e excluir disputam a contagem: um pedido por tenant de cada vez. */
 function travarPipelines(tx, tenantId) {
   const chaveDoLock = `crm-pipelines:${tenantId}`;
-  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${chaveDoLock}, 0))`;
+
+  return tx.$executeRaw`
+    SELECT
+      pg_advisory_xact_lock(hashtextextended (${chaveDoLock}, 0))
+  `;
 }
 
 /**
@@ -144,10 +207,16 @@ export async function buscarPipelinesOcultos(tenantId) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id::text FROM modulo_crm.crm_pipeline
-      WHERE tenant_id = ${tenantId}::uuid AND NOT operator_visible
+      SELECT
+        id::text
+      FROM
+        modulo_crm.crm_pipeline
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND NOT operator_visible
     `,
   );
+
   return linhas.map((linha) => linha.id);
 }
 
@@ -161,11 +230,18 @@ export async function contarOportunidadesPorPipeline(tenantId) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT pipeline_id::text, count(*)::int AS total FROM modulo_crm.crm_deal
-      WHERE tenant_id = ${tenantId}::uuid
-      GROUP BY pipeline_id
+      SELECT
+        pipeline_id::text,
+        count(*)::int AS total
+      FROM
+        modulo_crm.crm_deal
+      WHERE
+        tenant_id = ${tenantId}::uuid
+      GROUP BY
+        pipeline_id
     `,
   );
+
   return new Map(linhas.map((linha) => [linha.pipeline_id, linha.total]));
 }
 
@@ -182,16 +258,22 @@ export function salvarPipeline(tenantId, id, dados) {
   return getTenantClient(tenantId, async (tx) => {
     const [salvo] = await tx.$queryRaw`
       UPDATE modulo_crm.crm_pipeline
-      SET name = ${dados.nome}, is_active = ${dados.ativo},
-          operator_visible = ${dados.visivelOperador},
-          auto_create_enabled = ${dados.automacaoAtiva},
-          auto_create_from_pipeline_id = ${dados.origemId}::uuid,
-          auto_create_initial_status = ${dados.statusInicial},
-          auto_create_owner_rule = ${dados.regraDoDono},
-          auto_create_owner_id = ${dados.donoId}::uuid
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
-      RETURNING ${RETORNO_PIPELINE_SQL}
+      SET
+        name = ${dados.nome},
+        is_active = ${dados.ativo},
+        operator_visible = ${dados.visivelOperador},
+        auto_create_enabled = ${dados.automacaoAtiva},
+        auto_create_from_pipeline_id = ${dados.origemId}::uuid,
+        auto_create_initial_status = ${dados.statusInicial},
+        auto_create_owner_rule = ${dados.regraDoDono},
+        auto_create_owner_id = ${dados.donoId}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${id}::uuid
+      RETURNING
+        ${RETORNO_PIPELINE_SQL}
     `;
+
     return salvo;
   });
 }
@@ -207,32 +289,66 @@ export function salvarPipeline(tenantId, id, dados) {
 export function excluirPipeline(tenantId, id) {
   return getTenantClient(tenantId, async (tx) => {
     await travarPipelines(tx, tenantId);
+
     const [alvo] = await tx.$queryRaw`
-      SELECT is_default AS padrao,
+      SELECT
+        is_default AS padrao,
         EXISTS (
-          SELECT 1 FROM modulo_crm.crm_deal d
-          WHERE d.tenant_id = p.tenant_id AND d.pipeline_id = p.id
+          SELECT
+            1
+          FROM
+            modulo_crm.crm_deal d
+          WHERE
+            d.tenant_id = p.tenant_id
+            AND d.pipeline_id = p.id
         ) AS em_uso,
         EXISTS (
-          SELECT 1 FROM modulo_crm.crm_pipeline o
-          WHERE o.tenant_id = p.tenant_id AND o.auto_create_from_pipeline_id = p.id
+          SELECT
+            1
+          FROM
+            modulo_crm.crm_pipeline o
+          WHERE
+            o.tenant_id = p.tenant_id
+            AND o.auto_create_from_pipeline_id = p.id
         ) AS origem
-      FROM modulo_crm.crm_pipeline p
-      WHERE p.tenant_id = ${tenantId}::uuid AND p.id = ${id}::uuid
+      FROM
+        modulo_crm.crm_pipeline p
+      WHERE
+        p.tenant_id = ${tenantId}::uuid
+        AND p.id = ${id}::uuid
       FOR UPDATE
     `;
-    if (!alvo) return 'nao_encontrado';
-    if (alvo.padrao) return 'padrao';
-    if (alvo.em_uso) return 'em_uso';
-    if (alvo.origem) return 'origem';
+
+    if (!alvo) {
+      return 'nao_encontrado';
+    }
+
+    if (alvo.padrao) {
+      return 'padrao';
+    }
+
+    if (alvo.em_uso) {
+      return 'em_uso';
+    }
+
+    if (alvo.origem) {
+      return 'origem';
+    }
+
     await tx.$executeRaw`
       DELETE FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid AND pipeline_id = ${id}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND pipeline_id = ${id}::uuid
     `;
+
     await tx.$executeRaw`
       DELETE FROM modulo_crm.crm_pipeline
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${id}::uuid
     `;
+
     return 'removido';
   });
 }

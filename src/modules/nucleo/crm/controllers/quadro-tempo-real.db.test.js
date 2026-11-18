@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
+
 import { io } from 'socket.io-client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { DESPACHO_DE_EVENTOS, CRM_FEATURES, MODULO_CRM } from '../constants.js';
+
+import { CRM_FEATURES, DESPACHO_DE_EVENTOS, MODULO_CRM } from '../constants.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
@@ -53,11 +56,15 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       headers: { authorization: `Bearer ${tokenDe(usuario)}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
   const conectar = (usuario) =>
@@ -67,6 +74,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         auth: { accessToken: tokenDe(usuario) },
         reconnection: false,
       });
+
       cliente.once('connect', () => resolve(cliente));
       cliente.once('connect_error', reject);
     });
@@ -83,19 +91,26 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       HTTP_STATUS.CREATED,
     );
     const lista = await ok(chamar('GET', `/crm/leads/${id}/oportunidades`));
+
     return { leadId: id, deal: lista[0], lista };
   };
 
   /** Espera um aviso que aponte este card, nesta sala. */
   const esperarCard = async (entidadeId, quadroRef = vendas.id) => {
     const limite = Date.now() + ESPERA_DO_EVENTO_MS;
+
     while (Date.now() < limite) {
       const achado = recebidos.find(
         (evento) => evento.quadroRef === quadroRef && evento.entidadeIds.includes(entidadeId),
       );
-      if (achado) return achado;
+
+      if (achado) {
+        return achado;
+      }
+
       await setTimeout(INTERVALO_DE_ESPERA_MS);
     }
+
     throw new Error(`Nenhum aviso do card ${entidadeId}`);
   };
 
@@ -107,6 +122,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         subdomain: `smoke-tr-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -120,9 +136,11 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         role,
       })),
     });
+
     await prisma.tenantModule.createMany({
       data: [MODULO_CRM, 'kanban_universal'].map((moduleKey) => ({ tenantId, moduleKey })),
     });
+
     await prisma.tenantModuleFeature.createMany({
       data: [
         { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.QUADRO_COMERCIAL },
@@ -133,8 +151,10 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         { moduleKey: 'kanban_universal', featureKey: FLAG_KANBAN },
       ].map((linha) => ({ tenantId, ...linha })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-tempo-real',
@@ -144,6 +164,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     url = await app.listen({ port: 0, host: '127.0.0.1' });
     [vendas, atendimento] = await ok(chamar('GET', '/crm/configuracoes/pipelines'));
     socket = await conectar();
@@ -168,6 +189,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
   describe('aceite do M5', () => {
     it('editar a oportunidade na ficha avisa outra conexão, e o card relido vem certo', async () => {
       const { deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
 
@@ -177,16 +199,19 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       );
+
       await esperarCard(deal.id);
 
       const relido = await ok(
         chamar('POST', `/kanban/quadros/${BOARD}/${vendas.id}/cards/por-ids`, { ids: [deal.id] }),
       );
+
       expect(relido.itens[0]).toMatchObject({
         entidadeId: deal.id,
         colunaRef: 'novo',
         tituloOportunidade: 'Reforma',
       });
+
       expect(relido.ausentes).toEqual([]);
     });
 
@@ -205,6 +230,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const { deal } = await novoLead();
       const cliente = await conectar(operador);
       const avisos = [];
+
       cliente.on('quadro:changed', (evento) => avisos.push(evento));
       expect(await assistir(cliente, vendas.id)).toEqual({ ok: true });
 
@@ -213,17 +239,20 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       );
 
       expect((await assistir(cliente, vendas.id)).ok).toBe(false);
+
       const relido = await chamar(
         'POST',
         `/kanban/quadros/${BOARD}/${vendas.id}/cards/por-ids`,
         { ids: [deal.id] },
         operador,
       );
+
       expect(relido.status).toBe(HTTP_STATUS.NOT_FOUND);
 
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${vendas.id}`, { visivelOperador: true }),
       );
+
       cliente.disconnect();
     });
   });
@@ -235,6 +264,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, { pipelineId: atendimento.id }),
         HTTP_STATUS.CREATED,
       );
+
       await esperarCard(extra.id, atendimento.id);
       recebidos = [];
 
@@ -246,6 +276,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('edição em massa', async () => {
       const { leadId, deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
 
@@ -265,27 +296,32 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           automacao: { ativa: true, origemId: vendas.id },
         }),
       );
+
       const { leadId, deal } = await novoLead();
 
       await ok(chamar('PATCH', `/crm/oportunidades/${deal.id}/status`, { status: 'ganho' }));
 
       const lista = await ok(chamar('GET', `/crm/leads/${leadId}/oportunidades`));
       const criado = lista.find((item) => item.pipelineId === atendimento.id);
+
       await esperarCard(deal.id);
       await esperarCard(criado.id, atendimento.id);
     });
 
     it('arquivar a pessoa: avisa, e o card relido vem em ausentes', async () => {
       const { leadId, deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
 
       await ok(chamar('POST', `/crm/leads/${leadId}/arquivar`));
 
       await esperarCard(deal.id);
+
       const relido = await ok(
         chamar('POST', `/kanban/quadros/${BOARD}/${vendas.id}/cards/por-ids`, { ids: [deal.id] }),
       );
+
       expect(relido).toEqual({ itens: [], ausentes: [deal.id] });
     });
 
@@ -295,6 +331,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         ok(
           chamar('POST', `/kanban/quadros/${BOARD}/${vendas.id}/cards/por-ids`, { ids: [deal.id] }),
         );
+
       await esperarCard(deal.id);
       recebidos = [];
       await ok(chamar('POST', `/crm/oportunidades/${deal.id}/arquivar`));
@@ -315,6 +352,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('mesclar pessoas', async () => {
       const principal = await novoLead();
       const secundario = await novoLead();
+
       await esperarCard(secundario.deal.id);
       recebidos = [];
 
@@ -331,6 +369,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('anonimizar a pessoa', async () => {
       const { leadId, deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
 
@@ -341,6 +380,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('gravação fora deste processo também chega: a fonte é o banco', async () => {
       const { deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
 
@@ -368,8 +408,10 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       REDIS_URL: process.env.KANBAN_TEST_REDIS_URL,
       SOCKET_REDIS_PREFIX: `crm-test:${randomUUID()}`,
     };
+
     // Sem isso, a instância do teste, que não fala com o Redis, drenaria o evento.
     socket.disconnect();
+
     const primeira = await buildApp({ config });
     const segunda = await buildApp({ config });
     const conectarEm = async (instancia) => {
@@ -379,27 +421,35 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         auth: { accessToken: tokenDe() },
         reconnection: false,
       });
+
       await new Promise((resolve, reject) => {
         cliente.once('connect', resolve);
         cliente.once('connect_error', reject);
       });
+
       await assistir(cliente, vendas.id);
+
       return cliente;
     };
     const clientes = [await conectarEm(primeira), await conectarEm(segunda)];
+
     try {
       const avisos = clientes.map((cliente) => {
         const lista = [];
+
         cliente.on('quadro:changed', (evento) => lista.push(...evento.entidadeIds));
+
         return lista;
       });
 
       const { deal } = await novoLead();
 
       const limite = Date.now() + ESPERA_DO_EVENTO_MS;
+
       while (Date.now() < limite && !avisos.every((lista) => lista.includes(deal.id))) {
         await setTimeout(INTERVALO_DE_ESPERA_MS);
       }
+
       expect(avisos.map((lista) => lista.includes(deal.id))).toEqual([true, true]);
     } finally {
       clientes.forEach((cliente) => cliente.disconnect());
@@ -426,6 +476,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const [linha] = await prisma.$queryRaw`
         SELECT processed_at, attempts FROM modulo_crm.crm_event WHERE id = ${id}::uuid
       `;
+
       return linha;
     };
 
@@ -457,8 +508,10 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('evento confirmado sai da fila e é emitido uma vez só', async () => {
       const { deal } = await novoLead();
+
       await esperarCard(deal.id);
       recebidos = [];
+
       const [{ id }] = await gravarEvento(deal.id, 0);
 
       await esperarCard(deal.id);
@@ -490,6 +543,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
   it('sem a flag de quadros, ninguém entra na sala', async () => {
     const cliente = await conectar();
+
     await prisma.tenantModuleFeature.deleteMany({ where: { tenantId, featureKey: FLAG_KANBAN } });
     await invalidarFeatures(tenantId);
 
@@ -498,6 +552,7 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     await prisma.tenantModuleFeature.create({
       data: { tenantId, moduleKey: 'kanban_universal', featureKey: FLAG_KANBAN },
     });
+
     await invalidarFeatures(tenantId);
     cliente.disconnect();
   });
@@ -508,9 +563,11 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     const base = `/kanban/quadros/${BOARD}/${vendas.id}/cards/por-ids`;
 
     const dentro = await ok(chamar('POST', base, { ids: [deal.id], filtros: { busca: marca } }));
+
     expect(dentro.ausentes).toEqual([]);
 
     const fora = await ok(chamar('POST', base, { ids: [deal.id], filtros: { busca: 'outra' } }));
+
     expect(fora).toEqual({ itens: [], ausentes: [deal.id] });
   });
 
@@ -519,9 +576,11 @@ rodar('quadro em tempo real (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     const base = `/kanban/quadros/${BOARD}/${atendimento.id}/cards/por-ids`;
 
     const deOutro = await ok(chamar('POST', base, { ids: [deal.id] }));
+
     expect(deOutro).toEqual({ itens: [], ausentes: [deal.id] });
 
     const invalido = await chamar('POST', base, { ids: ['nao-e-uuid'] });
+
     expect(invalido.status).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });

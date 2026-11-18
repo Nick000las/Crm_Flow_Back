@@ -1,4 +1,9 @@
+/**
+ * @file Valida a estrutura de entrada de realtime, na área de Kanban, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { QUADRO_ENTIDADE } from '../constants.js';
 
 export const socketIdentitySchema = z.object({

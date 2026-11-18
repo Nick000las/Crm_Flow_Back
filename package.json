@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20.11"
+    "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "imports": {
     "#api/*": "./src/api/*",
@@ -17,8 +17,8 @@
     "start": "node src/api/server.js",
     "worker:crm": "node src/workers/crm.worker.js",
     "worker:kanban": "node src/workers/kanban.worker.js",
-    "lint": "eslint .",
-    "check": "pnpm lint && pnpm test",
+    "lint": "eslint . --max-warnings=0 && prettier --check .",
+    "check": "pnpm lint && pnpm test:lint && pnpm test",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls-coverage": "vitest run src/core/db/__tests__/rls-coverage.test.js",
@@ -32,11 +32,12 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "lint:fix": "prettier --write . && eslint . --fix && prettier --write .",
+    "lint:fix": "node tooling/format.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:crm:db": "vitest run db.test --testTimeout=120000 --hookTimeout=120000",
-    "test:kanban:integration": "RUN_KANBAN_INTEGRATION=1 vitest run src/modules/nucleo/kanban-universal/adapters/*.integration.test.js --testTimeout=60000 --hookTimeout=60000"
+    "test:kanban:integration": "RUN_KANBAN_INTEGRATION=1 vitest run src/modules/nucleo/kanban-universal/adapters/*.integration.test.js --testTimeout=60000 --hookTimeout=60000",
+    "test:lint": "node --test tooling/eslint/*.test.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -59,12 +60,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
+    "@stylistic/eslint-plugin": "^6.0.1",
     "eslint": "^9.20.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-boundaries": "^5.0.1",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
     "prettier": "^3.9.10",
     "prisma": "^6.5.0",
     "socket.io-client": "^4.8.4",
+    "sql-formatter": "^15.10.0",
     "vitest": "^3.0.5"
   }
 }

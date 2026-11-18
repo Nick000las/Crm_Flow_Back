@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { proximoDaVez } from '../adapters/crm-rodizio.repository.js';
+import { describe, expect, it } from 'vitest';
+
 import { CAMADA } from '../constants.js';
 import { candidatosAtivos, escolherDestino } from './distribuicao-motor.service.js';
+import { proximoDaVez } from './rodizio.service.js';
 
 const ID_FONTE = '00000000-0000-0000-0000-0000000000f1';
 const ID_SEGMENTO = '00000000-0000-0000-0000-0000000000f2';
@@ -45,10 +46,12 @@ describe('escolherDestino', () => {
       regra({ id: 'r1', condicoes: [doSite], destino_usuario_id: ANA }),
       regra({ id: 'r2', destino_usuario_id: BRUNO }),
     ];
+
     expect(escolherDestino(contexto(regras, { fonteLead: 'site' }))).toMatchObject({
       tipo: 'usuario',
       usuarioId: ANA,
     });
+
     expect(escolherDestino(contexto(regras, { fonteLead: 'indicacao' }))).toMatchObject({
       tipo: 'usuario',
       usuarioId: BRUNO,
@@ -57,11 +60,13 @@ describe('escolherDestino', () => {
 
   it('condições combinadas com E (personalizado pela chave em customFields)', () => {
     const regras = [regra({ condicoes: [doSite, varejo], destino_usuario_id: ANA })];
+
     expect(
       escolherDestino(
         contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Varejo SP' } }),
       ).tipo,
     ).toBe('usuario');
+
     expect(
       escolherDestino(
         contexto(regras, { fonteLead: 'site', customFields: { segmento: 'Indústria' } }),
@@ -71,11 +76,13 @@ describe('escolherDestino', () => {
 
   it('regra desligada não conta; nenhuma casa → fallback', () => {
     const regras = [regra({ ativo: false, destino_usuario_id: ANA })];
+
     expect(escolherDestino(contexto(regras, {}))).toEqual({ tipo: 'fallback' });
   });
 
   it('grupo: candidatos ativos e ordenados (a ordem do rodízio)', () => {
     const regras = [regra({ destino_grupo_id: GRUPO })];
+
     expect(escolherDestino(contexto(regras, {}))).toMatchObject({
       tipo: 'grupo',
       grupoId: GRUPO,
@@ -96,6 +103,7 @@ describe('escolherDestino', () => {
         { ativos: new Set([CARLA]), membrosPorGrupo: new Map([[GRUPO, [BRUNO]]]) },
       ),
     );
+
     expect(destino).toMatchObject({ tipo: 'usuario', usuarioId: CARLA, regra: { id: 'r3' } });
   });
 
@@ -106,6 +114,7 @@ describe('escolherDestino', () => {
         destino_usuario_id: ANA,
       }),
     ];
+
     expect(escolherDestino(contexto(regras, {})).tipo).toBe('fallback');
   });
 });
@@ -120,6 +129,7 @@ describe('rodízio', () => {
 
   it('proximoDaVez: o seguinte ao último, voltando ao início; sem histórico, o primeiro', () => {
     const fila = [ANA, BRUNO, CARLA];
+
     expect(proximoDaVez(fila, null)).toBe(ANA);
     expect(proximoDaVez(fila, ANA)).toBe(BRUNO);
     expect(proximoDaVez(fila, CARLA)).toBe(ANA);

@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS, ROLES } from '#shared/constants/index.js';
+
 import { substituirPermissoesDoPapel } from '../adapters/crm-field-permissions.repository.js';
 import { CAMADA } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
@@ -14,9 +16,11 @@ import {
 } from './permissoes.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
+
 vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
   substituirPermissoesDoPapel: vi.fn(),
 }));
+
 vi.mock('./field-schema.service.js', () => ({
   obterSchemaCampos: vi.fn(),
   invalidarSchemaCampos: vi.fn(),
@@ -52,6 +56,7 @@ const resumo = (chave) => {
   const { id, label, tipo, camada } = /** @type {any} */ (
     CAMPOS.find((campo) => campo.chave === chave)
   );
+
   return { id, chave, label, tipo, camada };
 };
 
@@ -107,6 +112,7 @@ describe('schemaDoPapel', () => {
       ['status', 'edit'],
       ['motivo', 'view'],
     ]);
+
     expect(doOperador.definicoes.map((definicao) => definicao.chave)).toEqual(['motivo']);
   });
 
@@ -174,10 +180,12 @@ describe('salvarPermissoes', () => {
     const resposta = await salvarPermissoes(TENANT, {
       OPERADOR: { [ID.cnpj]: 'hidden', [ID.status]: 'edit', [ID.motivo]: 'view' },
     });
+
     expect(substituirPermissoesDoPapel).toHaveBeenCalledWith(TENANT, 'OPERADOR', [
       { campoId: ID.cnpj, acesso: 'hidden' },
       { campoId: ID.motivo, acesso: 'view' },
     ]);
+
     expect(resposta.campos.find((campo) => campo.chave === 'nome')).toMatchObject({
       podeRestringir: false,
     });
@@ -185,15 +193,19 @@ describe('salvarPermissoes', () => {
 
   it('400: Nome restringido, campo inexistente, e-mail e telefone travados juntos', async () => {
     const invalido = { statusCode: HTTP_STATUS.BAD_REQUEST };
+
     await expect(
       salvarPermissoes(TENANT, { OPERADOR: { [ID.nome]: 'view' } }),
     ).rejects.toMatchObject(invalido);
+
     await expect(
       salvarPermissoes(TENANT, { OPERADOR: { [TENANT]: 'view' } }),
     ).rejects.toMatchObject(invalido);
+
     await expect(
       salvarPermissoes(TENANT, { OPERADOR: { [ID.email]: 'hidden', [ID.telefone]: 'view' } }),
     ).rejects.toMatchObject(invalido);
+
     expect(substituirPermissoesDoPapel).not.toHaveBeenCalled();
   });
 });

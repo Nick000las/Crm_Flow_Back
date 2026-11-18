@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { signAccessToken } from '#core/auth/jwt.js';
 import { loadEnv } from '#core/config/env.js';
@@ -14,6 +15,7 @@ vi.mock('#core/db/tenantClient.js', () => ({
   getTenantClient: vi.fn(),
   disconnectDatabase: vi.fn(),
 }));
+
 vi.mock('#core/notificacoes/notificacoes.js', () => ({
   listarNotificacoes: vi.fn().mockResolvedValue({ itens: [] }),
   marcarComoLida: vi.fn().mockResolvedValue({ id: 'n' }),
@@ -39,6 +41,7 @@ beforeAll(async () => {
     }),
     logger: false,
   });
+
   token = signAccessToken(app, { tenantId: TENANT, userId: USUARIO, role: 'OPERADOR' });
 });
 
@@ -51,6 +54,7 @@ const autorizado = () => ({ authorization: `Bearer ${token}` });
 describe('/notificacoes', () => {
   it('sem token → 401', async () => {
     const resposta = await app.inject({ method: 'GET', url: '/notificacoes' });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
     expect(listarNotificacoes).not.toHaveBeenCalled();
   });
@@ -61,7 +65,9 @@ describe('/notificacoes', () => {
       url: `/notificacoes?pagina=${PAGINA}&tamanho=${TAMANHO}`,
       headers: autorizado(),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(listarNotificacoes).toHaveBeenCalledWith(TENANT, USUARIO, {
       pagina: PAGINA,
       tamanho: TAMANHO,
@@ -74,6 +80,7 @@ describe('/notificacoes', () => {
       url: '/notificacoes/abc/lida',
       headers: autorizado(),
     });
+
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
 
     await app.inject({
@@ -81,6 +88,7 @@ describe('/notificacoes', () => {
       url: `/notificacoes/${NOTIFICACAO}/lida`,
       headers: autorizado(),
     });
+
     expect(marcarComoLida).toHaveBeenCalledWith(TENANT, USUARIO, NOTIFICACAO);
 
     const todas = await app.inject({
@@ -88,6 +96,7 @@ describe('/notificacoes', () => {
       url: '/notificacoes/lidas',
       headers: autorizado(),
     });
+
     expect(todas.json().data).toEqual({ marcadas: 0 });
     expect(marcarTodasComoLidas).toHaveBeenCalledWith(TENANT, USUARIO);
   });

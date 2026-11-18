@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CRM_FEATURES, LIMITES_OPORTUNIDADE, MODULO_CRM, PIPELINES } from '../constants.js';
 import {
   atualizarConfiguracaoCampo,
@@ -47,12 +50,16 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const operador = { papel: 'OPERADOR', userId: operadorId };
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
 
@@ -68,6 +75,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
   const pipelines = () => ok(chamar('GET', '/crm/configuracoes/pipelines'));
   const ligarCampos = async (chaves) => {
     const campos = await listarConfiguracaoCampos(tenantId);
+
     for (const chave of chaves) {
       await atualizarConfiguracaoCampo(tenantId, campos.find((c) => c.chave === chave).id, {
         visibilidade: { create_form: true, detail: true, table: true, filter: true },
@@ -83,6 +91,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         subdomain: `smoke-apiop-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -96,7 +105,9 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         role,
       })),
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.PERMISSOES, CRM_FEATURES.LISTAS].map((featureKey) => ({
         tenantId,
@@ -104,9 +115,11 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
     await ligarCampos(['motivoPerda', 'probabilidadeFechamento', 'dataPrevistaFechamento']);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-oportunidades',
@@ -116,6 +129,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     [vendas, atendimento] = await pipelines();
   });
 
@@ -130,6 +144,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
   describe('aceite do M2.5', () => {
     it('uma pessoa com duas oportunidades em pipelines diferentes, cada uma com seu status', async () => {
       const leadId = await novoLead();
+
       await ok(
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
           pipelineId: atendimento.id,
@@ -139,6 +154,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       );
 
       const lista = await oportunidades(leadId);
+
       expect(lista.map((deal) => [deal.pipelineId, deal.status]).sort()).toEqual(
         [
           [vendas.id, 'novo'],
@@ -152,11 +168,13 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       const [venda] = await oportunidades(leadId);
       const ganhar = () =>
         ok(chamar('PATCH', `/crm/oportunidades/${venda.id}/status`, { status: 'ganho' }));
+
       await ganhar();
       await ok(chamar('PATCH', `/crm/oportunidades/${venda.id}/status`, { status: 'novo' }));
       await ganhar();
 
       const lista = await oportunidades(leadId);
+
       expect(lista.filter((deal) => deal.pipelineId === atendimento.id)).toHaveLength(1);
     });
 
@@ -166,11 +184,14 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
           automacao: { ativa: false },
         }),
       );
+
       const leadId = await novoLead();
       const [venda] = await oportunidades(leadId);
+
       await ok(chamar('PATCH', `/crm/oportunidades/${venda.id}/status`, { status: 'ganho' }));
 
       expect(await oportunidades(leadId)).toHaveLength(1);
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${atendimento.id}`, {
           automacao: { ativa: true },
@@ -180,23 +201,28 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
 
     it('tenant com 5 pipelines não cria o sexto, e o que sobra pode ser excluído', async () => {
       const criados = [];
+
       for (let total = DUAS; total < PIPELINES.LIMITE_POR_TENANT; total += 1) {
         const criado = await ok(
           chamar('POST', '/crm/configuracoes/pipelines', { nome: `Extra ${total}`, tipo: 'sales' }),
           HTTP_STATUS.CREATED,
         );
+
         criados.push(criado);
       }
+
       const sexto = await chamar('POST', '/crm/configuracoes/pipelines', {
         nome: 'Sexto',
         tipo: 'sales',
       });
+
       expect(sexto.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(sexto.corpo.error.fields).toHaveProperty('pipeline');
 
       for (const { id } of criados) {
         await ok(chamar('DELETE', `/crm/configuracoes/pipelines/${id}`));
       }
+
       expect(await pipelines()).toHaveLength(DUAS);
     });
   });
@@ -208,6 +234,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
 
     it('operador lê, mas não escreve', async () => {
       await ok(chamar('GET', '/crm/configuracoes/pipelines', undefined, operador));
+
       const escritas = await Promise.all([
         chamar('POST', '/crm/configuracoes/pipelines', { nome: 'X', tipo: 'sales' }, operador),
         chamar('PUT', `/crm/configuracoes/pipelines/${vendas.id}`, { nome: 'X' }, operador),
@@ -219,15 +246,21 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
           operador,
         ),
       ]);
-      for (const { status } of escritas) expect(status).toBe(HTTP_STATUS.FORBIDDEN);
+
+      for (const { status } of escritas) {
+        expect(status).toBe(HTTP_STATUS.FORBIDDEN);
+      }
     });
 
     it('a lista traz status, usos, oportunidades e automação', async () => {
       await novoLead();
+
       const [padrao, service] = await pipelines();
+
       expect(padrao).toMatchObject({ padrao: true, tipo: 'sales' });
       expect(padrao.oportunidades).toBeGreaterThan(0);
       expect(padrao.status.find((opcao) => opcao.key === 'novo').usos).toBeGreaterThan(0);
+
       expect(service.automacao).toMatchObject({
         ativa: true,
         origemId: vendas.id,
@@ -243,21 +276,26 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, { pipelineId: novo.id }),
         HTTP_STATUS.CREATED,
       );
+
       expect(deal.status).toBe('novo');
 
       const com = await excluir(novo.id);
+
       expect(com.status).toBe(HTTP_STATUS.CONFLICT);
     });
 
     it('não exclui o padrão, nem a origem de uma automação', async () => {
       expect((await excluir(vendas.id)).status).toBe(HTTP_STATUS.CONFLICT);
+
       const origem = await criar('sales', 'Origem');
       const destino = await criar('service', 'Destino');
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${destino.id}`, {
           automacao: { ativa: true, origemId: origem.id, statusInicial: 'aguardando' },
         }),
       );
+
       expect((await excluir(origem.id)).status).toBe(HTTP_STATUS.CONFLICT);
 
       await ok(excluir(destino.id));
@@ -268,14 +306,18 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       const desativar = await chamar('PUT', `/crm/configuracoes/pipelines/${vendas.id}`, {
         ativo: false,
       });
+
       expect(desativar.status).toBe(HTTP_STATUS.CONFLICT);
 
       const inativo = await criar('sales', 'Inativo');
+
       await ok(chamar('PUT', `/crm/configuracoes/pipelines/${inativo.id}`, { ativo: false }));
+
       const leadId = await novoLead();
       const nova = await chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
         pipelineId: inativo.id,
       });
+
       expect(nova.status).toBe(HTTP_STATUS.BAD_REQUEST);
       await ok(excluir(inativo.id));
     });
@@ -289,8 +331,10 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         [atendimento.id, { regraDoDono: 'specific_user' }, 'automacao.donoId'],
         [vendas.id, { ativa: true }, 'automacao'],
       ];
+
       for (const [id, automacao, campo] of casos) {
         const resposta = await put(id, automacao);
+
         expect(resposta.status, campo).toBe(HTTP_STATUS.BAD_REQUEST);
         expect(resposta.corpo.error.fields).toHaveProperty([campo]);
       }
@@ -302,13 +346,18 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
           automacao: { regraDoDono: 'specific_user', donoId: operadorId },
         }),
       );
+
       const leadId = await novoLead();
       const [venda] = await oportunidades(leadId);
+
       await ok(chamar('PATCH', `/crm/oportunidades/${venda.id}/status`, { status: 'ganho' }));
+
       const criado = (await oportunidades(leadId)).find(
         (deal) => deal.pipelineId === atendimento.id,
       );
+
       expect(criado.responsavelId).toBe(operadorId);
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${atendimento.id}`, {
           automacao: { regraDoDono: 'person_owner' },
@@ -322,6 +371,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       const perdidoDoOutro = deOutro.status.find((opcao) => opcao.key === 'perdido');
       const leadId = await novoLead();
       const [venda] = await oportunidades(leadId);
+
       await ok(
         chamar('PATCH', `/crm/oportunidades/${venda.id}/status`, {
           status: 'perdido',
@@ -331,6 +381,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
 
       // "perdido" está em uso em Vendas, não neste pipeline: aqui ele sai sem bloqueio.
       expect(perdidoDoOutro.usos).toBe(0);
+
       const extra = await ok(
         chamar('POST', `/crm/configuracoes/pipelines/${outro.id}/status`, {
           label: 'Perda 2',
@@ -338,6 +389,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         }),
         HTTP_STATUS.CREATED,
       );
+
       await ok(
         chamar('DELETE', `/crm/configuracoes/pipelines/${outro.id}/status/${perdidoDoOutro.id}`),
       );
@@ -349,6 +401,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       const reordenada = await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${outro.id}/status/ordem`, { ids: ordem }),
       );
+
       expect(reordenada.map((opcao) => opcao.id)).toEqual(ordem);
       expect(ordem).toContain(extra.id);
       await ok(excluir(outro.id));
@@ -363,6 +416,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         `/crm/configuracoes/pipelines/${novo.id}/status/${unico.id}`,
         { ativo: false },
       );
+
       expect(resposta.status).toBe(HTTP_STATUS.CONFLICT);
       await ok(excluir(novo.id));
     });
@@ -374,6 +428,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         `/crm/configuracoes/pipelines/${vendas.id}/status/${deAtendimento.id}`,
         { label: 'Invadido' },
       );
+
       expect(resposta.status).toBe(HTTP_STATUS.NOT_FOUND);
     });
   });
@@ -389,12 +444,14 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       );
+
       expect(editado).toMatchObject({ valor: VALOR, titulo: 'Projeto' });
 
       const velho = await chamar('PUT', `/crm/oportunidades/${deal.id}`, {
         valor: 1,
         expectedUpdatedAt: deal.atualizadaEm,
       });
+
       expect(velho.status).toBe(HTTP_STATUS.CONFLICT);
       expect(velho.corpo.error.details.atual).toMatchObject({ id: deal.id, valor: VALOR });
     });
@@ -402,24 +459,28 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
     it('editar sem a versão é 400', async () => {
       const [deal] = await oportunidades(await novoLead());
       const resposta = await chamar('PUT', `/crm/oportunidades/${deal.id}`, { valor: VALOR });
+
       expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(resposta.corpo.error.fields).toHaveProperty('expectedUpdatedAt');
     });
 
     it('mudar status com versão velha grava e avisa', async () => {
       const [deal] = await oportunidades(await novoLead());
+
       await ok(
         chamar('PUT', `/crm/oportunidades/${deal.id}`, {
           valor: VALOR,
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       );
+
       const movida = await ok(
         chamar('PATCH', `/crm/oportunidades/${deal.id}/status`, {
           status: 'proposta',
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       );
+
       expect(movida).toMatchObject({ status: 'proposta', conflito: true });
     });
 
@@ -434,6 +495,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       ];
+
       for (const { status } of await Promise.all(casos)) {
         expect(status).toBe(HTTP_STATUS.BAD_REQUEST);
       }
@@ -441,10 +503,13 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
 
     it('lead ou oportunidade que não existem: 404', async () => {
       const id = randomUUID();
+
       expect((await chamar('GET', `/crm/leads/${id}/oportunidades`)).status).toBe(
         HTTP_STATUS.NOT_FOUND,
       );
+
       const status = await chamar('PATCH', `/crm/oportunidades/${id}/status`, { status: 'novo' });
+
       expect(status.status).toBe(HTTP_STATUS.NOT_FOUND);
     });
 
@@ -458,6 +523,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         payload: { status: 'ganho' },
         headers: { authorization: `Bearer ${token}` },
       });
+
       expect(resposta.statusCode).not.toBe(HTTP_STATUS.OK);
       expect((await oportunidades(deal.leadId))[0].status).toBe('novo');
     });
@@ -467,6 +533,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
     it('oculto não sai, e "só ver" no payload é 403', async () => {
       const campos = await ok(chamar('GET', '/crm/configuracoes/permissoes'));
       const id = (chave) => campos.campos.find((campo) => campo.chave === chave).id;
+
       await ok(
         chamar('PUT', '/crm/configuracoes/permissoes', {
           OPERADOR: {
@@ -478,6 +545,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
 
       const leadId = await novoLead();
       const [deal] = await oportunidades(leadId);
+
       await ok(
         chamar('PUT', `/crm/oportunidades/${deal.id}`, {
           probabilidadeFechamento: PROBABILIDADE,
@@ -486,6 +554,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
       );
 
       const [visto] = await oportunidades(leadId, operador);
+
       expect(visto).not.toHaveProperty('motivoPerda');
       expect(visto.probabilidadeFechamento).toBe(PROBABILIDADE);
 
@@ -495,6 +564,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         { probabilidadeFechamento: 1, expectedUpdatedAt: visto.atualizadaEm },
         operador,
       );
+
       expect(escrita.status).toBe(HTTP_STATUS.FORBIDDEN);
       expect(escrita.corpo.error.fields).toHaveProperty('probabilidadeFechamento');
 
@@ -504,6 +574,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         { probabilidadeFechamento: 1 },
         operador,
       );
+
       expect(criar.status).toBe(HTTP_STATUS.FORBIDDEN);
 
       const mover = await chamar(
@@ -512,6 +583,7 @@ rodar('API de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS
         { status: 'proposta' },
         operador,
       );
+
       expect(mover.status, JSON.stringify(mover.corpo)).toBe(HTTP_STATUS.OK);
       expect(mover.dados).not.toHaveProperty('motivoPerda');
 

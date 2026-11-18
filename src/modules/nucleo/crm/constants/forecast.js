@@ -1,4 +1,7 @@
 /**
+ * @file Casas da razão realizado / previsto.
+ */
+/**
  * Forecast (FC1–FC3, docs/produto/crm-forecast.md).
  */
 

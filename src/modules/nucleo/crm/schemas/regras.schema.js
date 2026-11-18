@@ -1,4 +1,9 @@
+/**
+ * @file Valida a estrutura de entrada de regras, na área de CRM, antes da execução dos casos de
+ * uso.
+ */
 import { z } from 'zod';
+
 import { FILTRO_OPERADORES, LISTA_CATEGORIAS_STATUS, LISTA_TIPOS_REGRA } from '../constants.js';
 
 // Regras de campo (M8). Forma só: se o campo existe, se o operador serve

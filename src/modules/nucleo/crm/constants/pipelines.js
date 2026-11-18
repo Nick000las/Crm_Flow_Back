@@ -1,3 +1,7 @@
+/**
+ * @file Lista inicial do pipeline Atendimento. O primeiro é onde o card nasce quando a venda é
+ * ganha (`auto_create_initial_status`). O dono edita em Configurações.
+ */
 import { CATEGORIAS_STATUS } from './listas.js';
 
 /** `crm_pipeline.type`. */

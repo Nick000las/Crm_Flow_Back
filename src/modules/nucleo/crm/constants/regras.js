@@ -1,4 +1,9 @@
 /**
+ * @file Regras de obrigatoriedade por status e condicionais (M8,
+ * `docs/produto/crm-pessoas-e-campos.md`). O "sempre obrigatório" é o `obrigatorio` do campo
+ * (M2), não uma regra.
+ */
+/**
  * Regras de obrigatoriedade por status e condicionais (M8,
  * `docs/produto/crm-pessoas-e-campos.md`). O "sempre obrigatório" é o
  * `obrigatorio` do campo (M2), não uma regra.

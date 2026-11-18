@@ -1,7 +1,13 @@
-import { anonimizarFormulariosDasPessoas } from './crm-form-ciclo.repository.js';
+/**
+ * @file ADAPTER: base legal LGPD (M15, migration 0028) — a configuração do tenant e a
+ * anonimização do lead (pedido do titular).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { ANONIMIZACAO, EVENTOS_PESSOA, TIPOS_EVENTO_LEAD } from '../constants.js';
+import { anonimizarFormulariosDasPessoas } from './crm-form-ciclo.repository.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
 import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 
@@ -23,7 +29,12 @@ const FIRST_RESULT_INDEX = 0;
 export function buscarConfigLgpd(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT base_legal_padrao FROM modulo_crm.crm_lgpd_config WHERE tenant_id = ${tenantId}::uuid
+      SELECT
+        base_legal_padrao
+      FROM
+        modulo_crm.crm_lgpd_config
+      WHERE
+        tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
   );
 }
@@ -36,9 +47,14 @@ export function salvarConfigLgpd(tenantId, { basePadrao }) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_lgpd_config (tenant_id, base_legal_padrao)
-      VALUES (${tenantId}::uuid, ${basePadrao})
-      ON CONFLICT (tenant_id) DO UPDATE SET base_legal_padrao = EXCLUDED.base_legal_padrao, updated_at = now()
+      INSERT INTO
+        modulo_crm.crm_lgpd_config (tenant_id, base_legal_padrao)
+      VALUES
+        (${tenantId}::uuid, ${basePadrao})
+      ON CONFLICT (tenant_id) DO UPDATE
+      SET
+        base_legal_padrao = EXCLUDED.base_legal_padrao,
+        updated_at = now()
     `,
   );
 }
@@ -54,8 +70,13 @@ export function salvarConfigLgpd(tenantId, { basePadrao }) {
 export function buscarSituacaoLgpd(tenantId, leadId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT (anonimizado_em IS NOT NULL) AS anonimizado FROM modulo_crm.leads
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
+      SELECT
+        (anonimizado_em IS NOT NULL) AS anonimizado
+      FROM
+        modulo_crm.leads
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
   );
 }
@@ -92,33 +113,67 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
 
   return getTenantClient(tenantId, async (tx) => {
     const linhas = await tx.$queryRaw`
-      WITH RECURSIVE mesma_pessoa AS (
-        SELECT id FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid AND id = ${leadId}::uuid
-        UNION ALL
-        SELECT l.id FROM modulo_crm.leads l
-        JOIN mesma_pessoa p ON l.mesclado_em_id = p.id
-        WHERE l.tenant_id = ${tenantId}::uuid
-      )
-      SELECT l.id::text FROM modulo_crm.leads l
-      JOIN mesma_pessoa p ON p.id = l.id
-      WHERE l.tenant_id = ${tenantId}::uuid AND l.anonimizado_em IS NULL
-      FOR UPDATE OF l
+      WITH RECURSIVE
+        mesma_pessoa AS (
+          SELECT
+            id
+          FROM
+            modulo_crm.leads
+          WHERE
+            tenant_id = ${tenantId}::uuid
+            AND id = ${leadId}::uuid
+          UNION ALL
+          SELECT
+            l.id
+          FROM
+            modulo_crm.leads l
+            JOIN mesma_pessoa p ON l.mesclado_em_id = p.id
+          WHERE
+            l.tenant_id = ${tenantId}::uuid
+        )
+      SELECT
+        l.id::text
+      FROM
+        modulo_crm.leads l
+        JOIN mesma_pessoa p ON p.id = l.id
+      WHERE
+        l.tenant_id = ${tenantId}::uuid
+        AND l.anonimizado_em IS NULL
+      FOR UPDATE OF
+        l
     `;
     const ids = linhas.map((linha) => linha.id);
-    if (!ids.includes(leadId)) return null;
 
-    await tx.$queryRaw`SELECT set_config(${GUC}, 'on', true)`;
+    if (!ids.includes(leadId)) {
+      return null;
+    }
+
+    await tx.$queryRaw`
+      SELECT
+        set_config(${GUC}, 'on', TRUE)
+    `;
 
     await tx.$executeRaw`
       UPDATE modulo_crm.leads
-      SET nome = ${NOME}, ${limpar},
+      SET
+        nome = ${NOME},
+        ${limpar},
         custom_fields = COALESCE(
-          (SELECT jsonb_object_agg(e.chave, e.valor) FROM jsonb_each(custom_fields) AS e(chave, valor)
-           WHERE e.chave = ANY(${mantidos}::text[])),
+          (
+            SELECT
+              jsonb_object_agg(e.chave, e.valor)
+            FROM
+              jsonb_each(custom_fields) AS e (chave, valor)
+            WHERE
+              e.chave = ANY (${mantidos}::TEXT[])
+          ),
           '{}'::jsonb
         ),
-        anonimizado_em = now(), updated_at = now()
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
+        anonimizado_em = now(),
+        updated_at = now()
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ANY (${ids}::UUID[])
     `;
 
     // FM6: links revogados, respostas sem valores e alertas apagados.
@@ -126,58 +181,93 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
 
     const atividades = await tx.$executeRaw`
       UPDATE modulo_crm.crm_activity
-      SET titulo = ${TITULO_ATIVIDADE}, notas = NULL, updated_at = now()
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ANY(${ids}::uuid[])
+      SET
+        titulo = ${TITULO_ATIVIDADE},
+        notas = NULL,
+        updated_at = now()
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ANY (${ids}::UUID[])
     `;
 
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_deal SET title = NULL
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ANY(${ids}::uuid[]) AND title IS NOT NULL
+      UPDATE modulo_crm.crm_deal
+      SET
+        title = NULL
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ANY (${ids}::UUID[])
+        AND title IS NOT NULL
     `;
 
     // Entrada do diff: `{ campo, campoId?, antes, depois }` — personalizado
     // tem `campo = 'customFields'` e o id do campo em `campoId`.
     const eventos = await tx.$executeRaw`
       UPDATE modulo_crm.crm_lead_event
-      SET diff = COALESCE(
-          (SELECT jsonb_agg(
-             CASE
-               WHEN x.item->>'campo' = ANY(${[...CHAVES_PII]}::text[])
-                 OR (x.item->>'campo' = 'customFields'
-                     AND NOT COALESCE(x.item->>'campoId' = ANY(${mantidos}::text[]), false))
-               THEN x.item || '{"antes": null, "depois": null}'::jsonb
-               ELSE x.item
-             END ORDER BY x.ordem)
-           FROM jsonb_array_elements(diff) WITH ORDINALITY AS x(item, ordem)),
+      SET
+        diff = COALESCE(
+          (
+            SELECT
+              jsonb_agg(
+                CASE
+                  WHEN x.item ->> 'campo' = ANY (${[...CHAVES_PII]}::TEXT[])
+                  OR (
+                    x.item ->> 'campo' = 'customFields'
+                    AND NOT COALESCE(x.item ->> 'campoId' = ANY (${mantidos}::TEXT[]), FALSE)
+                  ) THEN x.item || '{"antes": null, "depois": null}'::jsonb
+                  ELSE x.item
+                END
+                ORDER BY
+                  x.ordem
+              )
+            FROM
+              jsonb_array_elements(diff) WITH ORDINALITY AS x (item, ordem)
+          ),
           '[]'::jsonb
         ),
-        detalhes = detalhes - ${[...DETALHES_PII]}::text[]
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ANY(${ids}::uuid[])
+        detalhes = detalhes - ${[...DETALHES_PII]}::TEXT[]
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ANY (${ids}::UUID[])
     `;
+
     // Mesclagem num lead que não é este: o evento de lá guarda o nome do descartado.
     await tx.$executeRaw`
       UPDATE modulo_crm.crm_lead_event
-      SET detalhes = detalhes - ${[...DETALHES_PII]}::text[]
-      WHERE tenant_id = ${tenantId}::uuid AND NOT (lead_id = ANY(${ids}::uuid[]))
-        AND detalhes->>'leadDescartadoId' = ANY(${ids}::text[])
+      SET
+        detalhes = detalhes - ${[...DETALHES_PII]}::TEXT[]
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND NOT (lead_id = ANY (${ids}::UUID[]))
+        AND detalhes ->> 'leadDescartadoId' = ANY (${ids}::TEXT[])
     `;
 
     const resumo = { leads: ids.length, atividades, eventos };
+
     for (const id of ids) {
       await publicarEventoDaPessoa(tx, tenantId, id, EVENTOS_PESSOA.ANONIMIZADA);
     }
+
     await inserirEvento(tx, tenantId, leadId, {
       tipo: TIPOS_EVENTO_LEAD.ANONIMIZADO,
       autorId,
       detalhes: resumo,
     });
+
     await tx.$executeRaw`
-      INSERT INTO audit_log (tenant_id, usuario_id, acao, entidade, entidade_id, detalhes)
-      VALUES (
-        ${tenantId}::uuid, ${autorId}::uuid, ${ANONIMIZACAO.ACAO_AUDITORIA}, ${ANONIMIZACAO.ENTIDADE_AUDITORIA},
-        ${leadId}::uuid, ${JSON.stringify(resumo)}::jsonb
-      )
+      INSERT INTO
+        audit_log (tenant_id, usuario_id, acao, entidade, entidade_id, detalhes)
+      VALUES
+        (
+          ${tenantId}::uuid,
+          ${autorId}::uuid,
+          ${ANONIMIZACAO.ACAO_AUDITORIA},
+          ${ANONIMIZACAO.ENTIDADE_AUDITORIA},
+          ${leadId}::uuid,
+          ${JSON.stringify(resumo)}::jsonb
+        )
     `;
+
     return resumo;
   });
 }

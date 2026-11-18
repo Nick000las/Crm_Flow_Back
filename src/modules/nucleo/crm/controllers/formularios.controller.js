@@ -1,9 +1,14 @@
+/**
+ * @file CONTROLLER: Configurações → Formulários (FM1).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import {
+  alertaParamSchema,
   criarFormularioBodySchema,
   criarLinkBodySchema,
   editarFormularioBodySchema,
@@ -12,17 +17,16 @@ import {
   linkDoFormularioParamSchema,
   linkParamSchema,
   listarAlertasQuerySchema,
-  alertaParamSchema,
   respostaParamSchema,
   versaoParamSchema,
 } from '../schemas/formularios.schema.js';
+import { listarAlertasDaPessoa, marcarVisto } from '../services/formulario-alertas.service.js';
 import {
   criarLinkDoFormulario,
   listarFormulariosDisponiveis,
   listarLinksDaPessoa,
   revogarLink,
 } from '../services/formulario-links.service.js';
-import { listarAlertasDaPessoa, marcarVisto } from '../services/formulario-alertas.service.js';
 import {
   listarRespostasDaPessoa,
   obterResposta,
@@ -53,23 +57,27 @@ export function registrarRotasFormularios(app) {
 
   app.get(base, gestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarFormularios(tenantId));
   });
 
   app.get(`${base}/campos-elegiveis`, gestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarCamposElegiveis(tenantId));
   });
 
   app.post(base, gestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const dados = criarFormularioBodySchema.parse(req.body);
+
     return sendSuccess(reply, await criarFormulario(tenantId, dados), HTTP_STATUS.CREATED);
   });
 
   app.get(`${base}/:id`, gestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id } = formularioParamSchema.parse(req.params);
+
     return sendSuccess(reply, await obterFormulario(tenantId, id));
   });
 
@@ -77,18 +85,21 @@ export function registrarRotasFormularios(app) {
     const { tenantId } = req.tenantContext;
     const { id } = formularioParamSchema.parse(req.params);
     const mudancas = editarFormularioBodySchema.parse(req.body);
+
     return sendSuccess(reply, await editarFormulario(tenantId, id, mudancas));
   });
 
   app.post(`${base}/:id/publicar`, gestao, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const { id } = formularioParamSchema.parse(req.params);
+
     return sendSuccess(reply, await publicarFormulario(tenantId, id, userId), HTTP_STATUS.CREATED);
   });
 
   app.get(`${base}/:id/versoes/:versaoId`, gestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id, versaoId } = versaoParamSchema.parse(req.params);
+
     return sendSuccess(reply, await obterVersao(tenantId, id, versaoId));
   });
 
@@ -96,12 +107,14 @@ export function registrarRotasFormularios(app) {
 
   app.get('/crm/formularios/disponiveis', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarFormulariosDisponiveis(tenantId));
   });
 
   app.get('/crm/leads/:id/formularios', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id } = leadDoFormularioParamSchema.parse(req.params);
+
     return sendSuccess(reply, await listarLinksDaPessoa(tenantId, id));
   });
 
@@ -113,12 +126,14 @@ export function registrarRotasFormularios(app) {
       oportunidadeId,
       usuarioId: userId,
     });
+
     return sendSuccess(reply, resultado, resultado.criado ? HTTP_STATUS.CREATED : HTTP_STATUS.OK);
   });
 
   app.post('/crm/leads/:id/formularios/links/:linkId/revogar', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id, linkId } = linkParamSchema.parse(req.params);
+
     return sendSuccess(reply, await revogarLink(tenantId, id, linkId));
   });
 
@@ -126,6 +141,7 @@ export function registrarRotasFormularios(app) {
   app.get('/crm/leads/:id/formularios/respostas', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id } = leadDoFormularioParamSchema.parse(req.params);
+
     return sendSuccess(reply, await listarRespostasDaPessoa(tenantId, id));
   });
 
@@ -134,18 +150,21 @@ export function registrarRotasFormularios(app) {
     const { tenantId, userId, role } = req.tenantContext;
     const { id } = leadDoFormularioParamSchema.parse(req.params);
     const opcoes = listarAlertasQuerySchema.parse(req.query ?? {});
+
     return sendSuccess(reply, await listarAlertasDaPessoa(tenantId, id, { userId, role }, opcoes));
   });
 
   app.post('/crm/leads/:id/formularios/alertas/:alertaId/visto', comFlag, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const { id, alertaId } = alertaParamSchema.parse(req.params);
+
     return sendSuccess(reply, await marcarVisto(tenantId, id, alertaId, userId));
   });
 
   app.get('/crm/leads/:id/formularios/respostas/:respostaId', comFlag, async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const { id, respostaId } = respostaParamSchema.parse(req.params);
+
     return sendSuccess(reply, await obterResposta(tenantId, id, respostaId, role));
   });
 }

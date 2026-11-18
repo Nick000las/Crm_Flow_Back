@@ -1,12 +1,17 @@
+/**
+ * @file SERVICE: arquivo e lixeira do lead (M5,
+ * `docs/produto/crm-historico-arquivo-e-lgpd.md`).
+ */
 import { erroDeConflito, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { listarTenantsDoModulo } from '#core/tenant/module-access.js';
+
 import {
   definirArquivamento,
   moverParaLixeira,
   purgarLixeira,
   restaurarDaLixeira,
 } from '../adapters/leads.repository.js';
-import { agendarPurgaDiaria } from '../adapters/manutencao-queue.repository.js';
+import { agendarPurgaDiaria } from '../adapters/manutencao-queue.adapter.js';
 import { MODULO_CRM } from '../constants.js';
 import { dataDaPurga, inicioDaLixeira } from './lead-filter.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
@@ -35,6 +40,7 @@ export async function arquivarLead(tenantId, leadId, usuarioId, acesso = {}) {
   if (!(await definirArquivamento(tenantId, leadId, true, { autorId: usuarioId ?? null }))) {
     throw leadNaoEncontrado();
   }
+
   return buscarLeadFormatado(tenantId, leadId, acesso);
 }
 
@@ -48,6 +54,7 @@ export async function desarquivarLead(tenantId, leadId, usuarioId, acesso = {}) 
   if (!(await definirArquivamento(tenantId, leadId, false, { autorId: usuarioId ?? null }))) {
     throw leadNaoEncontrado();
   }
+
   return buscarLeadFormatado(tenantId, leadId, acesso);
 }
 
@@ -61,7 +68,11 @@ export async function desarquivarLead(tenantId, leadId, usuarioId, acesso = {}) 
  */
 export async function excluirLead(tenantId, leadId, usuarioId) {
   const excluido = await moverParaLixeira(tenantId, leadId, { autorId: usuarioId ?? null });
-  if (!excluido) throw leadNaoEncontrado();
+
+  if (!excluido) {
+    throw leadNaoEncontrado();
+  }
+
   return { removido: true, purgaEm: dataDaPurga(excluido.deleted_at) };
 }
 
@@ -82,7 +93,11 @@ export async function restaurarLead(
 ) {
   const historico = { autorId: usuarioId ?? null };
   const restaurado = await restaurarDaLixeira(tenantId, leadId, inicioDaLixeira(agora), historico);
-  if (!restaurado) throw leadNaoEncontrado();
+
+  if (!restaurado) {
+    throw leadNaoEncontrado();
+  }
+
   // Descartado numa mesclagem (M7): dados e histórico já estão no outro lead.
   if (restaurado.mescladoEmId) {
     throw erroDeConflito(
@@ -90,6 +105,7 @@ export async function restaurarLead(
       `Este lead foi mesclado no lead ${restaurado.mescladoEmId} e não pode ser restaurado`,
     );
   }
+
   return buscarLeadFormatado(tenantId, leadId, { papel });
 }
 
@@ -116,6 +132,7 @@ export async function purgarLixeiras(agora = new Date()) {
       });
     }
   }
+
   return relatorio;
 }
 

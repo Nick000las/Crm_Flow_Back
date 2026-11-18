@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   buscarOportunidadesParaEventos,
   reservarEventos,
@@ -30,6 +31,7 @@ beforeEach(() => {
 describe('drenarEventos', () => {
   it('oportunidade vira aviso no quadro do pipeline dela', async () => {
     reservarEventos.mockResolvedValue([evento('e1', 'deal', 'd1', { pipelineId: 'p1' })]);
+
     expect(await drenarEventos(LIMITE)).toEqual({
       ids: ['e1'],
       eventos: [{ tenantId: TENANT, quadroRef: 'p1', entidadeId: 'd1' }],
@@ -38,10 +40,12 @@ describe('drenarEventos', () => {
 
   it('pessoa vira aviso em cada card dela', async () => {
     reservarEventos.mockResolvedValue([evento('e1', 'person', 'l1')]);
+
     buscarOportunidadesParaEventos.mockResolvedValue([
       { tenant_id: TENANT, pipeline_id: 'p1', id: 'd1' },
       { tenant_id: TENANT, pipeline_id: 'p2', id: 'd2' },
     ]);
+
     expect((await drenarEventos(LIMITE)).eventos).toEqual([
       { tenantId: TENANT, quadroRef: 'p1', entidadeId: 'd1' },
       { tenantId: TENANT, quadroRef: 'p2', entidadeId: 'd2' },
@@ -53,6 +57,7 @@ describe('drenarEventos', () => {
       evento('e1', 'form_link', 'f1'),
       evento('e2', 'deal', 'd1', { pipelineId: 'p1' }),
     ]);
+
     expect(await drenarEventos(LIMITE)).toEqual({
       ids: ['e1', 'e2'],
       eventos: [{ tenantId: TENANT, quadroRef: 'p1', entidadeId: 'd1' }],

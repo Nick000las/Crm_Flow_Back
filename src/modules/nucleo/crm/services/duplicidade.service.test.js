@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   buscarCandidatos,
   buscarCandidatosEmLote,
@@ -17,6 +19,7 @@ import {
 import { chaveDocumento, chaveEmail, chaveTelefone } from './tipos-campo.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn().mockResolvedValue(true) }));
+
 vi.mock('../adapters/crm-duplicates.repository.js', () => ({
   buscarRegras: vi.fn(),
   buscarCandidatos: vi.fn(),
@@ -77,12 +80,15 @@ describe('regras', () => {
 
   it('gravadas vencem o padrão; import sem a flag usa o padrão', async () => {
     buscarRegras.mockResolvedValue([{ campo: 'cnpj', acao: 'block', ativo: true }]);
+
     const { regras, configurado } = await obterRegras(TENANT);
+
     expect(regras.find((regra) => regra.campo === 'cnpj')).toEqual({
       campo: 'cnpj',
       acao: 'block',
       ativo: true,
     });
+
     expect(configurado).toBe(true);
 
     featureAtiva.mockResolvedValueOnce(false);
@@ -100,6 +106,7 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
       { email: ' ANA@x.com', telefone: '(11) 98765-4321' },
       { ignorarId: 'eu' },
     );
+
     expect(buscarCandidatos).toHaveBeenCalledWith(
       TENANT,
       { email: 'ana@x.com', telefone: '1187654321' },
@@ -109,6 +116,7 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
 
   it('warn → 409 DUPLICATE_WARNING, a menos que confirme; block → 409 DUPLICATE_BLOCKED sempre', async () => {
     buscarCandidatos.mockResolvedValue([ANA]);
+
     await expect(garantirSemDuplicados(TENANT, { email: 'ana@x.com' })).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
       code: 'DUPLICATE_WARNING',
@@ -123,11 +131,13 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
         ],
       },
     });
+
     await expect(
       garantirSemDuplicados(TENANT, { email: 'ana@x.com' }, { ignorarDuplicados: true }),
     ).resolves.toBeUndefined();
 
     buscarRegras.mockResolvedValue([{ campo: 'email', acao: 'block', ativo: true }]);
+
     await expect(
       garantirSemDuplicados(TENANT, { email: 'ana@x.com' }, { ignorarDuplicados: true }),
     ).rejects.toMatchObject({ code: 'DUPLICATE_BLOCKED' });
@@ -135,12 +145,14 @@ describe('encontrarDuplicados e garantirSemDuplicados', () => {
 
   it('na edição, só o que mudou de verdade (pela chave normalizada)', () => {
     const atual = { email: 'ana@x.com', telefone: '11987654321', cnpj: null, cpf: null };
+
     expect(
       camposDeDuplicidadeAlterados(
         { email: 'ANA@x.com', telefone: '(11) 8765-4321', nome: 'x' },
         atual,
       ),
     ).toEqual({});
+
     expect(camposDeDuplicidadeAlterados({ email: 'bia@x.com', cnpj: null }, atual)).toEqual({
       email: 'bia@x.com',
     });
@@ -159,6 +171,7 @@ describe('duplicadosDasLinhas (Revisar do import)', () => {
         dedup_cpf: null,
       },
     ]);
+
     const regras = [
       { campo: 'email', acao: 'block', ativo: true },
       { campo: 'telefone', acao: 'warn', ativo: true },
@@ -173,10 +186,12 @@ describe('duplicadosDasLinhas (Revisar do import)', () => {
     );
 
     expect(buscarCandidatosEmLote).toHaveBeenCalledTimes(1);
+
     expect(buscarCandidatosEmLote).toHaveBeenCalledWith(TENANT, {
       email: ['ana@x.com', 'bia@x.com'],
       telefone: ['1133334444'],
     });
+
     expect(resultado).toEqual([
       {
         linha: LINHA_ANA,

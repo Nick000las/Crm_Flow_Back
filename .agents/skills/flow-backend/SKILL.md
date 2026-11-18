@@ -44,7 +44,7 @@ framework como parte de uma alteração de funcionalidade.
 
 - Nos módulos, mantenha `controller → service → adapter`. Controllers validam
   entradas e formatam HTTP; services autorizam e aplicam regras; adapters acessam
-  dados. Controllers e services não acessam o Prisma diretamente.
+  dados. Controllers e services não executam operações do Prisma nem abrem conexões; construtores puros de fragmentos não equivalem a acesso ao banco.
 - Não importe um módulo de produto a partir de outro. Compartilhamento pertence
   a `core` ou `shared`, segundo o contrato existente.
 - Use imports ESM com extensão `.js` e aliases `#core`, `#shared`, `#modules` e
@@ -57,7 +57,26 @@ framework como parte de uma alteração de funcionalidade.
 - Use constantes de HTTP e constantes de domínio para limites; o lint proíbe
   números mágicos. Não desative regras para acomodar uma implementação.
 
+## E-mails de autenticação
+
+- Criação de senha, recuperação e MFA usam o template compartilhado
+  `src/core/email/verification-template.js`: cabeçalho escuro, laranja do produto,
+  superfície branca e código em destaque, com conteúdo em português.
+- Preserve os prazos das constantes de autenticação e as finalidades separadas.
+  Envie HTML responsivo com tabelas/estilos inline e alternativa `text`, sem
+  imagens remotas ou código fornecido pelo usuário como HTML. Escape dados
+  dinâmicos; nunca inclua senha, credenciais SMTP ou tokens de sessão no corpo.
+- Os transportes de códigos são fechados após sucesso ou falha. Testes usam
+  SMTP simulado; não envie e-mails reais para verificar aparência.
+
 ## Restauração de sessão
+
+- Recuperação usa `POST /auth/password/forgot` e `POST /auth/password/reset`.
+  O propósito `recuperacao_senha` é separado de ativação e MFA. Guarde apenas
+  hash do código, limite tentativas e reenvios, consuma-o junto da troca de senha
+  em transação e responda genericamente para e-mail desconhecido. Redefinir não
+  emite sessão nem desativa MFA. A migration `0030_recuperacao_senha` libera
+  esse propósito no CHECK da tabela existente.
 
 - `GET /auth/session` faz bootstrap com o mesmo `scope` de `/me`: sem sessão
   válida, devolve `200` com `{ accessToken: null, user: null }`. Não transforme
@@ -241,3 +260,40 @@ framework como parte de uma alteração de funcionalidade.
 - Informe os padrões criados ou modificados e as verificações realizadas.
   Editar a skill não concede autorização para outras ações externas ou mudanças
   de infraestrutura fora da tarefa do usuário.
+
+## Colaboração e produtividade no Kanban
+
+- A migration `0031_kanban_colaboracao` adiciona data de edição de comentário e
+  avisos para seguidores. A edição pertence ao autor e exige acesso de edição
+  ao quadro; a exclusão mantém os privilégios de gestão existentes.
+- Seguidores são alterados apenas pela rota `PUT /kanban/cards/:id/seguir`,
+  sempre para o usuário autenticado. Revalide participação, preferência de
+  e-mail e assinatura antes de entregar avisos, inclusive após sair do quadro.
+- Recorrência gera a próxima tarefa na transição para prazo concluído, na mesma
+  transação, com datas de calendário e checklist reiniciado. Regras por etapa
+  são executadas na movimentação pelo backend, nunca apenas pelo frontend.
+- Metadados novos têm contrato Zod em `card.schema.js`: bloqueio, lead, links,
+  anexos binários limitados, modelos, recorrência e automações. Valide o tenant
+  do lead, as etapas e os participantes das regras antes de persistir.
+- Modelos ficam no mesmo armazenamento de cards e são separados das colunas na
+  resposta do quadro. Relatórios usam o histórico, excluem reordenações na mesma
+  etapa e encerram permanências no arquivamento.
+
+## Fluxo dos cards nativos do Kanban
+
+- Migration `0050_kanban_fluxo`: configurações em `colunas.regras_fluxo`, relógio `cards.etapa_desde` com trigger e tipo `next_action` no outbox existente. Não crie tabelas paralelas nem permita editar o relógio pelo body.
+- `schemas/flow.schema.js` valida regras e lotes; `services/flow-rules.js` concentra dependências, requisitos e cálculo de automações. Dependências só usam o snapshot do quadro autorizado e rejeitam ciclos. Cards bloqueados/dependentes não podem avançar ou concluir; reordenar dentro da etapa continua permitido. Remova referências antes de excluir um card usado como dependência.
+- Automações de coluna são aplicadas após validar a entrada, com prioridade das regras específicas do card. Prazo usa o fuso da empresa, lido como metadado de plataforma com `getAdminClient` e `tenantId` explícito: nunca conceda acesso a `public.tenants` ao role restrito. Tarefa criada pela automação não executa outra automação em cadeia; repetir o mesmo destino não duplica tarefas. Recorrência reinicia checklist, bloqueio, dependências e próxima ação.
+- `card.batch` serializa no mesmo lock/transação do quadro, valida todos os snapshots antes das escritas e reaproveita as operações com a transação existente. Após essa validação, versões intermediárias mudadas pela própria reordenação não são conflito externo. Publique um evento do quadro depois do commit.
+- `dependenciasResolvidas` na leitura contém apenas referências do mesmo quadro já autorizado, inclusive arquivadas. `/metricas` usa histórico de primeira conclusão e estado atual, exclui modelos e mantém arquivados concluídos nas métricas de entrega.
+- Próxima ação com lembrete requer responsável. O outbox usa dedupe por card/responsável/data/título; antes de enviar, revalide acesso, preferências, conclusão e correspondência da ação atual. Testes nunca enviam SMTP real.
+
+- Ao criar/editar quadros ou salvar sua equipe, inclua `context.userId` uma única vez como `editor`, independentemente da seleção do cliente. A identidade vem da autenticação; preserve as permissões dos demais membros. As rotas continuam restritas a DONO/MASTER.
+
+## Legibilidade e responsabilidades verificadas
+
+- Arquivos de produção em `src/` começam com `@file` descrevendo finalidade e limites; imports ficam no início e em grupos ordenados. Separe preparação, validação, execução e retorno com linhas em branco. As regras reais ficam em `eslint.rules.js` e `tooling/eslint/`, sem exceções globais para contornar o check.
+- `pnpm lint:fix` aplica imports, espaçamento e Prettier. Revise o diff e rode `pnpm check`. Testes das regras estão em `pnpm test:lint`. Não formate migrations já aplicadas nem arquivos gerados.
+- A direção é controller → service → repository. Repository contém apenas persistência; autorização, decisões e erros de aplicação ficam em services. Use operações nomeadas e mantenha o contexto transacional e os locks até o commit. Adapters de filas usam `.adapter.js`.
+- SQL completo em tagged templates é formatado automaticamente como PostgreSQL, preservando literais e interpolação. O construtor puro `Prisma.sql` pode preparar filtros sem executar queries; PrismaClient, execução SQL e abertura de transações em services são bloqueados.
+- O Kanban nativo separa coordenação (`native-kanban.service.js`), regras (`native-kanban-rules.service.js`), casos de uso por assunto e SQL (`kanban.repository.js`). Rodízio e recuperação de senha seguem a mesma separação. Não reintroduza use cases em repositories para economizar arquivos.

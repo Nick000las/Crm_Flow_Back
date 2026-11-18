@@ -1,29 +1,41 @@
 import Fastify from 'fastify';
-import { describe, it, expect, vi } from 'vitest';
-import { HTTP_STATUS } from '#shared/constants/index.js';
+import { describe, expect, it, vi } from 'vitest';
+
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
-import { registrarRotasKanbanCompleto } from './kanban.controller.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { operarKanban } from '../services/kanban.service.js';
+import { registrarRotasKanbanCompleto } from './kanban.controller.js';
+
 vi.mock('../services/kanban.service.js', () => ({ operarKanban: vi.fn() }));
+
 const INVALID_NAME_LENGTH = 201;
 const INVALID_COLUMN_COUNT = 11;
 const id = 'd6b67f66-266b-423e-8c86-c25ae13a739c';
+
 async function appForTest() {
   const app = Fastify();
+
   registerErrorHandlers(app);
+
   app.addHook('preHandler', async (request) => {
     request.tenantContext = { tenantId: id, userId: id, role: 'DONO' };
   });
+
   registrarRotasKanbanCompleto(app);
+
   return app;
 }
+
 describe('contrato HTTP Kanban', () => {
   it('valida UUID antes de acessar service', async () => {
     const app = await appForTest();
     const response = await app.inject({ method: 'GET', url: '/kanban/cards/invalido' });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
+
   it('rejeita tenant_id e campos arbitrários no body', async () => {
     const app = await appForTest();
     const response = await app.inject({
@@ -31,9 +43,11 @@ describe('contrato HTTP Kanban', () => {
       url: '/kanban/boards',
       payload: { nome: 'Quadro', boardType: 'projetos', tenant_id: id },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
+
   it('recusa tipo de quadro fora do catálogo', async () => {
     const app = await appForTest();
     const response = await app.inject({
@@ -41,9 +55,11 @@ describe('contrato HTTP Kanban', () => {
       url: '/kanban/boards',
       payload: { nome: 'Quadro', boardType: 'crm_leads' },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
+
   it('rejeita posições negativas', async () => {
     const app = await appForTest();
     const response = await app.inject({
@@ -51,11 +67,14 @@ describe('contrato HTTP Kanban', () => {
       url: `/kanban/cards/${id}/mover`,
       payload: { novaColunaId: id, novaOrdem: -1 },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
+
   it('encaminha a movimentação com o contexto autenticado', async () => {
     vi.mocked(operarKanban).mockResolvedValue({ id, ordem: 0 });
+
     const app = await appForTest();
     const payload = { novaColunaId: id, novaOrdem: 0 };
     const response = await app.inject({
@@ -63,7 +82,9 @@ describe('contrato HTTP Kanban', () => {
       url: `/kanban/cards/${id}/mover`,
       payload,
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(operarKanban).toHaveBeenLastCalledWith(
       { tenantId: id, userId: id, role: 'DONO' },
       'card.move',
@@ -71,6 +92,7 @@ describe('contrato HTTP Kanban', () => {
       payload,
       undefined,
     );
+
     expect(response.json().data).toEqual({ id, ordem: 0 });
     await app.close();
   });
@@ -79,10 +101,13 @@ describe('contrato HTTP Kanban', () => {
 describe('contrato da equipe do quadro', () => {
   it('encaminha a equipe na criação do quadro', async () => {
     vi.mocked(operarKanban).mockResolvedValue({ id });
+
     const app = await appForTest();
     const payload = { nome: 'Projeto', boardType: 'projetos', participantes: [id] };
     const response = await app.inject({ method: 'POST', url: '/kanban/boards', payload });
+
     expect(response.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(operarKanban).toHaveBeenLastCalledWith(
       expect.objectContaining({ userId: id }),
       'board.create',
@@ -90,6 +115,7 @@ describe('contrato da equipe do quadro', () => {
       payload,
       undefined,
     );
+
     await app.close();
   });
 
@@ -100,6 +126,7 @@ describe('contrato da equipe do quadro', () => {
       url: `/kanban/boards/${id}/membros`,
       payload: { participantes: [id, id] },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
@@ -111,6 +138,7 @@ describe('contrato da equipe do quadro', () => {
       url: `/kanban/boards/${id}`,
       payload: { nome: 'Quadro', participantes: ['invalido'] },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });
@@ -126,7 +154,9 @@ describe('colunas iniciais do quadro', () => {
       colunasIniciais: [' A fazer ', 'Em andamento', 'Concluído'],
     };
     const response = await app.inject({ method: 'POST', url: '/kanban/boards', payload });
+
     expect(response.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(operarKanban).toHaveBeenLastCalledWith(
       expect.any(Object),
       'board.create',
@@ -134,8 +164,10 @@ describe('colunas iniciais do quadro', () => {
       { ...payload, colunasIniciais: ['A fazer', 'Em andamento', 'Concluído'] },
       undefined,
     );
+
     await app.close();
   });
+
   it.each([
     [''],
     ['   '],
@@ -148,6 +180,7 @@ describe('colunas iniciais do quadro', () => {
       url: '/kanban/boards',
       payload: { nome: 'Projeto', boardType: 'projetos', colunasIniciais },
     });
+
     expect(response.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     await app.close();
   });

@@ -1,10 +1,14 @@
 /**
+ * @file Schemas Zod do fluxo de login/ativação.
+ */
+/**
  * Schemas Zod do fluxo de login/ativação. Pasta própria porque são vários
  * schemas (mais que os ~2 que justificariam inline no controller) — mesmo
  * critério documentado em MODULE_CONTRACT.md §2, ainda que este código não
  * seja mais um módulo sob esse contrato (ver docs/produto/plataforma.md).
  */
 import { z } from 'zod';
+
 import { LOGIN_MFA, PASSWORD_ACTIVATION, PASSWORD_POLICY } from '#core/auth/constants.js';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
 
@@ -43,6 +47,10 @@ export const activatePasswordBodySchema = z.object({
     PASSWORD_POLICY.MIN_LENGTH,
     `A senha deve ter pelo menos ${PASSWORD_POLICY.MIN_LENGTH} caracteres`,
   ),
+});
+
+export const resetPasswordBodySchema = verifyCodeBodySchema.extend({
+  senha: activatePasswordBodySchema.shape.senha,
 });
 
 // Opcional: a sessão de tenant manda o refresh token no cookie httpOnly;

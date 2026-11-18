@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de cnpj, na área de CRM, antes da execução dos casos de
+ * uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { CHAVES_RECEITA, LISTA_MODOS_CNPJ } from '../constants.js';
 
 // GET /crm/cnpj/:cnpj (M11b) — com ou sem máscara; o service confere o DV.

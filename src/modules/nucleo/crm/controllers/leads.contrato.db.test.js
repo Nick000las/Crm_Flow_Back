@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
-import { transicionarStatus, buscarImportJob } from '../adapters/import-jobs.repository.js';
+
+import { buscarImportJob, transicionarStatus } from '../adapters/import-jobs.repository.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import {
   atualizarConfiguracaoCampo,
@@ -70,6 +73,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
         subdomain: `smoke-contrato-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -80,7 +84,9 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
         role: 'DONO',
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [
         CRM_FEATURES.MASSA,
@@ -91,14 +97,18 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
         CRM_FEATURES.LISTAS,
       ].map((featureKey) => ({ tenantId, moduleKey: MODULO_CRM, featureKey })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     const campos = await listarConfiguracaoCampos(tenantId);
+
     for (const campo of campos.filter(({ chave }) => chave in CAMPOS_OPCIONAIS)) {
       await atualizarConfiguracaoCampo(tenantId, campo.id, {
         visibilidade: { create_form: true, detail: true, table: true, filter: true },
       });
     }
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-contrato',
@@ -130,8 +140,10 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       payload,
       headers: { authorization: `Bearer ${token}` },
     });
+
     return { status: resposta.statusCode, corpo: resposta.body };
   }
+
   const json = (resposta) => JSON.parse(resposta.corpo);
 
   async function criar(campos) {
@@ -139,9 +151,12 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       email: `${randomUUID()}@smoke.test`,
       ...campos,
     });
+
     expect(resposta.status, resposta.corpo).toBe(HTTP_STATUS.CREATED);
+
     return json(resposta).data.id;
   }
+
   const ler = async (id) => json(await chamar('GET', `/crm/leads/${id}`)).data;
 
   it('criar e ler: todo campo comercial vem no lead, com o mesmo nome', async () => {
@@ -159,10 +174,12 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     for (const campo of CAMPOS_COMERCIAIS) {
       expect(lead).toHaveProperty(campo);
     }
+
     expect(lead).toMatchObject({
       nome: 'Contrato Completo',
       status: statusAberto,
     });
+
     expect(Number(lead.valor)).toBe(VALOR_ALTO);
     expect(Number(lead.probabilidade_fechamento)).toBe(PROBABILIDADE);
     expect(String(lead.data_prevista_fechamento)).toContain(dataPrevista);
@@ -175,6 +192,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       (opcao) => opcao.ativo && opcao.category === 'aberto',
     );
     const lead = await ler(await criar({ nome: 'Contrato Mínimo' }));
+
     expect(lead.status).toBe(primeiroAberto.key);
     expect(lead.funil_estagio_id).toBe(primeiroAberto.id);
     expect(lead.estagio_nome).toBe(primeiroAberto.label);
@@ -188,6 +206,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       email: `${randomUUID()}@smoke.test`,
       status: 'nao-existe',
     });
+
     expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(json(resposta).error.fields).toHaveProperty('status');
   });
@@ -196,6 +215,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     const id = await criar({ nome: 'Contrato Edição', status: statusAberto, valor: VALOR_ALTO });
 
     const editado = await chamar('PUT', `/crm/leads/${id}`, { valor: VALOR_EDITADO });
+
     expect(editado.status, editado.corpo).toBe(HTTP_STATUS.OK);
     expect(Number(json(editado).data.valor)).toBe(VALOR_EDITADO);
     expect((await ler(id)).status).toBe(statusAberto);
@@ -204,6 +224,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect((await ler(id)).valor).toBeNull();
 
     const historico = await chamar('GET', `/crm/leads/${id}/historico`);
+
     expect(historico.status, historico.corpo).toBe(HTTP_STATUS.OK);
     expect(historico.corpo).toContain('valor');
   });
@@ -218,6 +239,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     });
 
     expect(editado.status, editado.corpo).toBe(HTTP_STATUS.OK);
+
     expect(await ler(id)).toMatchObject({
       status: statusFechado,
       motivo_perda: motivo.key,
@@ -247,6 +269,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     });
 
     expect(resposta.status, resposta.corpo).toBe(HTTP_STATUS.OK);
+
     for (const id of ids) {
       expect((await ler(id)).status).toBe(statusFechado);
     }
@@ -259,22 +282,27 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       status: statusAberto,
       valor: VALOR_ALTO,
     });
+
     await criar({ nome: `Busca ${marca} baixo`, status: statusFechado, valor: VALOR_BAIXO });
 
     const lista = json(await chamar('GET', '/crm/leads')).data;
+
     expect(lista).toMatchObject({ itens: expect.any(Array), total: expect.any(Number) });
 
     const buscar = async (filtro) =>
       json(await chamar('POST', '/crm/leads/search', { busca: marca, ...filtro })).data;
 
     const porValor = await buscar({ valorMin: VALOR_EDITADO });
+
     expect(porValor.itens.map((lead) => lead.id)).toEqual([alto]);
     expect(porValor.total).toBe(1);
 
     const porStatus = await buscar({
       filtros: [{ chave: 'status', operador: 'igual', valor: statusAberto }],
     });
+
     expect(porStatus.itens.map((lead) => lead.id)).toEqual([alto]);
+
     for (const campo of CAMPOS_COMERCIAIS) {
       expect(porStatus.itens[0]).toHaveProperty(campo);
     }
@@ -282,6 +310,7 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
 
   it('exportar: status e valor saem na planilha', async () => {
     const marca = randomUUID().slice(0, TAMANHO_SUFIXO);
+
     await criar({ nome: `Export ${marca}`, status: statusAberto, valor: VALOR_ALTO });
 
     const resposta = await chamar('POST', '/crm/export', {
@@ -306,12 +335,15 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
       mapeamento: { Nome: 'nome', 'E-mail': 'email', Status: 'status', Valor: 'valor' },
       estrategiaDuplicata: 'criar',
     });
+
     await transicionarStatus(tenantId, validado.jobId, 'pendente', 'processando');
     await processarImportacao(tenantId, validado.jobId);
 
     expect(await buscarImportJob(tenantId, validado.jobId)).toMatchObject({ linhas_criadas: 1 });
+
     const busca = await chamar('POST', '/crm/leads/search', { busca: marca });
     const [lead] = json(busca).data.itens;
+
     expect(lead.status).toBe(statusAberto);
     expect(Number(lead.valor)).toBe(VALOR_ALTO);
   });
@@ -337,13 +369,17 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     });
 
     expect(resposta.status, resposta.corpo).toBe(HTTP_STATUS.OK);
+
     const lead = await ler(principal);
+
     expect(lead.status).toBe(statusAberto);
     expect(Number(lead.valor)).toBe(VALOR_BAIXO);
+
     const [{ total }] = await prisma.$queryRaw`
       SELECT count(*)::int AS total FROM modulo_crm.crm_deal
       WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${principal}::uuid
     `;
+
     expect(total).toBe(DUAS_OPORTUNIDADES);
   });
 
@@ -353,7 +389,9 @@ rodar('contrato de /crm/leads na transição (CRM_DB_TESTS=1)', { timeout: TIMEO
     const resposta = await chamar('POST', `/crm/leads/${id}/anonimizar`, {});
 
     expect(resposta.status, resposta.corpo).toBe(HTTP_STATUS.OK);
+
     const lead = await ler(id);
+
     expect(lead.nome).not.toContain('Titular');
     expect(lead.status).toBe(statusAberto);
     expect(Number(lead.valor)).toBe(VALOR_ALTO);

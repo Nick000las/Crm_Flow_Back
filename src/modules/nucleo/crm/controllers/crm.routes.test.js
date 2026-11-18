@@ -1,21 +1,15 @@
 import { Buffer } from 'node:buffer';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { signAccessToken } from '#core/auth/jwt.js';
-import { loadEnv } from '#core/config/env.js';
 import { encerrarCache } from '#core/cache/cache.js';
+import { loadEnv } from '#core/config/env.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { DIAS_ESFRIAR, EXPORTACAO } from '../constants.js';
-import { editarDefinicao } from '../services/field-definitions.service.js';
-import { atualizarOpcao, criarOpcao, listarListas } from '../services/listas.service.js';
-import { removerMeu, salvarMeu, salvarPadrao } from '../services/layout.service.js';
-import {
-  atualizarLeadExistente,
-  pesquisarLeads,
-  registrarNovoLead,
-} from '../services/leads.service.js';
-import { exportarLeads } from '../services/export.service.js';
 import {
   arquivarLead,
   desarquivarLead,
@@ -27,26 +21,34 @@ import {
   registrarAtividade,
   removerAtividade,
 } from '../services/atividades.service.js';
-import { listarHistorico } from '../services/historico.service.js';
-import { salvarRegras } from '../services/duplicidade.service.js';
-import { mesclarLeads } from '../services/mesclagem.service.js';
-import { criarRegra, editarRegra, removerRegra } from '../services/regras.service.js';
-import { salvarInatividade } from '../services/inatividade.service.js';
-import { checarDuplicados } from '../services/leads.service.js';
-import { confirmarImportacao } from '../services/import.service.js';
-import { previsualizarImportacao } from '../services/import.service.js';
-import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
+import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js';
 import {
   atualizarConfiguracaoCampo,
   reordenarCampos,
 } from '../services/configuracoes-campos.service.js';
-import { listarCamposDoTenant } from '../services/leads.service.js';
-import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
-import { consultarParaLupa, salvarConfigCnpj } from '../services/cnpj.service.js';
 import { excluirGrupo, salvarConfigDistribuicao } from '../services/distribuicao.service.js';
-import { salvarPermissoes } from '../services/permissoes.service.js';
-import { recalcularTodos, salvarConfigScore } from '../services/score.service.js';
+import { salvarRegras } from '../services/duplicidade.service.js';
+import { exportarLeads } from '../services/export.service.js';
+import { editarDefinicao } from '../services/field-definitions.service.js';
+import { listarHistorico } from '../services/historico.service.js';
+import { confirmarImportacao, previsualizarImportacao } from '../services/import.service.js';
+import { salvarInatividade } from '../services/inatividade.service.js';
+import { removerMeu, salvarMeu, salvarPadrao } from '../services/layout.service.js';
+import {
+  atualizarLeadExistente,
+  checarDuplicados,
+  listarCamposDoTenant,
+  pesquisarLeads,
+  registrarNovoLead,
+} from '../services/leads.service.js';
+import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
 import { anonimizarLeadDoTitular, salvarConfigLgpd } from '../services/lgpd.service.js';
+import { atualizarOpcao, criarOpcao, listarListas } from '../services/listas.service.js';
+import { mesclarLeads } from '../services/mesclagem.service.js';
+import { salvarPermissoes } from '../services/permissoes.service.js';
+import { criarRegra, editarRegra, removerRegra } from '../services/regras.service.js';
+import { recalcularTodos, salvarConfigScore } from '../services/score.service.js';
+import { listarResponsaveisPossiveis } from '../services/usuarios.service.js';
 
 /**
  * Testes de rota do CRM: autenticação, módulo contratado, RBAC e validação
@@ -60,6 +62,7 @@ vi.mock('../adapters/crm-pipelines.repository.js', async (importOriginal) => ({
   ...(await importOriginal()),
   buscarPipelinesOcultos: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('#core/db/tenantClient.js', () => ({
   getAdminClient: vi.fn(() => ({
     tenantModule: { findMany: findManyModulos },
@@ -77,17 +80,20 @@ vi.mock('../services/leads.service.js', () => ({
   listarCamposDoTenant: vi.fn(),
   pesquisarLeads: vi.fn(),
 }));
+
 vi.mock('../services/field-definitions.service.js', () => ({
   listarDefinicoesPorTenant: vi.fn(),
   criarNovaDefinicao: vi.fn(),
   editarDefinicao: vi.fn(),
   removerDefinicao: vi.fn(),
 }));
+
 vi.mock('../services/filter-views.service.js', () => ({
   listarViews: vi.fn(),
   salvarView: vi.fn(),
   excluirView: vi.fn(),
 }));
+
 vi.mock('../services/import.service.js', () => ({
   previsualizarImportacao: vi.fn(),
   validarImportacao: vi.fn(),
@@ -95,7 +101,9 @@ vi.mock('../services/import.service.js', () => ({
   obterStatusImportacao: vi.fn(),
   encerrarImportacao: vi.fn(),
 }));
+
 vi.mock('../services/export.service.js', () => ({ exportarLeads: vi.fn() }));
+
 vi.mock('../services/atividades.service.js', () => ({
   listarTiposDeAtividade: vi
     .fn()
@@ -105,20 +113,24 @@ vi.mock('../services/atividades.service.js', () => ({
   editarAtividade: vi.fn().mockResolvedValue({ id: 'at' }),
   removerAtividade: vi.fn().mockResolvedValue({ removido: true }),
 }));
+
 vi.mock('../services/duplicidade.service.js', () => ({
   listarRegras: vi.fn().mockResolvedValue({ regras: [], configurado: false }),
   salvarRegras: vi.fn().mockResolvedValue({ regras: [], configurado: true }),
 }));
+
 vi.mock('../services/inatividade.service.js', () => ({
   listarInatividade: vi.fn().mockResolvedValue([]),
   salvarInatividade: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('../services/regras.service.js', () => ({
   listarRegras: vi.fn().mockResolvedValue([]),
   criarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   editarRegra: vi.fn().mockResolvedValue({ id: 'regra' }),
   removerRegra: vi.fn().mockResolvedValue({ removido: true }),
 }));
+
 vi.mock('../services/cnpj.service.js', () => ({
   consultarParaLupa: vi
     .fn()
@@ -127,11 +139,13 @@ vi.mock('../services/cnpj.service.js', () => ({
   salvarConfigCnpj: vi.fn().mockResolvedValue({ ativo: true, modo: 'automatico' }),
   encerrarEnriquecimento: vi.fn(),
 }));
+
 vi.mock('../services/score.service.js', () => ({
   obterConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
   salvarConfigScore: vi.fn().mockResolvedValue({ regras: [], faixas: [], recalculo: null }),
   recalcularTodos: vi.fn().mockResolvedValue({ total: 0, processados: 0 }),
 }));
+
 vi.mock('../services/lgpd.service.js', () => ({
   obterConfigLgpd: vi.fn().mockResolvedValue({
     basePadrao: null,
@@ -149,10 +163,12 @@ vi.mock('../services/lgpd.service.js', () => ({
     .fn()
     .mockResolvedValue({ leadId: 'x', leads: 1, atividades: 0, eventos: 0 }),
 }));
+
 vi.mock('../services/permissoes.service.js', () => ({
   obterPermissoes: vi.fn().mockResolvedValue({ papeis: ['OPERADOR'], campos: [] }),
   salvarPermissoes: vi.fn().mockResolvedValue({ papeis: ['OPERADOR'], campos: [] }),
 }));
+
 vi.mock('../services/distribuicao.service.js', () => ({
   obterConfigDistribuicao: vi
     .fn()
@@ -162,24 +178,30 @@ vi.mock('../services/distribuicao.service.js', () => ({
   editarGrupo: vi.fn().mockResolvedValue({ id: 'grupo' }),
   excluirGrupo: vi.fn().mockResolvedValue({ removido: true }),
 }));
+
 vi.mock('../services/leads-bulk.service.js', () => ({
   editarLeadsEmMassa: vi
     .fn()
     .mockResolvedValue({ total: 1, atualizados: 1, inalterados: 0, falhas: 0, resultados: [] }),
 }));
+
 vi.mock('../services/mesclagem.service.js', () => ({
   mesclarLeads: vi.fn().mockResolvedValue({ id: 'lead' }),
 }));
+
 vi.mock('../services/historico.service.js', () => ({
   listarHistorico: vi.fn().mockResolvedValue({ itens: [] }),
 }));
+
 vi.mock('../services/arquivo.service.js', () => ({
   arquivarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
   desarquivarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
   restaurarLead: vi.fn().mockResolvedValue({ id: 'lead' }),
   excluirLead: vi.fn().mockResolvedValue({ removido: true }),
 }));
+
 vi.mock('../services/usuarios.service.js', () => ({ listarResponsaveisPossiveis: vi.fn() }));
+
 vi.mock('../services/layout.service.js', () => ({
   obterLayout: vi.fn().mockResolvedValue({ efetivo: {} }),
   salvarPadrao: vi.fn().mockResolvedValue({}),
@@ -187,6 +209,7 @@ vi.mock('../services/layout.service.js', () => ({
   removerMeu: vi.fn().mockResolvedValue({}),
   identificadorDaBusca: vi.fn().mockResolvedValue(null),
 }));
+
 vi.mock('../services/listas.service.js', () => ({
   listarListas: vi.fn().mockResolvedValue({}),
   criarOpcao: vi.fn().mockResolvedValue({ id: 'nova' }),
@@ -194,6 +217,7 @@ vi.mock('../services/listas.service.js', () => ({
   reordenarLista: vi.fn().mockResolvedValue([]),
   excluirOpcao: vi.fn().mockResolvedValue({ removido: true }),
 }));
+
 vi.mock('../services/configuracoes-campos.service.js', () => ({
   listarConfiguracaoCampos: vi.fn().mockResolvedValue([]),
   atualizarConfiguracaoCampo: vi.fn().mockResolvedValue({}),
@@ -226,6 +250,7 @@ beforeAll(async () => {
     }),
     logger: false,
   });
+
   tokenDono = signAccessToken(app, { tenantId: TENANT, userId: 'u-dono', role: 'DONO' });
   tokenOperador = signAccessToken(app, { tenantId: TENANT, userId: 'u-op', role: 'OPERADOR' });
 });
@@ -245,17 +270,20 @@ beforeEach(async () => {
 describe('autenticação e módulo contratado', () => {
   it('sem token → 401', async () => {
     const resposta = await app.inject({ method: 'GET', url: '/crm/leads' });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.UNAUTHORIZED);
     expect(findManyModulos).not.toHaveBeenCalled();
   });
 
   it('tenant sem o módulo CRM → 403 MODULE_NOT_ENABLED', async () => {
     findManyModulos.mockResolvedValue([]);
+
     const resposta = await app.inject({
       method: 'GET',
       url: '/crm/leads',
       headers: autorizado(tokenDono),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.code).toBe(ERROR_CODES.MODULE_NOT_ENABLED);
     expect(pesquisarLeads).not.toHaveBeenCalled();
@@ -263,6 +291,7 @@ describe('autenticação e módulo contratado', () => {
 
   it('consulta o módulo certo do tenant do token', async () => {
     await app.inject({ method: 'GET', url: '/crm/leads', headers: autorizado(tokenOperador) });
+
     expect(findManyModulos).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT, disabledAt: null } }),
     );
@@ -285,6 +314,7 @@ describe('RBAC', () => {
       headers: autorizado(tokenOperador),
       payload: {},
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
   });
@@ -297,17 +327,20 @@ describe('RBAC', () => {
       '/crm/leads',
     ]) {
       const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.OK);
     }
   });
 
   it('OPERADOR lista os usuários do tenant (responsáveis possíveis)', async () => {
     listarResponsaveisPossiveis.mockResolvedValue([{ id: 'u-1', nome: 'Ana' }]);
+
     const resposta = await app.inject({
       method: 'GET',
       url: '/crm/usuarios',
       headers: autorizado(tokenOperador),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
     expect(resposta.json().data).toEqual([{ id: 'u-1', nome: 'Ana' }]);
     expect(listarResponsaveisPossiveis).toHaveBeenCalledWith(TENANT);
@@ -315,12 +348,14 @@ describe('RBAC', () => {
 
   it('DONO exporta e recebe o xlsx', async () => {
     exportarLeads.mockResolvedValue(Buffer.from('xlsx'));
+
     const resposta = await app.inject({
       method: 'POST',
       url: '/crm/export',
       headers: autorizado(tokenDono),
       payload: { colunas: ['nome'] },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
     expect(resposta.headers['content-type']).toBe(EXPORTACAO.CONTENT_TYPE);
     expect(resposta.headers['content-disposition']).toContain(EXPORTACAO.NOME_ARQUIVO);
@@ -334,6 +369,7 @@ describe('validação na borda', () => {
       url: `/crm/leads?pagina=${PAGINA}&tamanho=${TAMANHO}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(pesquisarLeads).toHaveBeenCalledWith(
       TENANT,
       { filtros: [], paginacao: { pagina: PAGINA, tamanho: TAMANHO } },
@@ -347,18 +383,22 @@ describe('validação na borda', () => {
       url: `/crm/leads?tamanho=${TAMANHO_EXCESSIVO}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
   it('POST /crm/leads aceita lead sem estágio e com valor', async () => {
     registrarNovoLead.mockResolvedValue({ id: LEAD });
+
     const resposta = await app.inject({
       method: 'POST',
       url: '/crm/leads',
       headers: autorizado(tokenOperador),
       payload: { nome: 'Ana', email: 'ana@x.com', valor: VALOR_LEAD },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.CREATED);
+
     expect(registrarNovoLead).toHaveBeenCalledWith(
       TENANT,
       { nome: 'Ana', email: 'ana@x.com', valor: VALOR_LEAD },
@@ -369,13 +409,16 @@ describe('validação na borda', () => {
 
   it('PUT aceita null pra limpar campo, mas não em nome', async () => {
     atualizarLeadExistente.mockResolvedValue({ id: LEAD });
+
     const limpar = await app.inject({
       method: 'PUT',
       url: `/crm/leads/${LEAD}`,
       headers: autorizado(tokenOperador),
       payload: { email: null, cargo: null, customFields: { origem: null } },
     });
+
     expect(limpar.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(atualizarLeadExistente).toHaveBeenCalledWith(
       TENANT,
       LEAD,
@@ -390,6 +433,7 @@ describe('validação na borda', () => {
       headers: autorizado(tokenOperador),
       payload: { nome: null },
     });
+
     expect(semNome.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
@@ -400,6 +444,7 @@ describe('validação na borda', () => {
       headers: autorizado(tokenDono),
       payload: {},
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(previsualizarImportacao).not.toHaveBeenCalled();
   });
@@ -415,6 +460,7 @@ describe('validação na borda', () => {
       },
       payload: `--${boundary}\r\nContent-Disposition: form-data; name="x"\r\n\r\n1\r\n--${boundary}--\r\n`,
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(resposta.json().error.message).toContain('arquivo');
   });
@@ -430,6 +476,7 @@ describe('Configurações → Campos (M2)', () => {
 
   it.each(ESCRITAS)('OPERADOR em %s %s → 403 FORBIDDEN', async (method, url, payload) => {
     const resposta = await app.inject({ method, url, headers: autorizado(tokenOperador), payload });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
   });
@@ -441,7 +488,9 @@ describe('Configurações → Campos (M2)', () => {
       headers: autorizado(tokenDono),
       payload: { visibilidade: { table: false } },
     });
+
     expect(put.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(atualizarConfiguracaoCampo).toHaveBeenCalledWith(TENANT, CAMPO, {
       visibilidade: { table: false },
     });
@@ -452,6 +501,7 @@ describe('Configurações → Campos (M2)', () => {
       headers: autorizado(tokenDono),
       payload: { ids: [CAMPO] },
     });
+
     expect(reordenarCampos).toHaveBeenCalledWith(TENANT, [CAMPO]);
   });
 
@@ -463,18 +513,22 @@ describe('Configurações → Campos (M2)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+
     expect(atualizarConfiguracaoCampo).not.toHaveBeenCalled();
   });
 
   it('GET /crm/leads/fields?contexto= repassa o contexto e rejeita o inválido (sem precisar de flag)', async () => {
     listarCamposDoTenant.mockResolvedValue([]);
+
     const ok = await app.inject({
       method: 'GET',
       url: '/crm/leads/fields?contexto=table',
       headers: autorizado(tokenOperador),
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(listarCamposDoTenant).toHaveBeenCalledWith(TENANT, 'table', { papel: 'OPERADOR' });
 
@@ -483,6 +537,7 @@ describe('Configurações → Campos (M2)', () => {
       url: '/crm/leads/fields?contexto=x',
       headers: autorizado(tokenOperador),
     });
+
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -493,6 +548,7 @@ describe('rotas removidas', () => {
     ['PUT', '/crm/field-visibility'],
   ])('%s %s não existe mais (404)', async (method, url) => {
     const resposta = await app.inject({ method, url, headers: autorizado(tokenDono), payload: [] });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.NOT_FOUND);
   });
 
@@ -503,6 +559,7 @@ describe('rotas removidas', () => {
       headers: autorizado(tokenDono),
       payload: [],
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(editarDefinicao).not.toHaveBeenCalled();
   });
@@ -518,6 +575,7 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
       url: '/crm/configuracoes/listas',
       headers: autorizado(tokenDono),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.details).toEqual({ featureKey: 'crm.listas' });
     expect(listarListas).not.toHaveBeenCalled();
@@ -525,11 +583,13 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
 
   it('OPERADOR lê, mas não escreve (403 FORBIDDEN mesmo com a flag)', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const leitura = await app.inject({
       method: 'GET',
       url: '/crm/configuracoes/listas',
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
 
     const escrita = await app.inject({
@@ -538,18 +598,22 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
       headers: autorizado(tokenOperador),
       payload: { label: 'Feira' },
     });
+
     expect(escrita.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
   });
 
   it('DONO cria e edita; lista, cor e corpo inválidos → 400 na borda', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const criada = await app.inject({
       method: 'POST',
       url: '/crm/configuracoes/listas/status',
       headers: autorizado(tokenDono),
       payload: { label: 'Pausado', category: 'aberto', color: '#AABBCC' },
     });
+
     expect(criada.statusCode).toBe(HTTP_STATUS.CREATED);
+
     expect(criarOpcao).toHaveBeenCalledWith(TENANT, 'status', {
       label: 'Pausado',
       category: 'aberto',
@@ -562,6 +626,7 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
       headers: autorizado(tokenDono),
       payload: { ativo: false },
     });
+
     expect(atualizarOpcao).toHaveBeenCalledWith(TENANT, 'status', OPCAO, { ativo: false });
 
     for (const [url, payload] of [
@@ -575,6 +640,7 @@ describe('Configurações → Listas (M3, flag crm.listas)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });
@@ -596,17 +662,20 @@ describe('Layout do lead (M4, flag crm.layout)', () => {
       url: '/crm/layout',
       headers: autorizado(tokenOperador),
     });
+
     expect(resposta.json().error.details).toEqual({ featureKey: 'crm.layout' });
   });
 
   it('OPERADOR não altera o padrão do tenant (403), mas salva e apaga o próprio override', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const padrao = await app.inject({
       method: 'PUT',
       url: '/crm/layout/padrao',
       headers: autorizado(tokenOperador),
       payload: LAYOUT,
     });
+
     expect(padrao.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(padrao.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
     expect(salvarPadrao).not.toHaveBeenCalled();
@@ -617,7 +686,9 @@ describe('Layout do lead (M4, flag crm.layout)', () => {
       headers: autorizado(tokenOperador),
       payload: { colunas: ['lead.valor'] },
     });
+
     expect(meu.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(salvarMeu).toHaveBeenCalledWith(
       TENANT,
       'u-op',
@@ -630,17 +701,20 @@ describe('Layout do lead (M4, flag crm.layout)', () => {
       url: '/crm/layout/meu',
       headers: autorizado(tokenOperador),
     });
+
     expect(removerMeu).toHaveBeenCalledWith(TENANT, 'u-op', { papel: 'OPERADOR' });
   });
 
   it('DONO salva o padrão completo; incompleto, mais de 2 no subtítulo ou campo extra → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const ok = await app.inject({
       method: 'PUT',
       url: '/crm/layout/padrao',
       headers: autorizado(tokenDono),
       payload: LAYOUT,
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarPadrao).toHaveBeenCalledWith(TENANT, 'u-dono', LAYOUT);
 
@@ -655,6 +729,7 @@ describe('Layout do lead (M4, flag crm.layout)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });
@@ -675,6 +750,7 @@ describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
         url: `/crm/leads/${LEAD}/${acao}`,
         headers: autorizado(tokenOperador),
       });
+
       expect(resposta.statusCode, acao).toBe(HTTP_STATUS.FORBIDDEN);
       expect(resposta.json().error.details).toEqual({ featureKey: 'crm.arquivo' });
       expect(service).not.toHaveBeenCalled();
@@ -683,12 +759,14 @@ describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
 
   it('com a flag, qualquer papel arquiva, desarquiva e restaura', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     for (const [acao, service] of ACOES) {
       const resposta = await app.inject({
         method: 'POST',
         url: `/crm/leads/${LEAD}/${acao}`,
         headers: autorizado(tokenOperador),
       });
+
       expect(resposta.statusCode, acao).toBe(HTTP_STATUS.OK);
       expect(service).toHaveBeenCalledWith(TENANT, LEAD, 'u-op', { papel: 'OPERADOR' });
     }
@@ -700,15 +778,18 @@ describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
       url: `/crm/leads/${LEAD}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(excluirLead).toHaveBeenCalledWith(TENANT, LEAD, 'u-op');
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const invalido = await app.inject({
       method: 'POST',
       url: '/crm/leads/nao-e-uuid/arquivar',
       headers: autorizado(tokenDono),
     });
+
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
@@ -719,6 +800,7 @@ describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
       headers: autorizado(tokenDono),
       payload: { situacao: 'apagados' },
     });
+
     expect(busca.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(pesquisarLeads).not.toHaveBeenCalled();
 
@@ -728,6 +810,7 @@ describe('Arquivo e lixeira (M5, flag crm.arquivo)', () => {
       headers: autorizado(tokenDono),
       payload: { colunas: ['nome'], filtro: { situacao: 'lixeira' } },
     });
+
     expect(exportacao.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(exportarLeads).not.toHaveBeenCalled();
   });
@@ -742,6 +825,7 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
   it('sem a flag → 403 nas atividades e no histórico', async () => {
     for (const url of [`/crm/leads/${LEAD}/atividades`, `/crm/leads/${LEAD}/historico`]) {
       const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+
       expect(resposta.statusCode, url).toBe(HTTP_STATUS.FORBIDDEN);
       expect(resposta.json().error.details).toEqual({ featureKey: 'crm.atividades' });
     }
@@ -753,28 +837,34 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       url: '/crm/atividades/tipos',
       headers: autorizado(tokenOperador),
     });
+
     expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG); // só crm.atividades
     await encerrarCache(); // a 1ª chamada guardou "sem flag" no cache
+
     const com = await app.inject({
       method: 'GET',
       url: '/crm/atividades/tipos',
       headers: autorizado(tokenOperador),
     });
+
     expect(com.statusCode).toBe(HTTP_STATUS.OK);
     expect(com.json().data).toEqual([{ key: 'ligacao', label: 'Ligação', ativo: true }]);
   });
 
   it('OPERADOR registra (201, autor do token), edita e remove', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const criada = await app.inject({
       method: 'POST',
       url: `/crm/leads/${LEAD}/atividades`,
       headers: autorizado(tokenOperador),
       payload: { tipo: 'ligacao', titulo: '  Ligar  ', concluida: true },
     });
+
     expect(criada.statusCode).toBe(HTTP_STATUS.CREATED);
+
     expect(registrarAtividade).toHaveBeenCalledWith(
       TENANT,
       LEAD,
@@ -788,7 +878,9 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       headers: autorizado(tokenOperador),
       payload: { concluida: false, agendadaPara: '2026-10-20T13:00:00Z' },
     });
+
     expect(editada.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(editarAtividade).toHaveBeenCalledWith(TENANT, LEAD, ATIVIDADE, {
       concluida: false,
       agendadaPara: new Date('2026-10-20T13:00:00Z'),
@@ -799,35 +891,43 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       url: `/crm/leads/${LEAD}/atividades/${ATIVIDADE}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(removerAtividade).toHaveBeenCalledWith(TENANT, LEAD, ATIVIDADE);
   });
 
   it('validação: sem título, campo extra, edição vazia ou id inválido → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const casos = [
       ['POST', `/crm/leads/${LEAD}/atividades`, { tipo: 'ligacao' }],
       ['POST', `/crm/leads/${LEAD}/atividades`, { tipo: 'ligacao', titulo: 'x', autorId: 'outro' }],
       ['PUT', `/crm/leads/${LEAD}/atividades/${ATIVIDADE}`, {}],
       ['PUT', `/crm/leads/${LEAD}/atividades/nao-e-uuid`, { titulo: 'x' }],
     ];
+
     for (const [method, url, payload] of casos) {
       const resposta = await app.inject({ method, url, headers: autorizado(tokenDono), payload });
+
       expect(resposta.statusCode, `${method} ${JSON.stringify(payload)}`).toBe(
         HTTP_STATUS.BAD_REQUEST,
       );
     }
+
     expect(registrarAtividade).not.toHaveBeenCalled();
     expect(editarAtividade).not.toHaveBeenCalled();
   });
 
   it('histórico paginado pela query; tamanho acima do máximo → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const ok = await app.inject({
       method: 'GET',
       url: `/crm/leads/${LEAD}/historico?pagina=2&tamanho=${TAMANHO_HISTORICO}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(listarHistorico).toHaveBeenCalledWith(
       TENANT,
       LEAD,
@@ -840,14 +940,18 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       url: `/crm/leads/${LEAD}/historico?tamanho=${TAMANHO_HISTORICO_EXCESSIVO}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(excessivo.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
   // M16: filtro por categoria (a flag `crm.timeline` é conferida no service).
   it('histórico filtra por categorias (sem repetir); categoria inválida → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const url = `/crm/leads/${LEAD}/historico?categorias=campos,atribuicao,campos`;
+
     await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+
     expect(listarHistorico).toHaveBeenCalledWith(
       TENANT,
       LEAD,
@@ -860,25 +964,30 @@ describe('Atividades e histórico (M6, flag crm.atividades)', () => {
       url: `/crm/leads/${LEAD}/historico?categorias=fofoca`,
       headers: autorizado(tokenOperador),
     });
+
     expect(invalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
   it('categorias do filtro: sem `crm.timeline` → 403; com a flag, a lista', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const semFlag = await app.inject({
       method: 'GET',
       url: '/crm/historico/categorias',
       headers: autorizado(tokenOperador),
     });
+
     expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
 
     findManyFeatures.mockResolvedValue([...COM_FLAG, { featureKey: 'crm.timeline' }]);
     await encerrarCache(); // as flags do tenant ficam em cache
+
     const lista = await app.inject({
       method: 'GET',
       url: '/crm/historico/categorias',
       headers: autorizado(tokenOperador),
     });
+
     expect(lista.json().data.map((categoria) => categoria.key)).toEqual([
       'campos',
       'atribuicao',
@@ -900,15 +1009,18 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       url: '/crm/configuracoes/duplicidade',
       headers: autorizado(tokenDono),
     });
+
     expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache();
+
     const leitura = await app.inject({
       method: 'GET',
       url: '/crm/configuracoes/duplicidade',
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
 
     const regras = [{ campo: 'cnpj', acao: 'block', ativo: true }];
@@ -918,6 +1030,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenOperador),
       payload: { regras },
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     const dono = await app.inject({
@@ -926,6 +1039,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenDono),
       payload: { regras },
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarRegras).toHaveBeenCalledWith(TENANT, regras);
 
@@ -935,6 +1049,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenDono),
       payload: { regras: [...regras, { campo: 'cnpj', acao: 'warn', ativo: false }] },
     });
+
     expect(repetido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
@@ -950,15 +1065,18 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenOperador),
       payload,
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const dono = await app.inject({
       method: 'POST',
       url: '/crm/leads/merge',
       headers: autorizado(tokenDono),
       payload,
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
     expect(mesclarLeads).toHaveBeenCalledWith(TENANT, payload, 'u-dono');
 
@@ -968,6 +1086,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenDono),
       payload: { ...payload, escolhas: { nome: 'os-dois' } },
     });
+
     expect(escolhaInvalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
@@ -978,6 +1097,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenOperador),
       payload: { email: 'ana@x.com', leadId: LEAD },
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(checarDuplicados).toHaveBeenCalledWith(TENANT, { email: 'ana@x.com', leadId: LEAD });
 
@@ -987,6 +1107,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenOperador),
       payload: { nome: 'x' },
     });
+
     expect(extra.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 
@@ -998,7 +1119,9 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenDono),
       payload: { acoes: { [String(LINHA)]: 'atualizar' } },
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(confirmarImportacao).toHaveBeenCalledWith(TENANT, JOB_ID, {
       acoes: { [String(LINHA)]: 'atualizar' },
     });
@@ -1009,6 +1132,7 @@ describe('Duplicidade e mesclagem (M7, flag crm.duplicidade)', () => {
       headers: autorizado(tokenDono),
       payload: { acoes: { [String(LINHA)]: 'mesclar' } },
     });
+
     expect(invalida.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -1030,15 +1154,18 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       url: '/crm/configuracoes/regras',
       headers: autorizado(tokenOperador),
     });
+
     expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache();
+
     const leitura = await app.inject({
       method: 'GET',
       url: '/crm/configuracoes/regras',
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
 
     const operador = await app.inject({
@@ -1047,6 +1174,7 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       headers: autorizado(tokenOperador),
       payload: POR_STATUS,
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     const dono = await app.inject({
@@ -1055,12 +1183,14 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       headers: autorizado(tokenDono),
       payload: POR_STATUS,
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.CREATED);
     expect(criarRegra).toHaveBeenCalledWith(TENANT, POR_STATUS);
   });
 
   it('forma do body: tipo desconhecido, categoria inválida, operador fora do vocabulário ou campo extra → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const invalidos = [
       { ...POR_STATUS, kind: 'required' },
       { ...POR_STATUS, condicao: { categorias: ['fechado'] } },
@@ -1072,6 +1202,7 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       },
       { ...POR_STATUS, efeito: { obrigatorio: true } }, // efeito só existe na condicional
     ];
+
     for (const payload of invalidos) {
       const resposta = await app.inject({
         method: 'POST',
@@ -1079,19 +1210,23 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode, JSON.stringify(payload)).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+
     expect(criarRegra).not.toHaveBeenCalled();
   });
 
   it('editar (parcial) e excluir passam o id; edição vazia → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     await app.inject({
       method: 'PUT',
       url: `/crm/configuracoes/regras/${REGRA}`,
       headers: autorizado(tokenDono),
       payload: { ativo: false },
     });
+
     expect(editarRegra).toHaveBeenCalledWith(TENANT, REGRA, { ativo: false });
 
     const vazia = await app.inject({
@@ -1100,6 +1235,7 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       headers: autorizado(tokenDono),
       payload: {},
     });
+
     expect(vazia.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
 
     await app.inject({
@@ -1107,6 +1243,7 @@ describe('Regras de campo (M8, flag crm.regras)', () => {
       url: `/crm/configuracoes/regras/${REGRA}`,
       headers: autorizado(tokenDono),
     });
+
     expect(removerRegra).toHaveBeenCalledWith(TENANT, REGRA);
   });
 });
@@ -1118,15 +1255,18 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
 
   it('sem a flag 403; OPERADOR lê mas não grava; DONO grava', async () => {
     const sem = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenOperador) });
+
     expect(sem.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache();
+
     const leitura = await app.inject({
       method: 'GET',
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
 
     const payload = { status: { novo: DIAS_ESFRIAR.MIN, proposta: null } };
@@ -1136,6 +1276,7 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
       headers: autorizado(tokenOperador),
       payload,
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     const dono = await app.inject({
@@ -1144,12 +1285,14 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
       headers: autorizado(tokenDono),
       payload,
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarInatividade).toHaveBeenCalledWith(TENANT, payload);
   });
 
   it('forma do body: mapa vazio, dias fora de 1–365, fracionado ou texto → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const invalidos = [
       { status: {} },
       { status: { novo: DIAS_ESFRIAR.MIN - 1 } },
@@ -1158,6 +1301,7 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
       { status: { novo: String(DIAS_ESFRIAR.MIN) } },
       {},
     ];
+
     for (const payload of invalidos) {
       const resposta = await app.inject({
         method: 'PUT',
@@ -1165,8 +1309,10 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode, JSON.stringify(payload)).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+
     expect(salvarInatividade).not.toHaveBeenCalled();
   });
 
@@ -1177,6 +1323,7 @@ describe('Inatividade (M9, flag crm.inatividade)', () => {
       headers: autorizado(tokenOperador),
       payload: { esfriando: 'sim' },
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -1192,22 +1339,26 @@ describe('Edição em massa e export (M10, flag crm.massa)', () => {
       headers: autorizado(tokenOperador),
       payload,
     });
+
     expect(sem.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache();
+
     const ok = await app.inject({
       method: 'PATCH',
       url: '/crm/leads/bulk',
       headers: autorizado(tokenOperador),
       payload,
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(editarLeadsEmMassa).toHaveBeenCalledWith(TENANT, payload, 'u-op', { papel: 'OPERADOR' });
   });
 
   it('bulk: sem alteração ou id inválido → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     for (const corpo of [
       { ids: [LEAD], alteracoes: {} },
       { ids: ['x'], alteracoes: { status: 'ganho' } },
@@ -1218,19 +1369,23 @@ describe('Edição em massa e export (M10, flag crm.massa)', () => {
         headers: autorizado(tokenDono),
         payload: corpo,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
+
     expect(editarLeadsEmMassa).not.toHaveBeenCalled();
   });
 
   it('export csv: cabeçalhos de CSV; sem colunas chega ao service (colunas da tabela)', async () => {
     exportarLeads.mockResolvedValue(Buffer.from('csv'));
+
     const csv = await app.inject({
       method: 'POST',
       url: '/crm/export',
       headers: autorizado(tokenDono),
       payload: { formato: 'csv' },
     });
+
     expect(csv.statusCode).toBe(HTTP_STATUS.OK);
     expect(csv.headers['content-type']).toBe(EXPORTACAO.CONTENT_TYPE_CSV);
     expect(csv.headers['content-disposition']).toContain(EXPORTACAO.NOME_ARQUIVO_CSV);
@@ -1242,6 +1397,7 @@ describe('Edição em massa e export (M10, flag crm.massa)', () => {
       headers: autorizado(tokenDono),
       payload: { formato: 'pdf' },
     });
+
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -1259,18 +1415,22 @@ describe('Enriquecimento por CNPJ (M11b, flag crm.cnpj)', () => {
   it('sem a flag: lupa e config → 403', async () => {
     for (const url of ['/crm/cnpj/11222333000181', '/crm/configuracoes/cnpj']) {
       const resposta = await app.inject({ method: 'GET', url, headers: autorizado(tokenOperador) });
+
       expect(resposta.json().error.code, url).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
     }
   });
 
   it('lupa: qualquer papel, com a flag', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const resposta = await app.inject({
       method: 'GET',
       url: '/crm/cnpj/11.222.333%2F0001-81',
       headers: autorizado(tokenOperador),
     });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
+
     expect(consultarParaLupa).toHaveBeenCalledWith(TENANT, '11.222.333/0001-81', {
       papel: 'OPERADOR',
     });
@@ -1283,15 +1443,18 @@ describe('Enriquecimento por CNPJ (M11b, flag crm.cnpj)', () => {
       headers: autorizado(tokenOperador),
       payload: config,
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const dono = await app.inject({
       method: 'PUT',
       url: '/crm/configuracoes/cnpj',
       headers: autorizado(tokenDono),
       payload: config,
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarConfigCnpj).toHaveBeenCalledWith(TENANT, config);
 
@@ -1301,6 +1464,7 @@ describe('Enriquecimento por CNPJ (M11b, flag crm.cnpj)', () => {
       headers: autorizado(tokenDono),
       payload: { ...config, mapeamento: { capitalSocial: CAMPO } },
     });
+
     expect(invalido.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
   });
 });
@@ -1329,45 +1493,54 @@ describe('Distribuição automática (M12, flag crm.distribuicao)', () => {
       url: '/crm/configuracoes/distribuicao',
       headers: autorizado(tokenOperador),
     });
+
     expect(resposta.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
   });
 
   it('leitura pra qualquer papel; OPERADOR não grava (antes da flag); DONO grava', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const leitura = await app.inject({
       method: 'GET',
       url: '/crm/configuracoes/distribuicao',
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
 
     findManyFeatures.mockResolvedValue([]);
+
     const operador = await app.inject({
       method: 'PUT',
       url: '/crm/configuracoes/distribuicao',
       headers: autorizado(tokenOperador),
       payload: config,
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const dono = await app.inject({
       method: 'PUT',
       url: '/crm/configuracoes/distribuicao',
       headers: autorizado(tokenDono),
       payload: config,
     });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarConfigDistribuicao).toHaveBeenCalledWith(TENANT, config);
   });
 
   it('borda: fallback desconhecido, destino de tipo inválido ou campo extra → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const payloads = [
       { ...config, fallback: 'criador' },
       { ...config, regras: [{ ...config.regras[0], destino: { tipo: 'time', id: GRUPO } }] },
       { ...config, regras: [{ ...config.regras[0], prioridade: 1 }] },
     ];
+
     for (const payload of payloads) {
       const resposta = await app.inject({
         method: 'PUT',
@@ -1375,12 +1548,14 @@ describe('Distribuição automática (M12, flag crm.distribuicao)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });
 
   it('grupos: criar (201) e excluir só gestão', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const grupo = { nome: 'Vendas', membros: [USUARIO] };
     const criado = await app.inject({
       method: 'POST',
@@ -1388,6 +1563,7 @@ describe('Distribuição automática (M12, flag crm.distribuicao)', () => {
       headers: autorizado(tokenDono),
       payload: grupo,
     });
+
     expect(criado.statusCode).toBe(HTTP_STATUS.CREATED);
 
     const operador = await app.inject({
@@ -1395,12 +1571,15 @@ describe('Distribuição automática (M12, flag crm.distribuicao)', () => {
       url: `/crm/configuracoes/distribuicao/grupos/${GRUPO}`,
       headers: autorizado(tokenOperador),
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
     await app.inject({
       method: 'DELETE',
       url: `/crm/configuracoes/distribuicao/grupos/${GRUPO}`,
       headers: autorizado(tokenDono),
     });
+
     expect(excluirGrupo).toHaveBeenCalledWith(TENANT, GRUPO);
   });
 });
@@ -1416,18 +1595,24 @@ describe('Permissão por campo (M13, flag crm.permissoes)', () => {
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(operador.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
+
     const semFlag = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenDono) });
+
     expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache(); // as flags do tenant ficam em cache
+
     const dono = await app.inject({ method: 'GET', url: URL, headers: autorizado(tokenDono) });
+
     expect(dono.statusCode).toBe(HTTP_STATUS.OK);
   });
 
   it('PUT: o mapa do papel; papel desconhecido, acesso inválido ou body vazio → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const payload = { OPERADOR: { [CAMPO]: 'hidden' } };
     const ok = await app.inject({
       method: 'PUT',
@@ -1435,6 +1620,7 @@ describe('Permissão por campo (M13, flag crm.permissoes)', () => {
       headers: autorizado(tokenDono),
       payload,
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarPermissoes).toHaveBeenCalledWith(TENANT, payload);
 
@@ -1449,6 +1635,7 @@ describe('Permissão por campo (M13, flag crm.permissoes)', () => {
         headers: autorizado(tokenDono),
         payload: invalido,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });
@@ -1460,6 +1647,7 @@ describe('Permissão por campo (M13, flag crm.permissoes)', () => {
       headers: autorizado(tokenOperador),
       payload: { formato: 'csv' },
     });
+
     expect(exportar.json().error.code).toBe(ERROR_CODES.FORBIDDEN);
   });
 });
@@ -1489,16 +1677,20 @@ describe('Pontuação de leads (M14, flag crm.score)', () => {
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache(); // as flags do tenant ficam em cache
+
     const leitura = await app.inject({
       method: 'GET',
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
     for (const [method, url] of [
       ['PUT', URL],
       ['POST', `${URL}/recalcular`],
@@ -1509,18 +1701,21 @@ describe('Pontuação de leads (M14, flag crm.score)', () => {
         headers: autorizado(tokenOperador),
         payload: config,
       });
+
       expect(resposta.json().error.code, url).toBe(ERROR_CODES.FORBIDDEN);
     }
   });
 
   it('DONO grava e recalcula; pontos não inteiros, cor inválida ou sem faixa → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const ok = await app.inject({
       method: 'PUT',
       url: URL,
       headers: autorizado(tokenDono),
       payload: config,
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarConfigScore).toHaveBeenCalledWith(TENANT, config);
     await app.inject({ method: 'POST', url: `${URL}/recalcular`, headers: autorizado(tokenDono) });
@@ -1531,6 +1726,7 @@ describe('Pontuação de leads (M14, flag crm.score)', () => {
       { ...config, faixas: [{ ...config.faixas[0], cor: 'azul' }] },
       { ...config, faixas: [] },
     ];
+
     for (const payload of invalidos) {
       const resposta = await app.inject({
         method: 'PUT',
@@ -1538,18 +1734,21 @@ describe('Pontuação de leads (M14, flag crm.score)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });
 
   it('busca aceita `faixaScore` e repassa ao service', async () => {
     const corpo = { faixaScore: 'quente', paginacao: { pagina: 1, tamanho: TAMANHO } };
+
     await app.inject({
       method: 'POST',
       url: '/crm/leads/search',
       headers: autorizado(tokenOperador),
       payload: corpo,
     });
+
     expect(pesquisarLeads).toHaveBeenCalledWith(
       TENANT,
       expect.objectContaining({ faixaScore: 'quente' }),
@@ -1571,16 +1770,20 @@ describe('Base legal LGPD (M15, flag crm.lgpd)', () => {
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(semFlag.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
 
     findManyFeatures.mockResolvedValue(COM_FLAG);
     await encerrarCache(); // as flags do tenant ficam em cache
+
     const leitura = await app.inject({
       method: 'GET',
       url: URL,
       headers: autorizado(tokenOperador),
     });
+
     expect(leitura.statusCode).toBe(HTTP_STATUS.OK);
+
     for (const [method, url] of [
       ['PUT', URL],
       ['POST', ANONIMIZAR],
@@ -1591,19 +1794,23 @@ describe('Base legal LGPD (M15, flag crm.lgpd)', () => {
         headers: autorizado(tokenOperador),
         payload: config,
       });
+
       expect(resposta.json().error.code, url).toBe(ERROR_CODES.FORBIDDEN);
     }
+
     expect(anonimizarLeadDoTitular).not.toHaveBeenCalled();
   });
 
   it('DONO configura e anonimiza; base inexistente ou campo a mais → 400', async () => {
     findManyFeatures.mockResolvedValue(COM_FLAG);
+
     const ok = await app.inject({
       method: 'PUT',
       url: URL,
       headers: autorizado(tokenDono),
       payload: config,
     });
+
     expect(ok.statusCode).toBe(HTTP_STATUS.OK);
     expect(salvarConfigLgpd).toHaveBeenCalledWith(TENANT, config);
 
@@ -1612,6 +1819,7 @@ describe('Base legal LGPD (M15, flag crm.lgpd)', () => {
       url: ANONIMIZAR,
       headers: autorizado(tokenDono),
     });
+
     expect(anonimizado.statusCode).toBe(HTTP_STATUS.OK);
     expect(anonimizarLeadDoTitular).toHaveBeenCalledWith(TENANT, LEAD, expect.any(String));
 
@@ -1626,6 +1834,7 @@ describe('Base legal LGPD (M15, flag crm.lgpd)', () => {
         headers: autorizado(tokenDono),
         payload,
       });
+
       expect(resposta.statusCode).toBe(HTTP_STATUS.BAD_REQUEST);
     }
   });

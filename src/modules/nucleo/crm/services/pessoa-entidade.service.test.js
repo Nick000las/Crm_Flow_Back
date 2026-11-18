@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
   buscarPessoasPorIds,
   buscarSituacaoDasPessoas,
@@ -10,11 +11,14 @@ import { provedorDePessoa, tituloDaPessoa } from './pessoa-entidade.service.js';
 vi.mock('./visibilidade-pipeline.service.js', () => ({
   pessoasVisiveis: vi.fn(async (_tenantId, ids) => new Set(ids)),
 }));
+
 vi.mock('../adapters/crm-pessoa-entidade.repository.js', () => ({
   buscarPessoasPorIds: vi.fn(),
   buscarSituacaoDasPessoas: vi.fn(),
 }));
+
 vi.mock('./layout.service.js', () => ({ identificadorDoLayout: vi.fn() }));
+
 vi.mock('./permissoes.service.js', async (original) => ({
   ...(await original()),
   obterSchemaDoPapel: vi.fn(),
@@ -39,6 +43,7 @@ beforeEach(() => {
 describe('tituloDaPessoa', () => {
   it('sem identificador, ou com ele vazio, vale o nome', () => {
     const lead = { nome: 'Ana', empresa: '  ' };
+
     expect(tituloDaPessoa(lead, null, schema)).toBe('Ana');
     expect(tituloDaPessoa(lead, { chave: 'empresa', coluna: 'empresa' }, schema)).toBe('Ana');
   });
@@ -51,6 +56,7 @@ describe('tituloDaPessoa', () => {
         schema,
       ),
     ).toBe('ACME');
+
     expect(
       tituloDaPessoa(
         { nome: 'Ana', custom_fields: { 'campo-1': 'Aninha' } },
@@ -68,11 +74,13 @@ describe('descrever', () => {
       situacao('b', { anonimizado: true }),
       situacao('c', { excluido: true }),
     ]);
+
     vi.mocked(buscarPessoasPorIds).mockResolvedValue([{ id: 'a', nome: 'Ana' }]);
 
     await expect(provedorDePessoa.descrever(context, ['a', 'b', 'c', 'd'])).resolves.toEqual([
       { id: 'a', idAtual: 'a', titulo: 'Ana', subtitulo: null, destaques: [] },
     ]);
+
     expect(buscarPessoasPorIds).toHaveBeenCalledWith('tenant', ['a']);
   });
 
@@ -86,6 +94,7 @@ describe('descrever', () => {
     vi.mocked(buscarSituacaoDasPessoas).mockResolvedValue([situacao('a')]);
     vi.mocked(buscarPessoasPorIds).mockResolvedValue([{ id: 'a', nome: 'Ana', cpf: '111' }]);
     vi.mocked(identificadorDoLayout).mockResolvedValue({ chave: 'cpf', coluna: 'cpf' });
+
     vi.mocked(obterSchemaDoPapel).mockResolvedValue({
       ...schema,
       restritos: new Map([['cpf', { acesso: 'hidden' }]]),
@@ -100,7 +109,9 @@ describe('descrever', () => {
   it('mesclado responde pelo principal', async () => {
     vi.mocked(buscarSituacaoDasPessoas).mockResolvedValue([situacao('a', { atual: 'b' })]);
     vi.mocked(buscarPessoasPorIds).mockResolvedValue([{ id: 'b', nome: 'Bia' }]);
+
     const [pessoa] = await provedorDePessoa.descrever(context, ['a']);
+
     expect(pessoa).toMatchObject({ id: 'a', idAtual: 'b', titulo: 'Bia' });
   });
 });
@@ -112,6 +123,7 @@ describe('resolverVinculos', () => {
       situacao('c', { anonimizado: true }),
       situacao('d', { excluido: true }),
     ]);
+
     await expect(
       provedorDePessoa.resolverVinculos('tenant', ['a', 'c', 'd', 'e']),
     ).resolves.toEqual({ a: 'b', c: null, d: 'd', e: null });

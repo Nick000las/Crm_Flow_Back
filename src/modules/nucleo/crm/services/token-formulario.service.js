@@ -1,5 +1,9 @@
+/**
+ * @file A chave do ambiente, lida a cada uso: trocar o `.env` e reiniciar basta.
+ */
 import { Buffer } from 'node:buffer';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
@@ -38,6 +42,7 @@ export function hashDoToken(token) {
  */
 export function chaveDosLinks(ambiente = process.env) {
   const chave = ambiente.FORMS_TOKEN_KEY ? Buffer.from(ambiente.FORMS_TOKEN_KEY, 'base64') : null;
+
   if (!chave || chave.length !== BYTES_DA_CHAVE) {
     throw new AppError({
       statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
@@ -45,6 +50,7 @@ export function chaveDosLinks(ambiente = process.env) {
       message: 'Os links de formulário não estão configurados neste servidor',
     });
   }
+
   return chave;
 }
 
@@ -57,6 +63,7 @@ export function cifrarToken(token, chave) {
   const iv = randomBytes(BYTES_DO_IV);
   const cifra = createCipheriv(ALGORITMO, chave, iv);
   const texto = Buffer.concat([cifra.update(token, 'utf8'), cifra.final()]);
+
   return Buffer.concat([iv, cifra.getAuthTag(), texto]);
 }
 
@@ -69,7 +76,9 @@ export function decifrarToken(guardado, chave) {
   const iv = guardado.subarray(0, BYTES_DO_IV);
   const tag = guardado.subarray(BYTES_DO_IV, BYTES_DO_IV + BYTES_DA_TAG);
   const decifra = createDecipheriv(ALGORITMO, chave, iv);
+
   decifra.setAuthTag(tag);
+
   return Buffer.concat([
     decifra.update(guardado.subarray(BYTES_DO_IV + BYTES_DA_TAG)),
     decifra.final(),

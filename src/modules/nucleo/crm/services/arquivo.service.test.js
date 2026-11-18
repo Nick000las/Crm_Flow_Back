@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { listarTenantsDoModulo } from '#core/tenant/module-access.js';
+
 import {
   definirArquivamento,
   moverParaLixeira,
@@ -16,13 +18,15 @@ import {
 import { buscarLeadFormatado } from './leads.service.js';
 
 vi.mock('#core/tenant/module-access.js', () => ({ listarTenantsDoModulo: vi.fn() }));
-vi.mock('../adapters/manutencao-queue.repository.js', () => ({ agendarPurgaDiaria: vi.fn() }));
+vi.mock('../adapters/manutencao-queue.adapter.js', () => ({ agendarPurgaDiaria: vi.fn() }));
+
 vi.mock('../adapters/leads.repository.js', () => ({
   definirArquivamento: vi.fn(),
   moverParaLixeira: vi.fn(),
   purgarLixeira: vi.fn(),
   restaurarDaLixeira: vi.fn(),
 }));
+
 vi.mock('./leads.service.js', () => ({
   buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })),
 }));
@@ -60,6 +64,7 @@ describe('arquivar e desarquivar', () => {
 describe('excluir (lixeira)', () => {
   it('manda pra lixeira e informa quando sai de vez', async () => {
     moverParaLixeira.mockResolvedValueOnce({ id: LEAD, deleted_at: AGORA });
+
     await expect(excluirLead(TENANT, LEAD)).resolves.toEqual({
       removido: true,
       purgaEm: new Date('2026-11-15T03:00:00Z'),
@@ -76,6 +81,7 @@ describe('restaurar', () => {
   it('só restaura o que foi excluído dentro dos últimos 30 dias (relógio falso)', async () => {
     restaurarDaLixeira.mockResolvedValueOnce({ id: LEAD });
     await expect(restaurarLead(TENANT, LEAD)).resolves.toEqual({ id: LEAD });
+
     expect(restaurarDaLixeira).toHaveBeenCalledWith(TENANT, LEAD, TRINTA_DIAS_ANTES, {
       autorId: null,
     });
@@ -90,6 +96,7 @@ describe('restaurar', () => {
 describe('purga diária', () => {
   it('apaga, em todo tenant do CRM, o que passou de 30 dias; um tenant com erro não para os outros', async () => {
     listarTenantsDoModulo.mockResolvedValueOnce(['tenant-a', 'tenant-b', 'tenant-c']);
+
     purgarLixeira
       .mockResolvedValueOnce(APAGADOS_TENANT_A)
       .mockRejectedValueOnce(new Error('conexão caiu'))
@@ -99,6 +106,7 @@ describe('purga diária', () => {
 
     expect(listarTenantsDoModulo).toHaveBeenCalledWith('crm');
     expect(purgarLixeira).toHaveBeenCalledWith('tenant-a', TRINTA_DIAS_ANTES);
+
     expect(relatorio).toEqual({
       tenants: ['tenant-a', 'tenant-b', 'tenant-c'].length,
       apagados: APAGADOS_TENANT_A,

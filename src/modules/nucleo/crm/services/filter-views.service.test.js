@@ -1,17 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { salvarView, excluirView, listarViews } from './filter-views.service.js';
-import { listarCamposDoTenant } from './leads.service.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { featureAtiva } from '#core/tenant/feature-flags.js';
+
 import {
-  buscarViewsDoUsuario,
   buscarViewPorNome,
+  buscarViewsDoUsuario,
   criarView,
   removerView,
 } from '../adapters/filter-views.repository.js';
-import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { VIEW_ESFRIANDO } from '../constants.js';
+import { excluirView, listarViews, salvarView } from './filter-views.service.js';
+import { listarCamposDoTenant } from './leads.service.js';
 
 vi.mock('./leads.service.js', () => ({ listarCamposDoTenant: vi.fn() }));
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
+
 vi.mock('../adapters/filter-views.repository.js', () => ({
   buscarViewsDoUsuario: vi.fn(),
   buscarViewPorNome: vi.fn(),
@@ -25,9 +28,11 @@ const FILTROS = { filtros: [{ chave: 'status', operador: 'igual', valor: 'ganho'
 
 beforeEach(() => {
   vi.clearAllMocks();
+
   listarCamposDoTenant.mockResolvedValue([
     { chave: 'status', label: 'Status', tipo: 'selecao', camada: 1 },
   ]);
+
   buscarViewPorNome.mockResolvedValue(undefined);
   criarView.mockResolvedValue({ id: 'view-1', nome: 'Ganhos', filtros: FILTROS });
 });
@@ -39,19 +44,23 @@ describe('salvarView', () => {
     ).resolves.toMatchObject({
       id: 'view-1',
     });
+
     expect(criarView).toHaveBeenCalledWith(TENANT, USUARIO, { nome: 'Ganhos', filtros: FILTROS });
   });
 
   it('não salva view com filtro que já nasce inválido', async () => {
     const filtros = { filtros: [{ chave: 'cpf', operador: 'igual', valor: '1' }] };
+
     await expect(salvarView(TENANT, USUARIO, { nome: 'X', filtros })).rejects.toThrow(
       'não é um campo ativo',
     );
+
     expect(criarView).not.toHaveBeenCalled();
   });
 
   it('nome repetido pro mesmo usuário → conflito', async () => {
     buscarViewPorNome.mockResolvedValue({ id: 'view-0' });
+
     await expect(salvarView(TENANT, USUARIO, { nome: 'Ganhos', filtros: FILTROS })).rejects.toThrow(
       'Você já tem uma view com esse nome',
     );

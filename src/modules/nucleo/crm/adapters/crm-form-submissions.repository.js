@@ -1,13 +1,20 @@
+/**
+ * @file ADAPTER: respostas de formulário (`modulo_crm.crm_form_submission`, migration 0045).
+ * Gravar a resposta, fechar o link, o evento do histórico e o do outbox entram na mesma
+ * transação, com o link travado: o clique duplo encontra o link já respondido e não grava de
+ * novo.
+ */
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import {
   ENTIDADE_RESPOSTA_FORMULARIO,
   EVENTOS_FORMULARIO,
   STATUS_LINK,
 } from '../constants/formularios.js';
 import { TIPOS_EVENTO_LEAD } from '../constants/historico.js';
-import { LINK_NO_PRAZO_SQL } from './crm-form-public.repository.js';
 import { EVENTOS_PESSOA } from '../constants/oportunidades.js';
 import { inserirAlertas } from './crm-form-alerts.repository.js';
+import { LINK_NO_PRAZO_SQL } from './crm-form-public.repository.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
 import { publicarEvento, publicarEventoDaPessoa } from './crm-outbox.repository.js';
 
@@ -38,11 +45,17 @@ import { publicarEvento, publicarEventoDaPessoa } from './crm-outbox.repository.
  */
 export async function travarLinkParaEnvio(tx, tenantId, linkId) {
   const [linha] = await tx.$queryRaw`
-    SELECT k.status, ${LINK_NO_PRAZO_SQL} AS no_prazo
-    FROM modulo_crm.crm_form_link k
-    WHERE k.tenant_id = ${tenantId}::uuid AND k.id = ${linkId}::uuid
+    SELECT
+      k.status,
+      ${LINK_NO_PRAZO_SQL} AS no_prazo
+    FROM
+      modulo_crm.crm_form_link k
+    WHERE
+      k.tenant_id = ${tenantId}::uuid
+      AND k.id = ${linkId}::uuid
     FOR UPDATE
   `;
+
   return Boolean(linha && linha.status === STATUS_LINK.ATIVO && linha.no_prazo);
 }
 
@@ -56,23 +69,54 @@ export async function travarLinkParaEnvio(tx, tenantId, linkId) {
  */
 export async function gravarResposta(tx, tenantId, resposta) {
   await tx.$executeRaw`
-    INSERT INTO modulo_crm.crm_form_submission
-      (id, tenant_id, form_id, form_version_id, link_id, lead_id, deal_id, answers, consent_hash,
-       consent_accepted_at, filled_by, guardian_name, ip, user_agent, write_report)
-    VALUES (
-      ${resposta.id}::uuid, ${tenantId}::uuid, ${resposta.formularioId}::uuid,
-      ${resposta.versaoId}::uuid, ${resposta.linkId}::uuid, ${resposta.leadId}::uuid,
-      ${resposta.oportunidadeId}::uuid, ${JSON.stringify(resposta.respostas)}::jsonb,
-      ${resposta.hashDoTermo}, CURRENT_TIMESTAMP, ${resposta.preenchidoPor},
-      ${resposta.nomeResponsavel}, ${resposta.ip}, ${resposta.userAgent},
-      ${JSON.stringify(resposta.relatorio)}::jsonb
-    )
+    INSERT INTO
+      modulo_crm.crm_form_submission (
+        id,
+        tenant_id,
+        form_id,
+        form_version_id,
+        link_id,
+        lead_id,
+        deal_id,
+        answers,
+        consent_hash,
+        consent_accepted_at,
+        filled_by,
+        guardian_name,
+        ip,
+        user_agent,
+        write_report
+      )
+    VALUES
+      (
+        ${resposta.id}::uuid,
+        ${tenantId}::uuid,
+        ${resposta.formularioId}::uuid,
+        ${resposta.versaoId}::uuid,
+        ${resposta.linkId}::uuid,
+        ${resposta.leadId}::uuid,
+        ${resposta.oportunidadeId}::uuid,
+        ${JSON.stringify(resposta.respostas)}::jsonb,
+        ${resposta.hashDoTermo},
+        CURRENT_TIMESTAMP,
+        ${resposta.preenchidoPor},
+        ${resposta.nomeResponsavel},
+        ${resposta.ip},
+        ${resposta.userAgent},
+        ${JSON.stringify(resposta.relatorio)}::jsonb
+      )
   `;
+
   await tx.$executeRaw`
     UPDATE modulo_crm.crm_form_link
-    SET status = ${STATUS_LINK.RESPONDIDO}, submitted_at = CURRENT_TIMESTAMP
-    WHERE tenant_id = ${tenantId}::uuid AND id = ${resposta.linkId}::uuid
+    SET
+      status = ${STATUS_LINK.RESPONDIDO},
+      submitted_at = CURRENT_TIMESTAMP
+    WHERE
+      tenant_id = ${tenantId}::uuid
+      AND id = ${resposta.linkId}::uuid
   `;
+
   await inserirEvento(tx, tenantId, resposta.leadId, {
     tipo: TIPOS_EVENTO_LEAD.FORMULARIO_RESPONDIDO,
     autorId: null,
@@ -83,12 +127,14 @@ export async function gravarResposta(tx, tenantId, resposta) {
       respostaId: resposta.id,
     },
   });
+
   await publicarEvento(tx, tenantId, {
     tipo: EVENTOS_FORMULARIO.RESPONDIDO,
     entidade: ENTIDADE_RESPOSTA_FORMULARIO,
     entidadeId: resposta.id,
     payload: { formularioId: resposta.formularioId, leadId: resposta.leadId },
   });
+
   if (resposta.alertas.length > 0) {
     await inserirAlertas(
       tx,
@@ -96,6 +142,7 @@ export async function gravarResposta(tx, tenantId, resposta) {
       { leadId: resposta.leadId, respostaId: resposta.id, formularioId: resposta.formularioId },
       resposta.alertas,
     );
+
     // FM5: o card da pessoa ganha o selo de alerta pelo tempo real do quadro.
     await publicarEventoDaPessoa(tx, tenantId, resposta.leadId, EVENTOS_PESSOA.ATUALIZADA);
   }
@@ -112,13 +159,24 @@ export async function gravarResposta(tx, tenantId, resposta) {
 export function gravarRespostaSemEditarPessoa(tenantId, resposta) {
   return getTenantClient(tenantId, async (tx) => {
     const [pessoa] = await tx.$queryRaw`
-      SELECT id FROM modulo_crm.leads
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${resposta.leadId}::uuid
-        AND deleted_at IS NULL AND anonimizado_em IS NULL
+      SELECT
+        id
+      FROM
+        modulo_crm.leads
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${resposta.leadId}::uuid
+        AND deleted_at IS NULL
+        AND anonimizado_em IS NULL
       FOR UPDATE
     `;
-    if (!pessoa || !(await travarLinkParaEnvio(tx, tenantId, resposta.linkId))) return false;
+
+    if (!pessoa || !(await travarLinkParaEnvio(tx, tenantId, resposta.linkId))) {
+      return false;
+    }
+
     await gravarResposta(tx, tenantId, resposta);
+
     return true;
   });
 }
@@ -142,16 +200,30 @@ export function buscarRespostasDaPessoa(tenantId, leadId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT r.id::text, r.form_id::text AS formulario_id, f.name AS formulario_nome,
-        r.form_version_id::text AS versao_id, v.version AS versao, r.link_id::text AS link_id,
-        r.deal_id::text AS oportunidade_id, r.filled_by AS preenchido_por,
-        r.guardian_name AS nome_responsavel, r.submitted_at AS respondido_em,
+      SELECT
+        r.id::text,
+        r.form_id::text AS formulario_id,
+        f.name AS formulario_nome,
+        r.form_version_id::text AS versao_id,
+        v.version AS versao,
+        r.link_id::text AS link_id,
+        r.deal_id::text AS oportunidade_id,
+        r.filled_by AS preenchido_por,
+        r.guardian_name AS nome_responsavel,
+        r.submitted_at AS respondido_em,
         r.write_report AS relatorio
-      FROM modulo_crm.crm_form_submission r
-      JOIN modulo_crm.crm_form f ON f.tenant_id = r.tenant_id AND f.id = r.form_id
-      JOIN modulo_crm.crm_form_version v ON v.tenant_id = r.tenant_id AND v.id = r.form_version_id
-      WHERE r.tenant_id = ${tenantId}::uuid AND r.lead_id = ${leadId}::uuid
-      ORDER BY r.submitted_at DESC, r.id
+      FROM
+        modulo_crm.crm_form_submission r
+        JOIN modulo_crm.crm_form f ON f.tenant_id = r.tenant_id
+        AND f.id = r.form_id
+        JOIN modulo_crm.crm_form_version v ON v.tenant_id = r.tenant_id
+        AND v.id = r.form_version_id
+      WHERE
+        r.tenant_id = ${tenantId}::uuid
+        AND r.lead_id = ${leadId}::uuid
+      ORDER BY
+        r.submitted_at DESC,
+        r.id
     `,
   );
 }
@@ -172,19 +244,37 @@ export async function buscarResposta(tenantId, leadId, respostaId) {
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT r.id::text, r.form_id::text AS formulario_id, f.name AS formulario_nome,
-        r.form_version_id::text AS versao_id, v.version AS versao, r.link_id::text AS link_id,
-        r.deal_id::text AS oportunidade_id, r.filled_by AS preenchido_por,
-        r.guardian_name AS nome_responsavel, r.submitted_at AS respondido_em,
-        r.write_report AS relatorio, r.answers AS respostas, v.sections AS secoes,
-        v.fields_snapshot AS campos, v.consent_text AS termo, r.consent_accepted_at AS aceito_em,
-        r.ip, r.user_agent
-      FROM modulo_crm.crm_form_submission r
-      JOIN modulo_crm.crm_form f ON f.tenant_id = r.tenant_id AND f.id = r.form_id
-      JOIN modulo_crm.crm_form_version v ON v.tenant_id = r.tenant_id AND v.id = r.form_version_id
-      WHERE r.tenant_id = ${tenantId}::uuid AND r.lead_id = ${leadId}::uuid
+      SELECT
+        r.id::text,
+        r.form_id::text AS formulario_id,
+        f.name AS formulario_nome,
+        r.form_version_id::text AS versao_id,
+        v.version AS versao,
+        r.link_id::text AS link_id,
+        r.deal_id::text AS oportunidade_id,
+        r.filled_by AS preenchido_por,
+        r.guardian_name AS nome_responsavel,
+        r.submitted_at AS respondido_em,
+        r.write_report AS relatorio,
+        r.answers AS respostas,
+        v.sections AS secoes,
+        v.fields_snapshot AS campos,
+        v.consent_text AS termo,
+        r.consent_accepted_at AS aceito_em,
+        r.ip,
+        r.user_agent
+      FROM
+        modulo_crm.crm_form_submission r
+        JOIN modulo_crm.crm_form f ON f.tenant_id = r.tenant_id
+        AND f.id = r.form_id
+        JOIN modulo_crm.crm_form_version v ON v.tenant_id = r.tenant_id
+        AND v.id = r.form_version_id
+      WHERE
+        r.tenant_id = ${tenantId}::uuid
+        AND r.lead_id = ${leadId}::uuid
         AND r.id = ${respostaId}::uuid
     `,
   );
+
   return linha;
 }

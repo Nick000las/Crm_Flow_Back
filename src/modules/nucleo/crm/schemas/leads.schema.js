@@ -1,5 +1,12 @@
+/**
+ * @file Na edição, `null` limpa o campo e omitir mantém o valor (ver
+ * `leads.repository.js#atualizarLead`) — por isso as Camadas 1/2 aceitam `null` lá, mas não na
+ * criação.
+ */
 import { z } from 'zod';
+
 import { BRAZIL_PHONE, TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { LISTA_BASES_LEGAIS } from '../constants.js';
 
 // Camada 1 (docs/produto/crm-pessoas-e-campos.md) — sempre ativa, mesmo nível

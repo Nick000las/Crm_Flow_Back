@@ -1,4 +1,7 @@
 /**
+ * @file Leads por UPDATE no recálculo em lote (cada lote grava o progresso).
+ */
+/**
  * Pontuação de leads (M14, `docs/produto/crm-qualidade-e-produtividade.md`). O score é o
  * campo nativo "Lead score" (`leadScore` / `lead_score`).
  */

@@ -1,3 +1,7 @@
+/**
+ * @file Coluna `esfriando_desde` da leitura do lead. Sem `agora` (flag desligada), a expressão
+ * nem entra na query.
+ */
 import { Prisma } from '@prisma/client';
 
 /**
@@ -44,7 +48,10 @@ const LEAD_NA_LISTA = Prisma.sql`l.archived_at IS NULL AND l.deleted_at IS NULL`
  * @returns {Prisma.Sql}
  */
 export function colunaEsfriandoDesde(agora) {
-  if (!agora) return Prisma.sql`NULL::timestamp AS esfriando_desde`;
+  if (!agora) {
+    return Prisma.sql`NULL::timestamp AS esfriando_desde`;
+  }
+
   return Prisma.sql`(
     SELECT e.em FROM (SELECT ${ESFRIA_EM} AS em) e
     WHERE e.em <= ${agora} AND ${LEAD_NA_LISTA}

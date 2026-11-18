@@ -1,3 +1,8 @@
+/**
+ * @file Documentos brasileiros. CNPJ inclui o alfanumérico (IN RFB 2.229/2024): 12 posições
+ * [0-9A-Z] + 2 dígitos verificadores, cada caractere valendo o código ASCII − 48 no cálculo
+ * (0–9 = 0–9, A = 17 … Z = 42).
+ */
 export const ROLES = Object.freeze({ MASTER: 'MASTER', DONO: 'DONO', OPERADOR: 'OPERADOR' });
 
 export const TENANT_STATUS = Object.freeze({

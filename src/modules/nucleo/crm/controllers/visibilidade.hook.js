@@ -1,3 +1,8 @@
+/**
+ * @file Visibilidade por pipeline (D4) num ponto só: pessoa ou oportunidade oculta dá 404 em
+ * toda rota por id, como se não existisse. Id mal formado segue para o handler, que responde
+ * 400.
+ */
 import { PADRAO_UUID } from '../constants.js';
 import {
   garantirOportunidadeVisivel,
@@ -23,8 +28,12 @@ export async function exigirVisibilidade(req) {
     ([prefixo]) => rota === prefixo || rota.startsWith(`${prefixo}/`),
   );
   const { id } = /** @type {{ id?: string }} */ (req.params ?? {});
-  if (!conferencia || !id || !PADRAO_UUID.test(id)) return;
+
+  if (!conferencia || !id || !PADRAO_UUID.test(id)) {
+    return;
+  }
 
   const { tenantId, role } = req.tenantContext;
+
   await conferencia[1](tenantId, id, role);
 }

@@ -1,3 +1,7 @@
+/**
+ * @file PreHandler: exige `req.tenantContext` (registrar depois de `authenticateHook`) e o
+ * módulo ativo pro tenant do token.
+ */
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
@@ -40,6 +44,7 @@ export function listarModulosAtivos(tenantId) {
       select: { moduleKey: true },
       orderBy: { moduleKey: 'asc' },
     });
+
     return modulos.map((modulo) => modulo.moduleKey);
   });
 }
@@ -58,6 +63,7 @@ export async function listarTenantsDoModulo(moduleKey) {
     select: { tenantId: true },
     orderBy: { tenantId: 'asc' },
   });
+
   return linhas.map((linha) => linha.tenantId);
 }
 
@@ -75,6 +81,7 @@ export async function listarTenantsAtivosDoModulo(moduleKey) {
     select: { tenantId: true, tenant: { select: { fusoHorario: true } } },
     orderBy: { tenantId: 'asc' },
   });
+
   return linhas.map((linha) => ({
     tenantId: linha.tenantId,
     fusoHorario: linha.tenant.fusoHorario,
@@ -109,6 +116,7 @@ export function exigirModuloAtivo(moduleKey) {
   /** @param {import('fastify').FastifyRequest} req */
   return async (req) => {
     const tenantId = req.tenantContext?.tenantId;
+
     if (!tenantId || !(await moduloAtivo(tenantId, moduleKey))) {
       throw new AppError({
         statusCode: HTTP_STATUS.FORBIDDEN,

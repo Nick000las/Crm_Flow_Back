@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { mesclarLeads as mesclarLeadsRepository } from '../adapters/leads.repository.js';
 import { mesclarLeads, montarMesclagem } from './mesclagem.service.js';
 
@@ -9,10 +10,13 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
   garantirScoreNaoEditado: vi.fn(),
 }));
+
 vi.mock('../adapters/leads.repository.js', () => ({ mesclarLeads: vi.fn() }));
+
 vi.mock('./leads.service.js', () => ({
   buscarLeadFormatado: vi.fn(async (_tenant, id) => ({ id })),
 }));
+
 vi.mock('./field-schema.service.js', () => ({
   obterSchemaCampos: vi.fn(async () => ({
     definicoes: [{ id: 'id-segmento', chave: 'segmento' }],
@@ -59,6 +63,7 @@ beforeEach(() => {
 describe('montarMesclagem (pura)', () => {
   it('sem escolha: o do principal, ou o do secundário quando o principal está vazio', () => {
     const dados = montarMesclagem(PRINCIPAL, SECUNDARIO);
+
     expect(dados).toMatchObject({
       nome: 'Ana',
       email: 'ana@x.com',
@@ -73,6 +78,7 @@ describe('montarMesclagem (pura)', () => {
       status: 'secundario',
       valor: 'secundario',
     });
+
     for (const chave of ['status', 'valor', 'funilEstagioId', 'motivoPerda']) {
       expect(dados).not.toHaveProperty(chave);
     }
@@ -83,12 +89,14 @@ describe('montarMesclagem (pura)', () => {
       nome: 'secundario',
       'id-segmento': 'secundario',
     });
+
     expect(dados).toMatchObject({ nome: 'Ana Souza' });
     expect(dados.customFields).toEqual({ 'id-segmento': 'industria', 'id-nota': NOTA });
   });
 
   it('tags: união; última interação: a mais recente', () => {
     const dados = montarMesclagem(PRINCIPAL, SECUNDARIO);
+
     expect(dados.tags).toEqual(['vip', 'b2b']);
     expect(dados.ultimaInteracaoEm).toEqual(new Date('2026-10-10T00:00:00Z'));
   });
@@ -99,6 +107,7 @@ describe('mesclarLeads', () => {
     await expect(mesclarLeads('t', { principalId: 'a', secundarioId: 'a' })).rejects.toThrow(
       'dois leads diferentes',
     );
+
     expect(mesclarLeadsRepository).not.toHaveBeenCalled();
   });
 
@@ -106,6 +115,7 @@ describe('mesclarLeads', () => {
     mesclarLeadsRepository.mockImplementationOnce(async (_tenant, _ids, { montar }) =>
       montar(PRINCIPAL, SECUNDARIO),
     );
+
     await mesclarLeads(
       't',
       { principalId: 'p', secundarioId: 's', escolhas: { segmento: 'secundario' } },
@@ -113,6 +123,7 @@ describe('mesclarLeads', () => {
     );
 
     const [, ids, opcoes] = mesclarLeadsRepository.mock.calls[0];
+
     expect(ids).toEqual({ principalId: 'p', secundarioId: 's' });
     expect(opcoes.autorId).toBe('u-dono');
     expect(opcoes.montar(PRINCIPAL, SECUNDARIO).customFields['id-segmento']).toBe('industria');
@@ -120,6 +131,7 @@ describe('mesclarLeads', () => {
 
   it('algum dos dois inexistente ou na lixeira → 404', async () => {
     mesclarLeadsRepository.mockResolvedValueOnce(undefined);
+
     await expect(mesclarLeads('t', { principalId: 'p', secundarioId: 's' })).rejects.toThrow(
       'Lead não encontrado',
     );

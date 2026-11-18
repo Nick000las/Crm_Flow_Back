@@ -1,4 +1,10 @@
+/**
+ * @file Mock de `adapters/crm-options.repository.js` com o tenant já semeado:
+ * vi.mock('../adapters/crm-options.repository.js', async () => (await
+ * import('../testing/listas.fixture.js')).mockRepositorioOpcoes());.
+ */
 import { vi } from 'vitest';
+
 import { LISTAS_SEMEADAS, OPCOES_LEGADAS, OPCOES_SUGERIDAS } from '../constants.js';
 
 /**

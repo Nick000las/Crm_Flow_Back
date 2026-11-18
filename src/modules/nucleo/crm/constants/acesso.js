@@ -1,3 +1,8 @@
+/**
+ * @file Catálogo das feature flags do CRM (`docs/produto/plataforma.md`). Rollout gradual e
+ * kill switch, não cobrança — cada uma sai do código 1-2 releases depois de estabilizar.
+ * Desligada = comportamento atual.
+ */
 import { ROLES } from '#shared/constants/index.js';
 
 /** `Module.key` do CRM (`tenant_modules.module_key`). */

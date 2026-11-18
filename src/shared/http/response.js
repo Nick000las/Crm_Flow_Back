@@ -1,3 +1,6 @@
+/**
+ * @file Único serializador de erros HTTP da aplicação.
+ */
 import { HTTP_STATUS } from '#shared/constants/index.js';
 
 /**
@@ -28,6 +31,7 @@ export function sendError(reply, { statusCode, code, message, fields, details })
   if (fields !== undefined) {
     error.fields = fields;
   }
+
   if (details !== undefined) {
     error.details = details;
   }

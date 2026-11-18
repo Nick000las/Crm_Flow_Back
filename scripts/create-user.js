@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { getAdminClient, disconnectDatabase } from '#core/db/tenantClient.js';
+
+import { disconnectDatabase, getAdminClient } from '#core/db/tenantClient.js';
 import { ROLES } from '#shared/constants/index.js';
 
 /**
@@ -87,6 +88,7 @@ async function main() {
   const modulos = tenant.modulosAtivos.map((modulo) => modulo.moduleKey);
 
   console.log('Tenant:', tenant.id, `(${tenant.nome} / ${subdomain})`);
+
   console.log(
     `Usuário ${usuario.role} criado:`,
     usuario.id,
@@ -94,7 +96,9 @@ async function main() {
     usuario.nome,
     `<${usuario.email}>`,
   );
+
   console.log('Módulos ativos do tenant:', modulos.length > 0 ? modulos.join(', ') : '(nenhum)');
+
   console.log(
     '\nSem senha definida. Entre em POST /auth/login com esse e-mail — o fluxo de ' +
       'ativação manda o código de criação de senha.',
@@ -106,17 +110,21 @@ function parseArgs() {
   const bruto = Object.fromEntries(
     process.argv.slice(CLI_ARGS_START_INDEX).map((arg) => {
       const [chave, ...valorPartes] = arg.replace(/^--/, '').split('=');
+
       return [chave, valorPartes.join('=')];
     }),
   );
 
   const resultado = argsSchema.safeParse(bruto);
+
   if (!resultado.success) {
     const mensagens = resultado.error.issues
       .map((issue) => `  --${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
+
     throw new Error(`${USO}\n\n${mensagens}`);
   }
+
   return resultado.data;
 }
 

@@ -1,7 +1,11 @@
+/**
+ * @file SERVICE: permissão por campo (M13).
+ */
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { substituirPermissoesDoPapel } from '../adapters/crm-field-permissions.repository.js';
 import {
   ACESSOS_CAMPO,
@@ -41,7 +45,10 @@ const MENSAGEM_SEM_PERMISSAO = 'Você não tem permissão para alterar este camp
  * @param {{ chave: string, sensivel?: boolean }} campo
  */
 export function acessoPadrao(campo) {
-  if (CHAVES_SEM_RESTRICAO.includes(campo.chave)) return ACESSOS_CAMPO.EDITAR;
+  if (CHAVES_SEM_RESTRICAO.includes(campo.chave)) {
+    return ACESSOS_CAMPO.EDITAR;
+  }
+
   return campo.sensivel ? ACESSOS_CAMPO.OCULTO : ACESSOS_CAMPO.EDITAR;
 }
 
@@ -59,7 +66,9 @@ export function acessoPadrao(campo) {
  * @returns {SchemaDoPapel}
  */
 export function schemaDoPapel(schema, papel) {
-  if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) return schema;
+  if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) {
+    return schema;
+  }
 
   const acessoPorId = new Map(
     (schema.permissoes ?? [])
@@ -74,11 +83,15 @@ export function schemaDoPapel(schema, papel) {
 
   /** @type {Map<string, Restricao>} */
   const restritos = new Map();
+
   for (const campo of schema.campos) {
     const acesso = acessoDe(campo);
-    if (acesso !== ACESSOS_CAMPO.EDITAR)
+
+    if (acesso !== ACESSOS_CAMPO.EDITAR) {
       restritos.set(campo.chave, { acesso, label: campo.label, camada: campo.camada });
+    }
   }
+
   const oculto = (chave) => restritos.get(chave)?.acesso === ACESSOS_CAMPO.OCULTO;
 
   return {
@@ -88,7 +101,10 @@ export function schemaDoPapel(schema, papel) {
       .map((campo) => ({ ...campo, acesso: acessoDe(campo) })),
     definicoes: schema.definicoes.filter((definicao) => !oculto(definicao.chave)),
     regras: (schema.regras ?? []).filter((regra) => {
-      if (restritos.has(regra.alvo.chave)) return false;
+      if (restritos.has(regra.alvo.chave)) {
+        return false;
+      }
+
       return (
         regra.kind !== TIPOS_REGRA.CONDICIONAL ||
         !oculto(/** @type {any} */ (regra.condicao).campo.chave)
@@ -108,12 +124,18 @@ export function schemaDoPapel(schema, papel) {
  */
 export async function obterSchemaDoPapel(tenantId, papel) {
   const schema = await obterSchemaCampos(tenantId);
-  if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) return schema;
+
+  if (!papel || !PAPEIS_COM_PERMISSAO.includes(papel)) {
+    return schema;
+  }
+
   if (!(await featureAtiva(tenantId, CRM_FEATURES.PERMISSOES))) {
     // Sem a flag, as linhas não valem; o padrão do sensível, sim.
     const temSensivel = schema.campos.some((campo) => campo.sensivel);
+
     return temSensivel ? schemaDoPapel({ ...schema, permissoes: [] }, papel) : schema;
   }
+
   return schemaDoPapel(schema, papel);
 }
 
@@ -126,20 +148,36 @@ export async function obterSchemaDoPapel(tenantId, papel) {
  */
 export function garantirEscritaPermitida(schema, input) {
   const { restritos } = schema;
-  if (!restritos || restritos.size === 0) return;
+
+  if (!restritos || restritos.size === 0) {
+    return;
+  }
 
   const bloqueados = [];
+
   for (const [chave, valor] of Object.entries(input)) {
-    if (valor === undefined || chave === 'customFields') continue;
+    if (valor === undefined || chave === 'customFields') {
+      continue;
+    }
+
     const restricao = restritos.get(chave);
-    if (restricao && restricao.camada !== CAMADA.CAMADA_3) bloqueados.push([chave, restricao]);
+
+    if (restricao && restricao.camada !== CAMADA.CAMADA_3) {
+      bloqueados.push([chave, restricao]);
+    }
   }
+
   for (const [chave, valor] of Object.entries(input.customFields ?? {})) {
     const restricao = restritos.get(chave);
-    if (valor !== undefined && restricao?.camada === CAMADA.CAMADA_3)
+
+    if (valor !== undefined && restricao?.camada === CAMADA.CAMADA_3) {
       bloqueados.push([chave, restricao]);
+    }
   }
-  if (bloqueados.length === 0) return;
+
+  if (bloqueados.length === 0) {
+    return;
+  }
 
   throw new AppError({
     statusCode: HTTP_STATUS.FORBIDDEN,
@@ -159,7 +197,10 @@ export function garantirEscritaPermitida(schema, input) {
  * @returns {T | null}
  */
 export function identificadorVisivel(identificador, schema) {
-  if (!identificador || !schema.restritos) return identificador;
+  if (!identificador || !schema.restritos) {
+    return identificador;
+  }
+
   return schema.restritos.get(identificador.chave)?.acesso === ACESSOS_CAMPO.OCULTO
     ? null
     : identificador;
@@ -173,6 +214,7 @@ export function identificadorVisivel(identificador, schema) {
  */
 export function contatoNaBusca(schema) {
   const visivel = (chave) => schema.restritos?.get(chave)?.acesso !== ACESSOS_CAMPO.OCULTO;
+
   return { email: visivel('email'), telefone: visivel('telefone') };
 }
 
@@ -191,6 +233,7 @@ export async function obterPermissoes(tenantId) {
   const acesso = new Map(
     permissoes.map((linha) => [`${linha.role}:${linha.field_id}`, linha.access]),
   );
+
   return {
     papeis: [...PAPEIS_COM_PERMISSAO],
     campos: campos
@@ -226,30 +269,44 @@ export async function salvarPermissoes(tenantId, porPapel) {
 
   const paraGravar = Object.entries(porPapel).map(([papel, acessos]) => {
     const restricoes = [];
+
     for (const [campoId, acesso] of Object.entries(acessos)) {
       const campo = campoPorId.get(campoId);
-      if (!campo) throw erroDeValidacao(`${papel}.${campoId}`, 'Escolha um campo ativo');
-      if (acesso === acessoPadrao(campo)) continue;
+
+      if (!campo) {
+        throw erroDeValidacao(`${papel}.${campoId}`, 'Escolha um campo ativo');
+      }
+
+      if (acesso === acessoPadrao(campo)) {
+        continue;
+      }
+
       if (CHAVES_SEM_RESTRICAO.includes(campo.chave)) {
         throw erroDeValidacao(`${papel}.${campoId}`, `"${campo.label}" é sempre editável`);
       }
+
       restricoes.push({ campoId, acesso, chave: campo.chave });
     }
+
     const contatoTravado = CHAVES_CONTATO.every((chave) =>
       restricoes.some((restricao) => restricao.chave === chave),
     );
+
     if (contatoTravado) {
       throw erroDeValidacao(
         papel,
         'Deixe e-mail ou telefone editável: sem um dos dois, não dá pra criar lead',
       );
     }
+
     return { papel, restricoes: restricoes.map(({ campoId, acesso }) => ({ campoId, acesso })) };
   });
 
   for (const { papel, restricoes } of paraGravar) {
     await substituirPermissoesDoPapel(tenantId, papel, restricoes);
   }
+
   await invalidarSchemaCampos(tenantId);
+
   return obterPermissoes(tenantId);
 }

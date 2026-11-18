@@ -1,6 +1,12 @@
-import { setTimeout, clearTimeout } from 'node:timers';
+/**
+ * @file ADAPTER: produtor da fila de importação (BullMQ).
+ */
+import { clearTimeout, setTimeout } from 'node:timers';
+
 import { Queue } from 'bullmq';
+
 import { criarConexaoRedis } from '#core/queue/connection.js';
+
 import { IMPORT_FILA, IMPORTACAO } from '../constants.js';
 
 /**
@@ -23,6 +29,7 @@ function obterFila() {
     // event" e derruba o processo HTTP inteiro.
     fila.on('error', () => {});
   }
+
   return fila;
 }
 

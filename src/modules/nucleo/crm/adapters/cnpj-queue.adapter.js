@@ -1,6 +1,15 @@
-import { setTimeout, clearTimeout } from 'node:timers';
+/**
+ * @file ADAPTER: produtor da fila de enriquecimento por CNPJ (M11b). O consumidor é
+ * `src/workers/crm.worker.js`, com rate limit por provedor. Como a fila de import, criada sob
+ * demanda: sem `REDIS_URL` o servidor sobe normal — e aqui o erro nem chega ao usuário (o
+ * service engole).
+ */
+import { clearTimeout, setTimeout } from 'node:timers';
+
 import { Queue } from 'bullmq';
+
 import { criarConexaoRedis } from '#core/queue/connection.js';
+
 import { CNPJ_FILA, ENRIQUECIMENTO_CNPJ } from '../constants.js';
 
 /**
@@ -18,6 +27,7 @@ function obterFila() {
     fila = new Queue(CNPJ_FILA, { connection: criarConexaoRedis() });
     fila.on('error', () => {});
   }
+
   return fila;
 }
 
@@ -30,7 +40,10 @@ function obterFila() {
  * @param {{ tenantId: string, leadId: string, cnpj: string }[]} itens
  */
 export async function enfileirarEnriquecimentos(itens) {
-  if (itens.length === 0) return;
+  if (itens.length === 0) {
+    return;
+  }
+
   const adicionar = obterFila().addBulk(
     itens.map((item) => ({
       name: ENRIQUECIMENTO_CNPJ.JOB,

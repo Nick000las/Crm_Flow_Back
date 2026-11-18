@@ -1,8 +1,11 @@
+/**
+ * @file SERVICE: histórico do lead (M6).
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
 import { garantirFeature } from '#core/tenant/feature-flags.js';
-import { buscarLeadPorId } from '../adapters/leads.repository.js';
-import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
+
 import { listarEventosDoLead } from '../adapters/crm-lead-events.repository.js';
+import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { buscarNomesDeUsuarios } from '../adapters/usuarios.repository.js';
 import {
   CAMADA,
@@ -18,6 +21,7 @@ import {
   TIPOS_EVENTO_LEAD,
 } from '../constants.js';
 import { obterSchemaDoPapel } from './permissoes.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 
 /**
  * SERVICE: histórico do lead (M6). Cada mudança vira um `crm_lead_event`
@@ -38,11 +42,18 @@ import { obterSchemaDoPapel } from './permissoes.service.js';
  * @param {unknown} valor
  */
 function normalizar(valor) {
-  if (valor === undefined || valor === null) return null;
-  if (valor instanceof Date) return valor.toISOString();
+  if (valor === undefined || valor === null) {
+    return null;
+  }
+
+  if (valor instanceof Date) {
+    return valor.toISOString();
+  }
+
   if (typeof valor === 'object' && !Array.isArray(valor) && typeof valor.toNumber === 'function') {
     return valor.toNumber();
   }
+
   return valor;
 }
 
@@ -65,11 +76,17 @@ export function diffDoLead(antes, depois, { ignorar = [] } = {}) {
   const comparar = (entrada, valorAntes, valorDepois) => {
     const a = normalizar(valorAntes);
     const d = normalizar(valorDepois);
-    if (!iguais(a, d)) diff.push({ ...entrada, antes: a, depois: d });
+
+    if (!iguais(a, d)) {
+      diff.push({ ...entrada, antes: a, depois: d });
+    }
   };
 
   for (const campo of CAMPOS_SISTEMA) {
-    if (ignorar.includes(campo.systemKey)) continue;
+    if (ignorar.includes(campo.systemKey)) {
+      continue;
+    }
+
     comparar({ campo: campo.systemKey }, antes[campo.coluna], depois[campo.coluna]);
   }
 
@@ -79,6 +96,7 @@ export function diffDoLead(antes, depois, { ignorar = [] } = {}) {
 
   const customAntes = antes.custom_fields ?? {};
   const customDepois = depois.custom_fields ?? {};
+
   for (const campoId of new Set([...Object.keys(customAntes), ...Object.keys(customDepois)])) {
     comparar(
       { campo: CAMPO_PERSONALIZADO_NO_DIFF, campoId },
@@ -117,13 +135,19 @@ export async function listarHistorico(
   { pagina, tamanho, categorias = [] },
   { papel } = {},
 ) {
-  if (categorias.length > 0) await garantirFeature(tenantId, CRM_FEATURES.TIMELINE);
+  if (categorias.length > 0) {
+    await garantirFeature(tenantId, CRM_FEATURES.TIMELINE);
+  }
+
   const [lead, schema, ocultos] = await Promise.all([
     buscarLeadPorId(tenantId, leadId),
     obterSchemaDoPapel(tenantId, papel),
     pipelinesOcultos(tenantId, papel),
   ]);
-  if (!lead) throw erroNaoEncontrado('Lead não encontrado');
+
+  if (!lead) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
 
   const { itens, total } = await listarEventosDoLead(tenantId, leadId, {
     limite: tamanho,
@@ -166,16 +190,30 @@ export async function listarHistorico(
  */
 export function categoriasDoEvento({ tipo, diff, detalhes }) {
   const categorias = [];
-  if (tipo === TIPOS_EVENTO_LEAD.ATUALIZADO) categorias.push(CATEGORIAS_EVENTO.CAMPOS);
+
+  if (tipo === TIPOS_EVENTO_LEAD.ATUALIZADO) {
+    categorias.push(CATEGORIAS_EVENTO.CAMPOS);
+  }
+
   if (
     (diff ?? []).some((entrada) => entrada.campo === CAMPO_RESPONSAVEL_NO_DIFF) ||
     detalhes?.distribuicao
   ) {
     categorias.push(CATEGORIAS_EVENTO.ATRIBUICAO);
   }
-  if (tipo === TIPOS_EVENTO_LEAD.MESCLADO) categorias.push(CATEGORIAS_EVENTO.MESCLAGEM);
-  if (tipo === TIPOS_EVENTO_LEAD.ENRIQUECIDO) categorias.push(CATEGORIAS_EVENTO.ENRIQUECIMENTO);
-  if (TIPOS_CICLO_DE_VIDA.includes(tipo)) categorias.push(CATEGORIAS_EVENTO.CICLO);
+
+  if (tipo === TIPOS_EVENTO_LEAD.MESCLADO) {
+    categorias.push(CATEGORIAS_EVENTO.MESCLAGEM);
+  }
+
+  if (tipo === TIPOS_EVENTO_LEAD.ENRIQUECIDO) {
+    categorias.push(CATEGORIAS_EVENTO.ENRIQUECIMENTO);
+  }
+
+  if (TIPOS_CICLO_DE_VIDA.includes(tipo)) {
+    categorias.push(CATEGORIAS_EVENTO.CICLO);
+  }
+
   return categorias;
 }
 
@@ -188,6 +226,7 @@ export function categoriasDoEvento({ tipo, diff, detalhes }) {
  */
 export function visiveisDoSchema({ campos, definicoes }) {
   const ligados = new Set(campos.map((campo) => campo.chave));
+
   return {
     chaves: [
       ...campos.filter((campo) => campo.camada !== CAMADA.CAMADA_3).map((campo) => campo.chave),
@@ -206,12 +245,17 @@ const ehDeUsuario = (entrada) =>
 /** @param {{ diff: (EntradaDiff & { chave: string, tipo: string })[] }[]} eventos */
 function idsDeUsuario(eventos) {
   const ids = new Set();
+
   for (const { diff } of eventos) {
     for (const entrada of diff.filter(ehDeUsuario)) {
-      for (const valor of [entrada.antes, entrada.depois])
-        if (typeof valor === 'string' && UUID.test(valor)) ids.add(valor);
+      for (const valor of [entrada.antes, entrada.depois]) {
+        if (typeof valor === 'string' && UUID.test(valor)) {
+          ids.add(valor);
+        }
+      }
     }
   }
+
   return [...ids];
 }
 
@@ -221,8 +265,12 @@ function idsDeUsuario(eventos) {
  * @param {Map<string, string>} nomes
  */
 function comNomeDoUsuario(entrada, nomes) {
-  if (!ehDeUsuario(entrada)) return entrada;
+  if (!ehDeUsuario(entrada)) {
+    return entrada;
+  }
+
   const nome = (valor) => (typeof valor === 'string' ? (nomes.get(valor) ?? null) : null);
+
   return { ...entrada, antesNome: nome(entrada.antes), depoisNome: nome(entrada.depois) };
 }
 
@@ -232,7 +280,11 @@ function comNomeDoUsuario(entrada, nomes) {
  */
 function detalhesVisiveis({ tipo, detalhes }, cnpjVisivel) {
   const todos = detalhes ?? {};
-  if (tipo !== TIPOS_EVENTO_LEAD.ENRIQUECIDO || cnpjVisivel) return todos;
+
+  if (tipo !== TIPOS_EVENTO_LEAD.ENRIQUECIDO || cnpjVisivel) {
+    return todos;
+  }
+
   return Object.fromEntries(Object.entries(todos).filter(([chave]) => chave !== 'cnpj'));
 }
 
@@ -259,16 +311,26 @@ function descritorDoDiff({ campos, definicoes }) {
 
   return (entrada) => {
     const fixa = propriedadePorCampo.get(entrada.campo);
-    if (fixa) return { ...entrada, chave: entrada.campo, label: fixa.label, tipo: fixa.tipo };
+
+    if (fixa) {
+      return { ...entrada, chave: entrada.campo, label: fixa.label, tipo: fixa.tipo };
+    }
 
     const campo =
       entrada.campo === CAMPO_PERSONALIZADO_NO_DIFF
         ? personalizadoPorId.get(entrada.campoId)
         : sistemaPorChave.get(entrada.campo);
-    if (!campo) return null;
+
+    if (!campo) {
+      return null;
+    }
 
     const descrito = { ...entrada, chave: campo.chave, label: campo.label, tipo: campo.tipo };
-    if (campo.opcoesLista) descrito.opcoesLista = campo.opcoesLista;
+
+    if (campo.opcoesLista) {
+      descrito.opcoesLista = campo.opcoesLista;
+    }
+
     return descrito;
   };
 }

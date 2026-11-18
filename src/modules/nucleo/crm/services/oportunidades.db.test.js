@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { alterarOportunidade } from '../adapters/crm-oportunidades.repository.js';
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
 import { CRM_FEATURES, EVENTOS_OPORTUNIDADE, MODULO_CRM, TIPOS_PIPELINE } from '../constants.js';
@@ -54,10 +57,13 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       { nome, email: `${randomUUID()}@smoke.test` },
       donoId,
     );
+
     await prisma.$executeRaw`DELETE FROM modulo_crm.crm_deal WHERE lead_id = ${id}::uuid`;
+
     await prisma.$executeRaw`
       UPDATE modulo_crm.leads SET lifecycle_stage = 'lead' WHERE id = ${id}::uuid
     `;
+
     return id;
   };
 
@@ -67,6 +73,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       SELECT nome, lifecycle_stage, principal_deal_id::text, ultima_interacao_em
       FROM modulo_crm.leads WHERE id = ${id}::uuid
     `;
+
     return linha;
   };
   /** @param {string} id */
@@ -91,6 +98,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         subdomain: `smoke-opsvc-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -101,7 +109,9 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         role: 'DONO',
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.REGRAS, CRM_FEATURES.LGPD].map((featureKey) => ({
         tenantId,
@@ -109,16 +119,21 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     // A regra "Perdido exige Motivo" só vale com o campo ligado.
     const campos = await listarConfiguracaoCampos(tenantId);
+
     await atualizarConfiguracaoCampo(
       tenantId,
       campos.find((campo) => campo.chave === 'motivoPerda').id,
       { visibilidade: { create_form: true, detail: true, table: true, filter: true } },
     );
+
     const pipelines = await buscarPipelines(tenantId);
+
     vendas = pipelines.find((pipeline) => pipeline.padrao);
     atendimento = pipelines.find((pipeline) => pipeline.tipo === TIPOS_PIPELINE.ATENDIMENTO);
   });
@@ -142,10 +157,12 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         valor: VALOR,
         responsavelId: donoId,
       });
+
       expect(await lerPessoa(leadId)).toMatchObject({
         lifecycle_stage: 'oportunidade',
         principal_deal_id: deal.id,
       });
+
       expect((await eventosDe(deal.id)).map((evento) => evento.tipo)).toEqual([
         EVENTOS_OPORTUNIDADE.CRIADA,
       ]);
@@ -153,7 +170,9 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
     it('uma pessoa tem N oportunidades, cada uma com o status do seu pipeline', async () => {
       const leadId = await novaPessoa();
+
       await criarOportunidade(tenantId, leadId, {}, donoId);
+
       await criarOportunidade(
         tenantId,
         leadId,
@@ -191,6 +210,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       });
 
       const [atual] = await listarOportunidadesDaPessoa(tenantId, deal.leadId);
+
       expect(atual.status).toBe(deal.status);
       expect(await eventosDe(deal.id)).toHaveLength(1);
     });
@@ -202,6 +222,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         { pipelineId: atendimento.id },
         donoId,
       );
+
       await expect(
         mudarStatusDaOportunidade(tenantId, deal.id, { status: CANCELADO }, donoId),
       ).rejects.toMatchObject({ code: ERROR_CODES.CAMPOS_OBRIGATORIOS });
@@ -230,6 +251,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
     it('mover com versão antiga: a última vence, com aviso', async () => {
       const deal = await criarOportunidade(tenantId, await novaPessoa(), {}, donoId);
+
       await editarOportunidade(tenantId, deal.id, { valor: VALOR }, donoId);
 
       const depois = await mudarStatusDaOportunidade(
@@ -244,6 +266,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
     it('editar com versão antiga: 409 e nada muda', async () => {
       const deal = await criarOportunidade(tenantId, await novaPessoa(), {}, donoId);
+
       await editarOportunidade(tenantId, deal.id, { valor: VALOR }, donoId);
 
       await expect(
@@ -264,11 +287,13 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       await ganhar(deal.id);
 
       const [card] = await atendimentosDe(deal.leadId);
+
       expect(card).toMatchObject({
         origemId: deal.id,
         status: 'aguardando',
         responsavelId: donoId,
       });
+
       expect(await lerPessoa(deal.leadId)).toMatchObject({
         lifecycle_stage: 'cliente',
         principal_deal_id: deal.id,
@@ -277,10 +302,13 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
     it('reabrir marca o atendimento, e ganhar de novo não duplica', async () => {
       const deal = await criarOportunidade(tenantId, await novaPessoa(), {}, donoId);
+
       await ganhar(deal.id);
 
       await mudarStatusDaOportunidade(tenantId, deal.id, { status: 'proposta' }, donoId);
+
       const [card] = await atendimentosDe(deal.leadId);
+
       expect(card.origemReabertaEm).not.toBeNull();
       expect((await lerPessoa(deal.leadId)).lifecycle_stage).toBe('oportunidade');
 
@@ -301,11 +329,13 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
         UPDATE modulo_crm.crm_pipeline SET auto_create_enabled = false
         WHERE id = ${atendimento.id}::uuid
       `;
+
       const deal = await criarOportunidade(tenantId, await novaPessoa(), {}, donoId);
 
       await ganhar(deal.id);
 
       await expect(atendimentosDe(deal.leadId)).resolves.toEqual([]);
+
       await prisma.$executeRaw`
         UPDATE modulo_crm.crm_pipeline SET auto_create_enabled = true
         WHERE id = ${atendimento.id}::uuid
@@ -321,6 +351,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
           SELECT count(*)::int AS total FROM modulo_crm.crm_lead_event
           WHERE lead_id = ${deal.leadId}::uuid
         `;
+
         return total;
       };
       const pessoaAntes = await lerPessoa(deal.leadId);
@@ -336,6 +367,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       ).rejects.toThrow();
 
       const [atual] = await listarOportunidadesDaPessoa(tenantId, deal.leadId);
+
       expect(atual.status).toBe(deal.status);
       expect(await lerPessoa(deal.leadId)).toEqual(pessoaAntes);
       expect(await contarHistorico()).toBe(historicoAntes);
@@ -348,6 +380,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       const [evento] = await eventosDe(deal.id);
 
       expect(JSON.stringify(evento.payload)).not.toMatch(/Nome|Título/);
+
       expect(evento.payload).toEqual({
         leadId,
         pipelineId: vendas.id,
@@ -357,11 +390,13 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
     it('pessoa anonimizada não muda: 409', async () => {
       const deal = await criarOportunidade(tenantId, await novaPessoa(), {}, donoId);
+
       await anonimizarLeadDoTitular(tenantId, deal.leadId, donoId);
 
       await expect(
         mudarStatusDaOportunidade(tenantId, deal.id, { status: 'proposta' }, donoId),
       ).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
+
       await expect(criarOportunidade(tenantId, deal.leadId, {}, donoId)).rejects.toMatchObject({
         statusCode: HTTP_STATUS.CONFLICT,
       });
@@ -372,10 +407,12 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
     it('aberta em Vendas ganha da ganha, e a ganha fica se não houver aberta', async () => {
       const leadId = await novaPessoa();
       const ganha = await criarOportunidade(tenantId, leadId, {}, donoId);
+
       await ganhar(ganha.id);
       expect((await lerPessoa(leadId)).principal_deal_id).toBe(ganha.id);
 
       const aberta = await criarOportunidade(tenantId, leadId, {}, donoId);
+
       expect(await lerPessoa(leadId)).toMatchObject({
         principal_deal_id: aberta.id,
         lifecycle_stage: 'cliente',
@@ -389,10 +426,12 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
       const leadId = await novaPessoa();
       const primeira = await criarOportunidade(tenantId, leadId, {}, donoId);
       const segunda = await criarOportunidade(tenantId, leadId, {}, donoId);
+
       expect((await lerPessoa(leadId)).principal_deal_id).toBe(segunda.id);
 
       await definirArquivamentoDaOportunidade(tenantId, segunda.id, true, donoId);
       expect((await lerPessoa(leadId)).principal_deal_id).toBe(primeira.id);
+
       await expect(
         mudarStatusDaOportunidade(tenantId, segunda.id, { status: 'proposta' }, donoId),
       ).rejects.toMatchObject({ statusCode: HTTP_STATUS.CONFLICT });
@@ -402,6 +441,7 @@ rodar('service único de oportunidade (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }
 
       await definirLixeiraDaOportunidade(tenantId, segunda.id, true, donoId);
       expect((await lerPessoa(leadId)).principal_deal_id).toBe(primeira.id);
+
       await expect(
         mudarStatusDaOportunidade(tenantId, segunda.id, { status: 'proposta' }, donoId),
       ).rejects.toMatchObject({ statusCode: HTTP_STATUS.NOT_FOUND });

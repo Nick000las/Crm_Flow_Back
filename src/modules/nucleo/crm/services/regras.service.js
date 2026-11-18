@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: Configurações → regras de campo (M8).
+ */
 import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   atualizarRegra,
   buscarRegrasDoTenant,
@@ -40,11 +44,14 @@ export async function criarRegra(tenantId, input) {
     obterSchemaCampos(tenantId),
     buscarRegrasDoTenant(tenantId),
   ]);
+
   if (existentes.length >= LIMITES_REGRAS.POR_TENANT) {
     throw erroDeValidacao('kind', `Use no máximo ${LIMITES_REGRAS.POR_TENANT} regras`);
   }
+
   const regra = normalizarRegra(input, schema);
   const criada = await inserirRegra(tenantId, { ...regra, ativo: input.ativo ?? true });
+
   return regraResolvida(tenantId, criada.id);
 }
 
@@ -61,14 +68,19 @@ export async function editarRegra(tenantId, regraId, input) {
     buscarRegrasDoTenant(tenantId),
   ]);
   const atual = linhas.find((linha) => linha.id === regraId);
-  if (!atual) throw regraNaoEncontrada();
+
+  if (!atual) {
+    throw regraNaoEncontrada();
+  }
 
   const mudaConteudo = ['campoId', 'condicao', 'efeito'].some(
     (chave) => input[chave] !== undefined,
   );
+
   if (atual.system_key && mudaConteudo) {
     throw erroDeConflito('id', 'A regra do sistema só pode ser ligada ou desligada');
   }
+
   if (input.kind !== undefined && input.kind !== atual.kind) {
     throw erroDeValidacao('kind', 'O tipo da regra não muda; crie outra regra');
   }
@@ -84,7 +96,9 @@ export async function editarRegra(tenantId, regraId, input) {
         },
         schema,
       );
+
   await atualizarRegra(tenantId, regraId, { ...conteudo, ativo: input.ativo ?? atual.is_active });
+
   return regraResolvida(tenantId, regraId);
 }
 
@@ -95,12 +109,18 @@ export async function editarRegra(tenantId, regraId, input) {
 export async function removerRegra(tenantId, regraId) {
   const linhas = await buscarRegrasDoTenant(tenantId);
   const atual = linhas.find((linha) => linha.id === regraId);
-  if (!atual) throw regraNaoEncontrada();
-  if (atual.system_key)
+
+  if (!atual) {
+    throw regraNaoEncontrada();
+  }
+
+  if (atual.system_key) {
     throw erroDeConflito('id', 'A regra do sistema não pode ser excluída; desligue-a');
+  }
 
   await excluirRegra(tenantId, regraId);
   await invalidarSchemaCampos(tenantId);
+
   return { removido: true };
 }
 
@@ -111,7 +131,9 @@ export async function removerRegra(tenantId, regraId) {
  */
 async function regraResolvida(tenantId, regraId) {
   await invalidarSchemaCampos(tenantId);
+
   const { regras } = await obterSchemaCampos(tenantId);
+
   return /** @type {Regra} */ (regras.find((regra) => regra.id === regraId));
 }
 
@@ -123,31 +145,49 @@ async function regraResolvida(tenantId, regraId) {
  */
 function normalizarRegra({ kind, campoId, condicao, efeito }, { campos, listas }) {
   const porId = new Map(campos.filter((campo) => campo.id).map((campo) => [campo.id, campo]));
-  if (!porId.has(campoId)) throw erroDeValidacao('campoId', 'Escolha um campo ativo');
+
+  if (!porId.has(campoId)) {
+    throw erroDeValidacao('campoId', 'Escolha um campo ativo');
+  }
 
   if (kind === TIPOS_REGRA.POR_STATUS) {
     const status = [...new Set(condicao.status ?? [])];
     const categorias = [...new Set(condicao.categorias ?? [])];
+
     if (status.length + categorias.length === 0) {
       throw erroDeValidacao('condicao', 'Escolha ao menos um status ou uma categoria');
     }
+
     if (status.length > LIMITES_REGRAS.STATUS_POR_REGRA) {
       throw erroDeValidacao('condicao', `Use no máximo ${LIMITES_REGRAS.STATUS_POR_REGRA} status`);
     }
+
     const keys = new Set((listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => opcao.key));
     const desconhecido = status.find((key) => !keys.has(key));
-    if (desconhecido)
+
+    if (desconhecido) {
       throw erroDeValidacao('condicao', `"${desconhecido}" não é uma opção de Status`);
+    }
+
     const categoriaInvalida = categorias.find((categoria) => !CATEGORIAS.has(categoria));
-    if (categoriaInvalida)
+
+    if (categoriaInvalida) {
       throw erroDeValidacao('condicao', `"${categoriaInvalida}" não é uma categoria de status`);
+    }
+
     return { kind, campoId, condicao: { status, categorias }, efeito: { obrigatorio: true } };
   }
 
   const campo = porId.get(condicao.campoId);
-  if (!campo) throw erroDeValidacao('condicao', 'Escolha um campo ativo para a condição');
-  if (condicao.campoId === campoId)
+
+  if (!campo) {
+    throw erroDeValidacao('condicao', 'Escolha um campo ativo para a condição');
+  }
+
+  if (condicao.campoId === campoId) {
     throw erroDeValidacao('condicao', 'A condição precisa ser sobre outro campo');
+  }
+
   try {
     // Mesmas regras de operador × tipo e de formato de valor do filtro.
     montarCondicoes(
@@ -160,10 +200,13 @@ function normalizarRegra({ kind, campoId, condicao, efeito }, { campos, listas }
 
   const obrigatorio = efeito?.obrigatorio === true;
   const visivel = efeito?.visivel === true;
+
   if (!obrigatorio && !visivel) {
     throw erroDeValidacao('efeito', 'A regra precisa tornar o campo obrigatório e/ou visível');
   }
+
   const valor = ['vazio', 'nao_vazio'].includes(condicao.operador) ? undefined : condicao.valor;
+
   return {
     kind,
     campoId,

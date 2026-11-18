@@ -77,3 +77,22 @@ conflito descrita em [Kanban Universal](kanban-implementado.md).
 Somente usuários com acesso ao quadro podem alterar esses dados. Criar quadros
 continua restrito a DONO e MASTER; os participantes OPERADOR podem trabalhar nos
 cards de seus quadros.
+
+## Colaboração e produtividade (migration 0031)
+
+- `PATCH /kanban/comments/:id`: `{ conteudo }`, somente autor com acesso de edição;
+  resposta inclui `editedAt` e o histórico registra `comment.update`.
+- `POST /kanban/cards/:id/duplicar`: `{ modelo: boolean }`, copia e reinicia
+  conclusão, checklist e seguidores. Modelos são retornados em `board.modelos`.
+- `PUT /kanban/cards/:id/seguir`: `{ seguindo: boolean }`, altera apenas a
+  assinatura do usuário autenticado. Os e-mails `update` revalidam a assinatura.
+- `GET /kanban/boards/:id/relatorio`: etapas com `cards` e `horas` médias por
+  passagem, a partir do histórico, respeitando participação no quadro.
+- `dadosExtras`: `bloqueio`, `leadId`, `links`, `anexos`, `recorrencia`, `modelo`
+  e `automacoes` têm validação explícita. Links aceitam HTTP/HTTPS; até 3 anexos
+  binários codificados, cada um até 280000 caracteres (frontend limita a 200 KB).
+- Recorrência cria a próxima tarefa ao concluir o prazo, na mesma transação.
+  Automações por `colunaId` podem concluir prazo e atribuir um participante.
+- O quadro inclui `commentsCount` nos cards e separa modelos das colunas.
+
+Aplique `0031_kanban_colaboracao` antes de disponibilizar a interface nova.

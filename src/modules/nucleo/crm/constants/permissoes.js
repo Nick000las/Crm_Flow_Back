@@ -1,3 +1,6 @@
+/**
+ * @file "Pelo menos um dos dois" na criação: um deles fica editável pra cada papel.
+ */
 import { ROLES } from '#shared/constants/index.js';
 
 /**

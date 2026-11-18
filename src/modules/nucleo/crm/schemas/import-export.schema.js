@@ -1,5 +1,12 @@
+/**
+ * @file Campos de texto do multipart de POST /crm/import/validate. `mapeamento` chega como
+ * string JSON (multipart não tem objeto aninhado): `{ "Nome da coluna na planilha":
+ * "chaveDoCampo" }`.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import {
   ESTRATEGIAS_DUPLICATA,
   FORMATOS_EXPORTACAO,
@@ -25,6 +32,7 @@ export const validarImportacaoCamposSchema = z.object({
           code: z.ZodIssueCode.custom,
           message: 'Mapeamento deve ser um JSON válido',
         });
+
         return z.NEVER;
       }
     })

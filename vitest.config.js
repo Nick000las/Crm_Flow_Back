@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
 /** Espelha o campo `imports` do package.json para o resolver do Vite. */

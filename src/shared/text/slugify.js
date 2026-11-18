@@ -1,3 +1,7 @@
+/**
+ * @file Gera um slug estável a partir de texto livre — usado hoje pra derivar `chave` de campo
+ * personalizado a partir do `label` (plano de campos customizados, Parte 1.3).
+ */
 const COMBINING_DIACRITICS_RANGE = /[̀-ͯ]/g;
 const SPACE_OR_HYPHEN_RUN = /[\s-]+/g;
 const NON_SLUG_CHAR = /[^a-z0-9_]/g;

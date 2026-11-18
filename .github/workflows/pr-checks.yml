@@ -65,7 +65,7 @@ jobs:
         with:
           version: 11.8.0
 
-      - name: Configurar Node.js (>= 20.11)
+      - name: Configurar Node.js (20.19+)
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
@@ -73,6 +73,9 @@ jobs:
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
+
+      - name: Testar regras de lint
+        run: pnpm test:lint
 
       - name: Validação de Fronteiras de Módulo (Lint)
         run: pnpm lint

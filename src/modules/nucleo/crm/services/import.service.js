@@ -1,20 +1,21 @@
+/**
+ * @file SERVICE: importação de leads por planilha (docs/produto/crm-busca-e-dados-em-massa.md).
+ */
 import { AppError, erroDeValidacao } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
-  criarImportJob,
   buscarImportJob,
   buscarImportJobComPayload,
+  criarImportJob,
   definirAcoesDuplicata,
-  transicionarStatus,
-  registrarProgresso,
   marcarFalha,
+  registrarProgresso,
+  transicionarStatus,
 } from '../adapters/import-jobs.repository.js';
-import {
-  enfileirarImportacao,
-  encerrarFilaImportacao,
-} from '../adapters/import-queue.repository.js';
+import { encerrarFilaImportacao, enfileirarImportacao } from '../adapters/import-queue.adapter.js';
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
@@ -34,6 +35,13 @@ import {
   TIPOS_CAMPO,
   TIPOS_LISTA,
 } from '../constants.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
+import {
+  carregarContextoDistribuicao,
+  detalhesDaAtribuicao,
+  distribuir,
+  notificarAtribuicoesDoImport,
+} from './distribuicao.service.js';
 import { duplicadosDasLinhas, encontrarDuplicados, regrasDoImport } from './duplicidade.service.js';
 import {
   customFieldsParaArmazenamento,
@@ -48,16 +56,8 @@ import {
   listarCamposDoTenant,
   regrasAplicaveis,
 } from './leads.service.js';
-import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
-import { agendarEnriquecimento } from './cnpj.service.js';
-import { garantirScoreNaoEditado, recalcularScoreDosLeads } from './score.service.js';
 import { comDadosLgpdNaCriacao, garantirBaseDoLote } from './lgpd.service.js';
-import {
-  carregarContextoDistribuicao,
-  detalhesDaAtribuicao,
-  distribuir,
-  notificarAtribuicoesDoImport,
-} from './distribuicao.service.js';
+import { gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
 import { atualizarLeadComOportunidade, criarLeadComOportunidade } from './oportunidades.service.js';
 import { lerPlanilha } from './planilha.service.js';
 import {
@@ -65,6 +65,7 @@ import {
   comPrimeiroNomeNaEdicao,
   precisaDoLeadAtual,
 } from './primeiro-nome.service.js';
+import { garantirScoreNaoEditado, recalcularScoreDosLeads } from './score.service.js';
 import { converterCelula, valorAusente } from './tipos-campo.service.js';
 
 /**
@@ -134,6 +135,7 @@ export async function validarImportacao(
   { mapeamento, estrategiaDuplicata, baseLegalLote },
 ) {
   await garantirBaseDoLote(tenantId, baseLegalLote);
+
   const [{ colunas, linhas }, camposDaPlanilha, { listas }] = await Promise.all([
     lerPlanilha(buffer),
     listarCamposDaPlanilha(tenantId),
@@ -146,9 +148,11 @@ export async function validarImportacao(
   if (Object.values(mapeamento).includes(CHAVE_CAMPO_SCORE)) {
     await garantirScoreNaoEditado(tenantId, { [CHAVE_CAMPO_SCORE]: true });
   }
+
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
   // M15: a base legal do lote cobre o campo Base legal sem coluna mapeada.
   const cobertos = baseLegalLote ? [CAMPOS_LGPD.BASE_LEGAL] : [];
+
   validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos);
 
   const estagioPorNome = new Map(
@@ -163,12 +167,14 @@ export async function validarImportacao(
   /** @type {ErroDeLinha[]} */
   const erros = [];
   const payload = [];
+
   for (const linha of linhas) {
     const resultado = converterLinha(linha, mapeamento, campos, campoPorChave, estagioPorNome, {
       baseLegal: baseLegalLote,
     });
     const violacoes =
       resultado.erros.length > 0 ? [] : errosDasRegras(schema, regrasCampos, resultado.dados);
+
     if (resultado.erros.length > 0) {
       erros.push(...resultado.erros);
     } else if (violacoes.length > 0) {
@@ -196,6 +202,7 @@ export async function validarImportacao(
     estrategiaDuplicata,
     payload: payloadMarcado,
   });
+
   return { jobId, totalLinhas: linhas.length, linhasValidas: payload.length, erros, duplicados };
 }
 
@@ -209,7 +216,9 @@ export async function validarImportacao(
  * @param {{ acoes?: Record<string, string> }} [opcoes]
  */
 export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
-  if (acoes && Object.keys(acoes).length > 0) await gravarAcoes(tenantId, jobId, acoes);
+  if (acoes && Object.keys(acoes).length > 0) {
+    await gravarAcoes(tenantId, jobId, acoes);
+  }
 
   const transicionou = await transicionarStatus(
     tenantId,
@@ -220,6 +229,7 @@ export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
 
   if (!transicionou) {
     await obterStatusImportacao(tenantId, jobId); // 404 se não existir
+
     throw new AppError({
       statusCode: HTTP_STATUS.CONFLICT,
       code: ERROR_CODES.RESOURCE_CONFLICT,
@@ -237,6 +247,7 @@ export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
       IMPORT_JOB_STATUS.PROCESSANDO,
       IMPORT_JOB_STATUS.PENDENTE,
     );
+
     throw new AppError({
       statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
       code: ERROR_CODES.QUEUE_UNAVAILABLE,
@@ -256,7 +267,11 @@ export async function confirmarImportacao(tenantId, jobId, { acoes } = {}) {
  */
 async function gravarAcoes(tenantId, jobId, acoes) {
   const job = await buscarImportJobComPayload(tenantId, jobId);
-  if (!job) await obterStatusImportacao(tenantId, jobId); // 404
+
+  if (!job) {
+    await obterStatusImportacao(tenantId, jobId);
+  } // 404
+
   const duplicataPorLinha = new Map(
     job.payload
       .filter((item) => item.duplicata)
@@ -265,9 +280,11 @@ async function gravarAcoes(tenantId, jobId, acoes) {
 
   for (const [linha, acao] of Object.entries(acoes)) {
     const duplicata = duplicataPorLinha.get(linha);
+
     if (!duplicata) {
       throw erroDeValidacao('acoes', `A linha ${linha} não foi apontada como duplicada`);
     }
+
     if (acao === ACOES_IMPORT_DUPLICATA.CRIAR && duplicata === ACOES_DUPLICIDADE.BLOQUEAR) {
       throw erroDeValidacao(
         'acoes',
@@ -275,6 +292,7 @@ async function gravarAcoes(tenantId, jobId, acoes) {
       );
     }
   }
+
   // Só grava com o job pendente; já confirmado cai no 409 da transição logo depois.
   await definirAcoesDuplicata(tenantId, jobId, acoes);
 }
@@ -307,7 +325,10 @@ export async function obterStatusImportacao(tenantId, jobId) {
  */
 export async function processarImportacao(tenantId, jobId) {
   const job = await buscarImportJobComPayload(tenantId, jobId);
-  if (!job || job.status !== IMPORT_JOB_STATUS.PROCESSANDO) return;
+
+  if (!job || job.status !== IMPORT_JOB_STATUS.PROCESSANDO) {
+    return;
+  }
 
   const progresso = {
     linhasProcessadas: 0,
@@ -340,9 +361,11 @@ export async function processarImportacao(tenantId, jobId) {
       try {
         const dadosApi = reviverDatas(item.dados);
         const dados = { ...dadosApi };
+
         if (dados.customFields !== undefined) {
           dados.customFields = customFieldsParaArmazenamento(definicoes, dados.customFields);
         }
+
         const { resultado, motivo, leadId, atribuidoA } = await importarLinha(
           tenantId,
           dados,
@@ -357,7 +380,10 @@ export async function processarImportacao(tenantId, jobId) {
               : null,
             // Atualizar um existente: regras do M8 contra o lead resultante.
             validarAtualizacao: async (leadId) => {
-              if (regrasCampos.length === 0) return null;
+              if (regrasCampos.length === 0) {
+                return null;
+              }
+
               const atual = await buscarLeadPorId(tenantId, leadId);
               const [violacao] = atual
                 ? errosDasRegras(
@@ -366,21 +392,36 @@ export async function processarImportacao(tenantId, jobId) {
                     aplicarEdicao(leadParaApi(atual, schema), dadosApi),
                   )
                 : [];
+
               return violacao?.mensagem ?? null;
             },
           },
         );
+
         progresso[resultado] += 1;
-        if (leadId) gravados.push(leadId);
-        if (leadId && dados.cnpj) comCnpj.push({ leadId, cnpj: dados.cnpj });
-        if (atribuidoA) distribuidos.set(atribuidoA, (distribuidos.get(atribuidoA) ?? 0) + 1);
-        if (motivo) progresso.relatorioErro.push({ linha: item.linha, motivo });
+
+        if (leadId) {
+          gravados.push(leadId);
+        }
+
+        if (leadId && dados.cnpj) {
+          comCnpj.push({ leadId, cnpj: dados.cnpj });
+        }
+
+        if (atribuidoA) {
+          distribuidos.set(atribuidoA, (distribuidos.get(atribuidoA) ?? 0) + 1);
+        }
+
+        if (motivo) {
+          progresso.relatorioErro.push({ linha: item.linha, motivo });
+        }
       } catch (erro) {
         progresso.linhasComErro += 1;
         progresso.relatorioErro.push({ linha: item.linha, motivo: motivoDoErro(erro) });
       }
 
       progresso.linhasProcessadas += 1;
+
       if (progresso.linhasProcessadas % IMPORTACAO.LOTE_PROGRESSO === 0) {
         await registrarProgresso(tenantId, jobId, progresso);
       }
@@ -390,9 +431,11 @@ export async function processarImportacao(tenantId, jobId) {
       ...progresso,
       statusFinal: IMPORT_JOB_STATUS.CONCLUIDO,
     });
+
     // M11b: uma leva só no fim (o worker do CNPJ respeita o rate limit do provedor).
     await agendarEnriquecimento(tenantId, comCnpj);
     await recalcularScoreDosLeads(tenantId, gravados);
+
     await notificarAtribuicoesDoImport(tenantId, {
       importJobId: jobId,
       totais: distribuidos,
@@ -400,6 +443,7 @@ export async function processarImportacao(tenantId, jobId) {
     });
   } catch (erro) {
     await marcarFalha(tenantId, jobId);
+
     throw erro;
   }
 }
@@ -445,21 +489,31 @@ async function importarLinha(
   const [existente] = await encontrarDuplicados(tenantId, dados, { regras });
 
   if (existente) {
-    if (acao === ACOES_IMPORT_DUPLICATA.PULAR) return { resultado: 'linhasIgnoradas' };
+    if (acao === ACOES_IMPORT_DUPLICATA.PULAR) {
+      return { resultado: 'linhasIgnoradas' };
+    }
+
     if (acao === ACOES_IMPORT_DUPLICATA.ATUALIZAR) {
       const violacao = await validarAtualizacao(existente.id);
-      if (violacao) return { resultado: 'linhasComErro', motivo: violacao };
+
+      if (violacao) {
+        return { resultado: 'linhasComErro', motivo: violacao };
+      }
+
       const ignorar = dados.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
       const comPrimeiroNome = comPrimeiroNomeNaEdicao(
         dados,
         precisaDoLeadAtual(dados) ? await buscarLeadPorId(tenantId, existente.id) : null,
       );
+
       await atualizarLeadComOportunidade(tenantId, existente.id, comPrimeiroNome, {
         ...historico,
         montarDiff: (antes, depois) => diffDoLead(antes, depois, { ignorar }),
       });
+
       return { resultado: 'linhasAtualizadas', leadId: existente.id };
     }
+
     if (existente.acao === ACOES_DUPLICIDADE.BLOQUEAR) {
       return {
         resultado: 'linhasIgnoradas',
@@ -484,6 +538,7 @@ async function importarLinha(
     },
     atribuicao ? { ...historico, detalhes: detalhesDaAtribuicao(atribuicao) } : historico,
   );
+
   return {
     resultado: 'linhasCriadas',
     leadId: criado?.id,
@@ -499,10 +554,15 @@ async function importarLinha(
  * @param {Record<string, unknown>} dados
  */
 async function comTagsResolvidas(tenantId, dados) {
-  if (!Array.isArray(dados.tags)) return dados;
+  if (!Array.isArray(dados.tags)) {
+    return dados;
+  }
+
   const { listas } = await obterSchemaCampos(tenantId);
   const { input, tagsNovas } = await resolverOpcoesDoLead(listas, { tags: dados.tags });
+
   await gravarTagsNovas(tenantId, tagsNovas);
+
   return { ...dados, tags: input.tags };
 }
 
@@ -523,6 +583,7 @@ async function listarCamposDaPlanilha(tenantId) {
   const mapeaveis = campos.filter(
     (campo) => !campo.somenteLeitura && !(comScore && campo.chave === CHAVE_CAMPO_SCORE),
   );
+
   return [...mapeaveis, ...CAMPOS_EXTRAS_PLANILHA];
 }
 
@@ -536,13 +597,17 @@ async function listarCamposDaPlanilha(tenantId) {
  * @returns {Promise<(C & { usuarios?: Map<string, string> })[]>}
  */
 async function comUsuariosDoTenant(tenantId, campos) {
-  if (!campos.some((campo) => campo.tipo === TIPOS_CAMPO.USUARIO)) return campos;
+  if (!campos.some((campo) => campo.tipo === TIPOS_CAMPO.USUARIO)) {
+    return campos;
+  }
+
   const usuarios = new Map(
     (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => [
       usuario.nome.trim().toLowerCase(),
       usuario.id,
     ]),
   );
+
   return campos.map((campo) =>
     campo.tipo === TIPOS_CAMPO.USUARIO ? { ...campo, usuarios } : campo,
   );
@@ -559,29 +624,39 @@ function validarMapeamento(mapeamento, colunas, campos, campoPorChave, cobertos 
   const chavesMapeadas = Object.values(mapeamento);
 
   for (const [coluna, chave] of Object.entries(mapeamento)) {
-    if (!colunas.includes(coluna)) problemas.push(`A coluna "${coluna}" não existe na planilha`);
-    if (!campoPorChave.has(chave)) problemas.push(`"${chave}" não é um campo ativo`);
+    if (!colunas.includes(coluna)) {
+      problemas.push(`A coluna "${coluna}" não existe na planilha`);
+    }
+
+    if (!campoPorChave.has(chave)) {
+      problemas.push(`"${chave}" não é um campo ativo`);
+    }
   }
 
   const repetida = chavesMapeadas.find((chave, i) => chavesMapeadas.indexOf(chave) !== i);
-  if (repetida)
+
+  if (repetida) {
     problemas.push(
       `O campo "${campoPorChave.get(repetida)?.label ?? repetida}" foi mapeado mais de uma vez`,
     );
+  }
 
   for (const campo of campos) {
     if (
       !exigidoNaCriacao(campo) ||
       chavesMapeadas.includes(campo.chave) ||
       cobertos.includes(campo.chave)
-    )
+    ) {
       continue;
+    }
+
     problemas.push(
       campo.chave === CAMPOS_LGPD.BASE_LEGAL
         ? `O campo obrigatório "${campo.label}" não foi mapeado — mapeie a coluna ou escolha a base legal do lote`
         : `O campo obrigatório "${campo.label}" não foi mapeado`,
     );
   }
+
   if (!chavesMapeadas.includes('email') && !chavesMapeadas.includes('telefone')) {
     problemas.push('Mapeie ao menos a coluna de e-mail ou a de telefone');
   }
@@ -623,10 +698,14 @@ export function converterLinha(
 
   for (const [coluna, chave] of Object.entries(mapeamento)) {
     const bruto = linha.valores[coluna];
-    if (bruto === null || bruto === undefined) continue;
+
+    if (bruto === null || bruto === undefined) {
+      continue;
+    }
 
     if (chave === CHAVE_ESTAGIO) {
       const estagioId = estagioPorNome.get(String(bruto).trim().toLowerCase());
+
       if (estagioId) {
         dados.funilEstagioId = estagioId;
       } else {
@@ -636,11 +715,13 @@ export function converterLinha(
           motivo: `Estágio "${bruto}" não é um status ativo`,
         });
       }
+
       continue;
     }
 
     const campo = /** @type {CampoPlanilha} */ (campoPorChave.get(chave));
     const resultado = converterCelula(campo, bruto);
+
     if ('erro' in resultado) {
       erros.push({ linha: linha.numero, coluna, motivo: resultado.erro });
     } else if (campo.camada === CAMADA.CAMADA_3) {
@@ -651,17 +732,23 @@ export function converterLinha(
   }
 
   // M15: base legal do lote nas linhas sem a sua — antes da obrigatoriedade.
-  if (padroes.baseLegal && valorAusente(dados[CAMPOS_LGPD.BASE_LEGAL]))
+  if (padroes.baseLegal && valorAusente(dados[CAMPOS_LGPD.BASE_LEGAL])) {
     dados[CAMPOS_LGPD.BASE_LEGAL] = padroes.baseLegal;
+  }
 
   for (const campo of campos) {
-    if (!exigidoNaCriacao(campo)) continue;
+    if (!exigidoNaCriacao(campo)) {
+      continue;
+    }
+
     const valor =
       campo.camada === CAMADA.CAMADA_3 ? dados.customFields[campo.chave] : dados[campo.chave];
+
     if (valorAusente(valor)) {
       erros.push({ linha: linha.numero, motivo: `"${campo.label}" é obrigatório` });
     }
   }
+
   if (!dados.email && !dados.telefone) {
     erros.push({ linha: linha.numero, motivo: 'Informe e-mail ou telefone' });
   }
@@ -672,9 +759,13 @@ export function converterLinha(
 /** @param {Record<string, unknown>} dados */
 function reviverDatas(dados) {
   const revivido = { ...dados };
+
   for (const chave of CHAVES_DATA_NATIVAS) {
-    if (typeof revivido[chave] === 'string') revivido[chave] = new Date(revivido[chave]);
+    if (typeof revivido[chave] === 'string') {
+      revivido[chave] = new Date(revivido[chave]);
+    }
   }
+
   return revivido;
 }
 
@@ -685,6 +776,9 @@ function reviverDatas(dados) {
  * @param {unknown} erro
  */
 function motivoDoErro(erro) {
-  if (erro instanceof AppError) return erro.message;
+  if (erro instanceof AppError) {
+    return erro.message;
+  }
+
   return 'Não foi possível gravar esta linha';
 }

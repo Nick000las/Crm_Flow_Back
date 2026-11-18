@@ -1,7 +1,14 @@
+/**
+ * @file SERVICE: vínculo de card de projeto com um registro de outro módulo (M6). O Kanban
+ * guarda só tipo e id. Nome e link vêm do provedor a cada leitura, então mudar ou anonimizar no
+ * módulo dono vale na hora. Registro que o provedor não descreve sai como restrito, sem nenhum
+ * dado.
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
 import { provedorDaEntidade } from '#core/quadros/registro.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { moduloAtivo } from '#core/tenant/module-access.js';
+
 import { buscarCardsVinculados } from '../adapters/vinculos.repository.js';
 import { KANBAN_FEATURES } from '../constants.js';
 import { operarKanban } from './kanban.service.js';
@@ -25,6 +32,7 @@ const CARD_COM_VINCULO = new Set(['card.get', 'card.link']);
  */
 async function provedorAcessivel(context, tipo) {
   const provedor = provedorDaEntidade(tipo);
+
   // D3: quem publica um registro decide se card de projeto pode apontar para ele.
   if (
     !provedor ||
@@ -33,6 +41,7 @@ async function provedorAcessivel(context, tipo) {
   ) {
     return undefined;
   }
+
   return provedor;
 }
 
@@ -49,18 +58,22 @@ const chave = (tipo, id) => `${tipo}:${id}`;
  */
 async function descreverVinculos(context, vinculos, logger) {
   const idsPorTipo = new Map();
+
   for (const { tipo, id } of vinculos) {
     idsPorTipo.set(tipo, new Set(idsPorTipo.get(tipo)).add(id));
   }
 
   const descricoes = new Map();
+
   await Promise.all(
     [...idsPorTipo].map(async ([tipo, ids]) => {
       try {
         const provedor = await provedorAcessivel(context, tipo);
         const lista = provedor ? await provedor.descrever(context, [...ids]) : [];
+
         for (const { id, idAtual, ...descricao } of lista) {
           const atual = idAtual ?? id;
+
           descricoes.set(chave(tipo, id), {
             tipo,
             id: atual,
@@ -73,6 +86,7 @@ async function descreverVinculos(context, vinculos, logger) {
       }
     }),
   );
+
   return descricoes;
 }
 
@@ -94,6 +108,7 @@ export async function apresentarVinculos(context, action, valor, logger) {
   if (!valor || (action !== 'board.get' && !CARD_COM_VINCULO.has(action))) {
     return valor;
   }
+
   const ligado = await featureAtiva(context.tenantId, KANBAN_FEATURES.VINCULO_ENTIDADE);
   const referencias = ligado
     ? cardsDaResposta(action, valor).flatMap((card) => card.vinculo ?? [])
@@ -104,18 +119,21 @@ export async function apresentarVinculos(context, action, valor, logger) {
     if (!ligado) {
       return card;
     }
+
     const legivel =
       vinculo &&
       (descricoes.get(chave(vinculo.tipo, vinculo.id)) ?? {
         tipo: vinculo.tipo,
         restrito: true,
       });
+
     return { ...card, vinculo: legivel ?? null };
   };
 
   if (action !== 'board.get') {
     return apresentar(valor);
   }
+
   return {
     ...valor,
     colunas: valor.colunas.map((coluna) => ({ ...coluna, cards: coluna.cards.map(apresentar) })),
@@ -135,9 +153,11 @@ export async function apresentarVinculos(context, action, valor, logger) {
 export async function vincularCard(context, cardId, { entidadeTipo, entidadeId }, publish, logger) {
   const provedor = await provedorAcessivel(context, entidadeTipo);
   const [descricao] = provedor ? await provedor.descrever(context, [entidadeId]) : [];
+
   if (!descricao) {
     throw erroNaoEncontrado('Registro não encontrado.');
   }
+
   const valor = await operarKanban(
     context,
     'card.link',
@@ -145,6 +165,7 @@ export async function vincularCard(context, cardId, { entidadeTipo, entidadeId }
     { entidadeTipo, entidadeId: descricao.idAtual ?? entidadeId },
     publish,
   );
+
   return apresentarVinculos(context, 'card.link', valor, logger);
 }
 
@@ -167,6 +188,7 @@ export async function desvincularCard(context, cardId, publish) {
 export async function listarCardsDaEntidade(context, { entidadeTipo, entidadeId }) {
   const provedor = await provedorAcessivel(context, entidadeTipo);
   const [descricao] = provedor ? await provedor.descrever(context, [entidadeId]) : [];
+
   return descricao
     ? buscarCardsVinculados(context, {
         entidadeTipo,

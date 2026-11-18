@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
-import { avancarRodizio } from '../adapters/crm-rodizio.repository.js';
+
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { criarGrupo, salvarConfigDistribuicao } from './distribuicao.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { registrarNovoLead } from './leads.service.js';
 import { reconciliarTenant } from './reconcile.service.js';
+import { avancarRodizio } from './rodizio.service.js';
 
 /**
  * Distribuição automática (M12) contra o Postgres de verdade: o ponteiro
@@ -44,6 +47,7 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
         subdomain: `smoke-dist-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
       },
     });
+
     for (const [i, id] of vendedores.entries()) {
       await prisma.usuario.create({
         data: {
@@ -56,10 +60,13 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
         },
       });
     }
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.create({
       data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.DISTRIBUICAO },
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
   });
@@ -79,6 +86,7 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
           avancarRodizio(tenantId, 'teste-concorrencia', vendedores),
         ),
       );
+
       for (const vendedor of vendedores) {
         expect(escolhas.filter((id) => id === vendedor)).toHaveLength(POR_VENDEDOR);
       }
@@ -94,6 +102,7 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
       const grupo = /** @type {{ id: string }} */ (
         await criarGrupo(tenantId, { nome: 'Site', membros: [ana, bruno] })
       );
+
       await salvarConfigDistribuicao(tenantId, {
         ativo: true,
         fallback: 'rodizio_geral',
@@ -114,6 +123,7 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
       );
       const leads = await Promise.all(criados.map(({ id }) => buscarLeadPorId(tenantId, id)));
       const responsaveis = leads.map((lead) => lead?.usuario_responsavel_id);
+
       expect(responsaveis.filter((id) => id === ana)).toHaveLength(LEADS_POR_MEMBRO_DO_GRUPO);
       expect(responsaveis.filter((id) => id === bruno)).toHaveLength(LEADS_POR_MEMBRO_DO_GRUPO);
       expect(leads[0]).toMatchObject({ atribuido_por_regra_nome: 'Leads do site' });
@@ -122,6 +132,7 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
         SELECT count(*)::int AS total FROM notificacoes
         WHERE tenant_id = ${tenantId}::uuid AND tipo = 'crm.lead_atribuido'
       `;
+
       expect(total).toBe(LEADS_DO_SITE);
 
       // Fora da regra: rodízio geral (os 3 vendedores); com responsável escolhido, fica com ele.
@@ -130,12 +141,15 @@ rodar('distribuição automática no banco (CRM_DB_TESTS=1)', () => {
         { nome: 'Indicação', email: 'x@indicacao.test' },
         carla,
       );
+
       expect((await buscarLeadPorId(tenantId, outro.id))?.atribuido_por_regra_id).toBeNull();
+
       const escolhido = await registrarNovoLead(
         tenantId,
         { nome: 'Meu', email: 'meu@site.test', usuarioResponsavelId: carla },
         carla,
       );
+
       expect(await buscarLeadPorId(tenantId, escolhido.id)).toMatchObject({
         usuario_responsavel_id: carla,
         atribuido_por_regra_id: null,

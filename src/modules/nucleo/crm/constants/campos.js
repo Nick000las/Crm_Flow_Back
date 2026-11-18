@@ -1,4 +1,8 @@
 /**
+ * @file Edição em massa (M10, `PATCH /crm/leads/bulk`): o mesmo teto da página da busca — o
+ * front marca os leads dentro de uma página.
+ */
+/**
  * Campos do CRM. `FIELD_DEFINITION_TIPOS` são os tipos aceitos
  * em campo personalizado (`crm_field.type`, sem CHECK no banco — os tipos
  * crescem por marco) — uma única fonte pro service validar e pro schema

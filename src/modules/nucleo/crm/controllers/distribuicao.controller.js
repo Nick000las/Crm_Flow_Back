@@ -1,7 +1,11 @@
+/**
+ * @file CONTROLLER: Configurações → distribuição automática (M12).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import {
   grupoBodySchema,
@@ -37,18 +41,21 @@ export function registrarRotasDistribuicao(app) {
 
   app.get('/crm/configuracoes/distribuicao', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await obterConfigDistribuicao(tenantId));
   });
 
   app.put('/crm/configuracoes/distribuicao', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = salvarDistribuicaoBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarConfigDistribuicao(tenantId, body));
   });
 
   app.post('/crm/configuracoes/distribuicao/grupos', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = grupoBodySchema.parse(req.body);
+
     return sendSuccess(reply, await criarGrupo(tenantId, body), HTTP_STATUS.CREATED);
   });
 
@@ -56,12 +63,14 @@ export function registrarRotasDistribuicao(app) {
     const { tenantId } = req.tenantContext;
     const { id } = grupoIdParamSchema.parse(req.params);
     const body = grupoBodySchema.parse(req.body);
+
     return sendSuccess(reply, await editarGrupo(tenantId, id, body));
   });
 
   app.delete('/crm/configuracoes/distribuicao/grupos/:id', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id } = grupoIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await excluirGrupo(tenantId, id));
   });
 }

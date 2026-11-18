@@ -1,4 +1,9 @@
 /**
+ * @file Valida em runtime o que o `interface Module` garantia em compile time. Chamado ao
+ * registrar cada módulo (`#api/server.js`), de modo que um módulo mal formado quebra no boot —
+ * e não numa requisição em produção.
+ */
+/**
  * Contrato que TODO módulo deve implementar. Ver MODULE_CONTRACT.md na raiz.
  *
  * Sem TypeScript, o contrato é documentado por JSDoc (checado pelo editor) e
@@ -88,10 +93,14 @@ const METODOS_DA_ENTIDADE = Object.freeze(['descrever', 'rotaFicha', 'resolverVi
  * @param {readonly string[]} metodos
  */
 function assertProvedores(chaveDoModulo, contrato, provedores, identificadores, metodos) {
-  if (provedores === undefined) return;
+  if (provedores === undefined) {
+    return;
+  }
+
   if (!Array.isArray(provedores)) {
     throw new Error(`Módulo "${chaveDoModulo}" inválido: \`${contrato}\` deve ser um array.`);
   }
+
   for (const provedor of provedores) {
     for (const campo of identificadores) {
       if (typeof provedor?.[campo] !== 'string' || provedor[campo].length === 0) {
@@ -100,7 +109,9 @@ function assertProvedores(chaveDoModulo, contrato, provedores, identificadores, 
         );
       }
     }
+
     const faltando = metodos.find((metodo) => typeof provedor[metodo] !== 'function');
+
     if (faltando) {
       throw new Error(
         `Módulo "${chaveDoModulo}" inválido: \`${contrato}\` exige o método \`${faltando}\`.`,
@@ -135,34 +146,43 @@ export function assertModule(candidato) {
   if (!mod || typeof mod !== 'object') {
     throw new Error('Módulo inválido: esperado um objeto que implemente o contrato Module.');
   }
+
   if (typeof mod.key !== 'string' || mod.key.length === 0) {
     throw new Error('Módulo inválido: `key` obrigatória (string não vazia).');
   }
+
   if (typeof mod.name !== 'string' || mod.name.length === 0) {
     throw new Error(`Módulo "${mod.key}" inválido: \`name\` obrigatório (string não vazia).`);
   }
+
   if (typeof mod.registerRoutes !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`registerRoutes(app)\` obrigatório.`);
   }
+
   if (mod.featureFlags !== undefined) {
     if (!Array.isArray(mod.featureFlags)) {
       throw new Error(`Módulo "${mod.key}" inválido: \`featureFlags\` deve ser um array.`);
     }
+
     const semPrefixo = mod.featureFlags.find(
       (flag) => typeof flag !== 'string' || !flag.startsWith(`${mod.key}.`),
     );
+
     if (semPrefixo !== undefined) {
       throw new Error(
         `Módulo "${mod.key}" inválido: a flag "${semPrefixo}" deve começar com "${mod.key}.".`,
       );
     }
   }
+
   if (mod.registerPublicRoutes !== undefined && typeof mod.registerPublicRoutes !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`registerPublicRoutes(app)\` deve ser função.`);
   }
+
   if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`reconciliar(tenantId)\` deve ser função.`);
   }
+
   if (mod.aoLigarFeatures !== undefined && typeof mod.aoLigarFeatures !== 'function') {
     throw new Error(
       `Módulo "${mod.key}" inválido: \`aoLigarFeatures(tenantId, chaves)\` deve ser função.`,
@@ -176,6 +196,7 @@ export function assertModule(candidato) {
     ['boardType', 'entidadeTipo'],
     METODOS_DO_QUADRO,
   );
+
   assertProvedores(mod.key, 'entidades', mod.entidades, ['tipo'], METODOS_DA_ENTIDADE);
 
   return /** @type {Module} */ (mod);

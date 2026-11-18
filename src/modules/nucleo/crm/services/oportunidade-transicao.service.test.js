@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { EVENTOS_OPORTUNIDADE } from '../constants/oportunidades.js';
 import {
   AVISOS_OPORTUNIDADE,
@@ -30,11 +31,13 @@ const deal = (extras = {}) => ({
 describe('planejarStatus', () => {
   it('ganhar: carimba a data e pede o atendimento', () => {
     const plano = planejarStatus(deal(), opcao('ganho', 'ganho'), {}, AGORA);
+
     expect(plano.mudancas).toMatchObject({
       status_category: 'ganho',
       won_at: AGORA,
       lost_at: null,
     });
+
     expect(plano).toMatchObject({
       evento: EVENTOS_OPORTUNIDADE.GANHA,
       ganhou: true,
@@ -49,6 +52,7 @@ describe('planejarStatus', () => {
       { motivoPerda: 'preco' },
       AGORA,
     );
+
     expect(plano.mudancas).toMatchObject({ lost_at: AGORA, lost_reason: 'preco' });
     expect(plano.evento).toBe(EVENTOS_OPORTUNIDADE.PERDIDA);
     expect(plano.ganhou).toBe(false);
@@ -61,6 +65,7 @@ describe('planejarStatus', () => {
       {},
       AGORA,
     );
+
     expect(plano.mudancas.won_at).toBeNull();
     expect(plano).toMatchObject({ evento: EVENTOS_OPORTUNIDADE.REABERTA, reabriu: true });
   });
@@ -72,6 +77,7 @@ describe('planejarStatus', () => {
       {},
       AGORA,
     );
+
     expect(plano.mudancas).toMatchObject({ lost_at: null, lost_reason: null });
     expect(plano.evento).toBe(EVENTOS_OPORTUNIDADE.REABERTA);
     expect(plano.reabriu).toBe(false);
@@ -80,14 +86,17 @@ describe('planejarStatus', () => {
   it('perder com motivo nulo limpa o motivo; omitido mantém', () => {
     const perdida = deal({ status: 'perdido', status_category: 'perdido', lost_reason: 'preco' });
     const opcaoPerdida = opcao('perdido', 'perdido');
+
     expect(
       planejarStatus(perdida, opcaoPerdida, { motivoPerda: null }, AGORA).mudancas.lost_reason,
     ).toBeNull();
+
     expect(planejarStatus(perdida, opcaoPerdida, {}, AGORA).mudancas.lost_reason).toBe('preco');
   });
 
   it('andar entre status abertos não é evento de ganho nem de perda', () => {
     const plano = planejarStatus(deal(), opcao('proposta', 'aberto'), {}, AGORA);
+
     expect(plano.evento).toBe(EVENTOS_OPORTUNIDADE.STATUS_MUDOU);
     expect(plano.ganhou).toBe(false);
   });
@@ -99,6 +108,7 @@ describe('planejarStatus', () => {
       {},
       AGORA,
     );
+
     expect(plano.mudancas.won_at).toBe(ANTES);
     expect(plano.ganhou).toBe(false);
   });
@@ -146,15 +156,18 @@ describe('campos comerciais de /crm/leads', () => {
   it('recusa o que a oportunidade não guarda', () => {
     expect(() => validarComerciais({ status: null })).toThrow('não pode ser limpo');
     expect(() => validarComerciais({ valor: -1 })).toThrow('valor');
+
     expect(() => validarComerciais({ probabilidadeFechamento: ACIMA_DO_LIMITE })).toThrow(
       'inteiro',
     );
+
     expect(() => validarComerciais({ probabilidadeFechamento: QUEBRADA })).toThrow('inteiro');
     expect(() => validarComerciais({ valor: 0, probabilidadeFechamento: 0 })).not.toThrow();
   });
 
   it('sem status, nasce no primeiro aberto ativo', () => {
     const opcoes = [{ ...OPCOES[0], ativo: false }, { ...opcao('proposta', 'aberto') }];
+
     expect(novaOportunidadeDoLead(opcoes, {})).toMatchObject({
       status: 'proposta',
       categoria: 'aberto',
@@ -167,23 +180,28 @@ describe('campos comerciais de /crm/leads', () => {
 
   it('o estágio é o id da opção; vindo os dois, vale o status', () => {
     expect(novaOportunidadeDoLead(OPCOES, { funilEstagioId: 'id-ganho' }).status).toBe('ganho');
+
     expect(
       novaOportunidadeDoLead(OPCOES, { funilEstagioId: 'id-ganho', status: 'novo' }).status,
     ).toBe('novo');
+
     expect(() => novaOportunidadeDoLead(OPCOES, { funilEstagioId: 'outro' })).toThrow('estágio');
   });
 
   it('data de conversão só em oportunidade ganha', () => {
     expect(() => novaOportunidadeDoLead(OPCOES, { dataConversao: AGORA })).toThrow('ganha');
+
     expect(novaOportunidadeDoLead(OPCOES, { status: 'ganho', dataConversao: ANTES }).ganhaEm).toBe(
       ANTES,
     );
+
     expect(() => editar({ dataConversao: AGORA })).toThrow('ganha');
     expect(editar({ status: 'ganho', dataConversao: ANTES }).mudancas.won_at).toBe(ANTES);
   });
 
   it('limpar a data de conversão não desfaz o ganho', () => {
     const ganha = { status: 'ganho', status_category: 'ganho', won_at: ANTES };
+
     expect(editar({ dataConversao: null }, ganha)).toBeNull();
   });
 
@@ -194,6 +212,7 @@ describe('campos comerciais de /crm/leads', () => {
 
   it('só valor: edição comum, não conta como troca de status', () => {
     const plano = editar({ valor: VALOR });
+
     expect(plano.mudancas).toEqual({ amount: VALOR });
     expect(plano.evento).toBe(EVENTOS_OPORTUNIDADE.ATUALIZADA);
     expect(plano.statusMudou).toBeUndefined();
@@ -201,6 +220,7 @@ describe('campos comerciais de /crm/leads', () => {
 
   it('status com outro campo: a transição e o campo juntos', () => {
     const plano = editar({ status: 'ganho', valor: VALOR });
+
     expect(plano).toMatchObject({ evento: EVENTOS_OPORTUNIDADE.GANHA, ganhou: true });
     expect(plano.mudancas).toMatchObject({ status_category: 'ganho', amount: VALOR });
   });
@@ -213,12 +233,14 @@ describe('campos comerciais de /crm/leads', () => {
 
   it('motivo sem status fica na oportunidade; ao reabrir, some', () => {
     expect(editar({ motivoPerda: 'preco' }).mudancas.lost_reason).toBe('preco');
+
     const perdida = {
       status: 'perdido',
       status_category: 'perdido',
       lost_at: ANTES,
       lost_reason: 'preco',
     };
+
     expect(
       editar({ status: 'novo', motivoPerda: 'prazo' }, perdida).mudancas.lost_reason,
     ).toBeNull();
@@ -243,8 +265,10 @@ describe('probabilidade padrão (FC1)', () => {
       {},
       AGORA,
     );
+
     expect(plano.mudancas.probability_override).toBeNull();
     expect(plano.probabilidadeRedefinida).toBe(OVERRIDE);
+
     expect(avisosDoPlano(plano)).toEqual([
       {
         codigo: AVISOS_OPORTUNIDADE.PROBABILIDADE_REDEFINIDA,
@@ -256,6 +280,7 @@ describe('probabilidade padrão (FC1)', () => {
 
   it('sem override, ou sem trocar de status, não há aviso', () => {
     const semOverride = planejarStatus(deal(), opcao('proposta', 'aberto'), {}, AGORA);
+
     expect(avisosDoPlano(semOverride)).toEqual([]);
 
     const mesmoStatus = planejarStatus(
@@ -264,6 +289,7 @@ describe('probabilidade padrão (FC1)', () => {
       {},
       AGORA,
     );
+
     expect(mesmoStatus.mudancas).not.toHaveProperty('probability_override');
     expect(avisosDoPlano(mesmoStatus)).toEqual([]);
   });
@@ -273,6 +299,7 @@ describe('probabilidade padrão (FC1)', () => {
     const opcoes = [opcao('novo', 'aberto'), opcao('proposta', 'aberto')];
 
     const soStatus = planejarEdicaoDoLead(atual, opcoes, { status: 'proposta' }, AGORA);
+
     expect(soStatus.mudancas.probability_override).toBeNull();
     expect(avisosDoPlano(soStatus)).toHaveLength(1);
 
@@ -282,6 +309,7 @@ describe('probabilidade padrão (FC1)', () => {
       { status: 'proposta', probabilidadeFechamento: PADRAO },
       AGORA,
     );
+
     expect(junto.mudancas.probability_override).toBe(PADRAO);
     expect(avisosDoPlano(junto)).toEqual([]);
   });

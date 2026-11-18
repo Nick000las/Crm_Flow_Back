@@ -1,4 +1,8 @@
 /**
+ * @file SERVICE: primeiro nome (M10, docs/produto/crm-pessoas-e-campos.md) — campo do sistema
+ * derivado do Nome e editável, pra personalizar mensagens.
+ */
+/**
  * SERVICE: primeiro nome (M10, docs/produto/crm-pessoas-e-campos.md) — campo do
  * sistema derivado do Nome e editável, pra personalizar mensagens.
  *
@@ -18,8 +22,12 @@
  * @returns {string | null}
  */
 export function primeiroNomeDe(nome) {
-  if (typeof nome !== 'string') return null;
+  if (typeof nome !== 'string') {
+    return null;
+  }
+
   const [primeira] = nome.trim().split(/\s+/);
+
   return primeira || null;
 }
 
@@ -47,7 +55,10 @@ export function comPrimeiroNomeNaCriacao(dados) {
  * @param {{ nome?: string, primeiroNome?: string | null }} input
  */
 export function precisaDoLeadAtual(input) {
-  if (input.primeiroNome === undefined) return input.nome !== undefined;
+  if (input.primeiroNome === undefined) {
+    return input.nome !== undefined;
+  }
+
   return !textoInformado(input.primeiroNome) && input.nome === undefined;
 }
 
@@ -60,14 +71,23 @@ export function precisaDoLeadAtual(input) {
  */
 export function comPrimeiroNomeNaEdicao(input, atual) {
   if (input.primeiroNome === undefined) {
-    if (input.nome === undefined || !atual) return input;
+    if (input.nome === undefined || !atual) {
+      return input;
+    }
+
     const anterior = atual.primeiro_nome ?? null;
     const seguiaONome = !anterior || anterior === primeiroNomeDe(atual.nome);
+
     return seguiaONome ? { ...input, primeiroNome: primeiroNomeDe(input.nome) } : input;
   }
 
   const informado = textoInformado(input.primeiroNome);
-  if (informado) return { ...input, primeiroNome: informado };
+
+  if (informado) {
+    return { ...input, primeiroNome: informado };
+  }
+
   const nome = input.nome ?? atual?.nome;
+
   return nome === undefined ? input : { ...input, primeiroNome: primeiroNomeDe(nome) };
 }

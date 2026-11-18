@@ -1,4 +1,9 @@
+/**
+ * @file Valida a estrutura de entrada de permissoes, na área de CRM, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { LISTA_ACESSOS_CAMPO, PAPEIS_COM_PERMISSAO } from '../constants.js';
 
 // PUT /crm/configuracoes/permissoes (M13): por papel configurável, o mapa

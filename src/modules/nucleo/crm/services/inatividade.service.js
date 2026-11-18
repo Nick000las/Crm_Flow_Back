@@ -1,14 +1,20 @@
+/**
+ * @file SERVICE: lead esfriando (M9) — a configuração dos dias por status e o resumo diário no
+ * sino. O cálculo em si é a expressão SQL de `crm-inatividade.repository.js` (leitura do lead,
+ * filtro e este job).
+ */
 import { erroDeValidacao } from '#core/errors/app-error.js';
 import { criarNotificacoes } from '#core/notificacoes/notificacoes.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { listarTenantsAtivosDoModulo } from '#core/tenant/module-access.js';
 import { FUSO_HORARIO_PADRAO } from '#shared/constants/index.js';
+
 import {
   buscarDiasPorStatus,
   contarEsfriandoPorResponsavel,
   definirDiasPorStatus,
 } from '../adapters/crm-inatividade.repository.js';
-import { agendarNotificacaoEsfriando } from '../adapters/manutencao-queue.repository.js';
+import { agendarNotificacaoEsfriando } from '../adapters/manutencao-queue.adapter.js';
 import { listarDonosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import {
   CATEGORIAS_STATUS,
@@ -50,9 +56,11 @@ export async function salvarInatividade(tenantId, { status }) {
 
   for (const [key, dias] of Object.entries(status)) {
     const opcao = porKey.get(key);
+
     if (!opcao) {
       throw erroDeValidacao(`status.${key}`, `Status "${key}" não existe`);
     }
+
     if (dias !== null && opcao.category !== CATEGORIAS_STATUS.ABERTO) {
       throw erroDeValidacao(
         `status.${key}`,
@@ -62,6 +70,7 @@ export async function salvarInatividade(tenantId, { status }) {
   }
 
   await definirDiasPorStatus(tenantId, status);
+
   return buscarDiasPorStatus(tenantId);
 }
 
@@ -85,14 +94,17 @@ export function dataEHoraLocal(agora, fuso) {
       hourCycle: 'h23',
     });
   let formato;
+
   try {
     formato = formatoNo(fuso);
   } catch {
     formato = formatoNo(FUSO_HORARIO_PADRAO);
   }
+
   const partes = Object.fromEntries(
     formato.formatToParts(agora).map((parte) => [parte.type, parte.value]),
   );
+
   return { data: `${partes.year}-${partes.month}-${partes.day}`, hora: Number(partes.hour) };
 }
 
@@ -116,7 +128,10 @@ export function montarNotificacoesDoDia(contagens, donos, data) {
   const itens = [];
 
   for (const { usuario_id: usuarioId, total } of contagens) {
-    if (!usuarioId || total <= 0) continue;
+    if (!usuarioId || total <= 0) {
+      continue;
+    }
+
     itens.push({
       usuarioId,
       modulo: MODULO,
@@ -129,6 +144,7 @@ export function montarNotificacoesDoDia(contagens, donos, data) {
   }
 
   const semResponsavel = contagens.find((contagem) => !contagem.usuario_id)?.total ?? 0;
+
   if (semResponsavel > 0) {
     for (const usuarioId of donos) {
       itens.push({
@@ -146,6 +162,7 @@ export function montarNotificacoesDoDia(contagens, donos, data) {
       });
     }
   }
+
   return itens;
 }
 
@@ -172,6 +189,7 @@ export async function notificarLeadsEsfriando(agora = new Date()) {
       });
     }
   }
+
   return relatorio;
 }
 
@@ -185,11 +203,21 @@ export async function notificarLeadsEsfriando(agora = new Date()) {
  */
 export async function notificarEsfriandoNoTenant({ tenantId, fusoHorario }, agora) {
   const { data, hora } = dataEHoraLocal(agora, fusoHorario);
-  if (hora < NOTIFICACAO_ESFRIANDO.HORA_LOCAL) return 0;
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE))) return 0;
+
+  if (hora < NOTIFICACAO_ESFRIANDO.HORA_LOCAL) {
+    return 0;
+  }
+
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE))) {
+    return 0;
+  }
 
   const contagens = await contarEsfriandoPorResponsavel(tenantId, agora);
-  if (contagens.length === 0) return 0;
+
+  if (contagens.length === 0) {
+    return 0;
+  }
+
   const donos = contagens.some((contagem) => !contagem.usuario_id)
     ? await listarDonosAtivosDoTenant(tenantId)
     : [];

@@ -1,6 +1,13 @@
-import { Buffer } from 'node:buffer';
+/**
+ * @file Carrega e valida a configuração somente durante o bootstrap. Assim, importar services
+ * em testes não exige que toda a infraestrutura esteja configurada.
+ */
 import 'dotenv/config';
+
+import { Buffer } from 'node:buffer';
+
 import { z } from 'zod';
+
 import { JWT_SECRET_MIN_LENGTH } from '#core/auth/constants.js';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
 
@@ -106,6 +113,7 @@ export function loadEnv(source = process.env) {
     const details = result.error.issues
       .map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`)
       .join('; ');
+
     throw new Error(`Configuração de ambiente inválida: ${details}`);
   }
 
@@ -114,7 +122,10 @@ export function loadEnv(source = process.env) {
 
 /** @param {string} value */
 export function parseCorsOrigins(value) {
-  if (value === '*') return '*';
+  if (value === '*') {
+    return '*';
+  }
+
   return (
     value
       .split(',')

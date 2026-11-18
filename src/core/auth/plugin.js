@@ -1,4 +1,8 @@
+/**
+ * @file Registra validadores separados para access e refresh tokens.
+ */
 import fastifyJwt from '@fastify/jwt';
+
 import { JWT_EXPIRATION } from '#core/auth/constants.js';
 
 /**

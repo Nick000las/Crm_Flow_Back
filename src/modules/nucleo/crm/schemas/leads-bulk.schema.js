@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de leads bulk, na área de CRM, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { EDICAO_EM_MASSA } from '../constants.js';
 import { opcaoDeLista, usuarioResponsavelIdSchema } from './leads.schema.js';
 

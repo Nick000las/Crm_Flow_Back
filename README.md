@@ -4,7 +4,7 @@ Base modular do backend CRM Flow em Node.js, Fastify, Prisma e PostgreSQL.
 
 ## Requisitos
 
-- Node.js 20.11 ou superior
+- Node.js compatível com `^20.19.0 || ^22.13.0 || >=24`
 - pnpm 11
 - Redis 7+ para distribuição dos eventos Socket.IO
 - PostgreSQL 14+ com `pgcrypto`, `vector` e `btree_gist` para aplicar as migrations

@@ -1,21 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
-import { exportarLeads, valorParaPlanilha } from './export.service.js';
-import { lerPlanilha } from './planilha.service.js';
-import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
-import { obterLayout } from './layout.service.js';
+
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 import { CAMADA } from '../constants.js';
+import { exportarLeads, valorParaPlanilha } from './export.service.js';
+import { obterLayout } from './layout.service.js';
+import { buscarLeadsFiltrados, listarCamposDoTenant } from './leads.service.js';
+import { lerPlanilha } from './planilha.service.js';
 
 vi.mock('./leads.service.js', () => ({
   buscarLeadsFiltrados: vi.fn(),
   listarCamposDoTenant: vi.fn(),
 }));
+
 vi.mock('#core/tenant/feature-flags.js', () => ({
   featureAtiva: vi.fn(),
   garantirFeature: vi.fn(),
 }));
+
 vi.mock('./layout.service.js', () => ({ obterLayout: vi.fn() }));
 vi.mock('../adapters/usuarios.repository.js', () => ({ listarUsuariosAtivosDoTenant: vi.fn() }));
 
@@ -59,6 +63,7 @@ describe('exportarLeads', () => {
     const { colunas, linhas } = await lerPlanilha(buffer);
 
     expect(colunas).toEqual(['Segmento', 'Nome', 'Tags', 'Valor', 'Estágio do funil', 'VIP']);
+
     expect(linhas[0].valores).toEqual({
       Segmento: 'Varejo',
       Nome: 'Ana',
@@ -73,6 +78,7 @@ describe('exportarLeads', () => {
     await expect(exportarLeads(TENANT, { colunas: ['nome', 'cpf'] })).rejects.toMatchObject({
       fields: { colunas: ['"cpf" não é um campo ativo'] },
     });
+
     expect(buscarLeadsFiltrados).not.toHaveBeenCalled();
   });
 
@@ -87,6 +93,7 @@ describe('valorParaPlanilha — tipos MVP do M2', () => {
 
   it('telefone sai com máscara; monetário sai como número', () => {
     const lead = { custom_fields: { celular: '11999990000', contrato: VALOR } };
+
     expect(
       valorParaPlanilha(lead, {
         chave: 'celular',
@@ -95,6 +102,7 @@ describe('valorParaPlanilha — tipos MVP do M2', () => {
         camada: CAMADA.CAMADA_3,
       }),
     ).toBe('(11) 99999-0000');
+
     expect(
       valorParaPlanilha(lead, {
         chave: 'contrato',
@@ -144,7 +152,9 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
         ],
       },
     });
+
     listarUsuariosAtivosDoTenant.mockResolvedValue([{ id: USUARIO, nome: 'Bia' }]);
+
     buscarLeadsFiltrados.mockResolvedValue({
       total: 1,
       itens: [
@@ -174,28 +184,33 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
         sensivel: true,
       },
     ]);
+
     obterLayout.mockResolvedValue({
       efetivo: {
         identificador: { ref: 'f-nome', chave: 'nome' },
         colunas: [{ ref: 'f-alergias', chave: 'alergias' }],
       },
     });
+
     buscarLeadsFiltrados.mockResolvedValue({
       total: 1,
       itens: [{ nome: 'Ana', custom_fields: { alergias: 'Dipirona' } }],
     });
 
     const padrao = await lerPlanilha(await exportarLeads(TENANT, {}, USUARIO));
+
     expect(padrao.colunas).toEqual(['Nome']);
 
     const pedido = await lerPlanilha(
       await exportarLeads(TENANT, { colunas: ['nome', 'alergias'] }, USUARIO),
     );
+
     expect(pedido.linhas[0].valores).toEqual({ Nome: 'Ana', Alergias: 'Dipirona' });
   });
 
   it('sem colunas e sem crm.massa: continua obrigatório escolher', async () => {
     featureAtiva.mockResolvedValue(false);
+
     await expect(exportarLeads(TENANT, {}, USUARIO)).rejects.toMatchObject({
       fields: { colunas: [expect.any(String)] },
     });
@@ -223,9 +238,11 @@ describe('exportarLeads — M10 (CSV e colunas padrão)', () => {
 
   it('csv com crm.massa desligada → o erro da flag', async () => {
     garantirFeature.mockRejectedValue(new Error('FEATURE_NOT_ENABLED'));
+
     await expect(
       exportarLeads(TENANT, { colunas: ['nome'], formato: 'csv' }, USUARIO),
     ).rejects.toThrow('FEATURE_NOT_ENABLED');
+
     expect(buscarLeadsFiltrados).not.toHaveBeenCalled();
   });
 });
@@ -236,10 +253,13 @@ describe('valorParaPlanilha — tipos do M11', () => {
 
   it('documentos com máscara (nativos e personalizados)', () => {
     const lead = { cpf: '52998224725', cnpj: '12ABC34501DE35', custom_fields: { cep: '01310100' } };
+
     expect(valorParaPlanilha(lead, campo('cpf', 'cpf', CAMADA.CAMADA_2))).toBe('529.982.247-25');
+
     expect(valorParaPlanilha(lead, campo('cnpj', 'cnpj', CAMADA.CAMADA_2))).toBe(
       '12.ABC.345/01DE-35',
     );
+
     expect(valorParaPlanilha(lead, campo('cep', 'cep'))).toBe('01310-100');
   });
 
@@ -258,12 +278,15 @@ describe('valorParaPlanilha — tipos do M11', () => {
         consultor: USUARIO,
       },
     };
+
     expect(valorParaPlanilha(lead, campo('entrega', 'endereco'))).toBe(
       'Av. Paulista, 1000 - Bela Vista, São Paulo/SP, CEP 01310-100',
     );
+
     expect(valorParaPlanilha(lead, campo('viagem', 'intervalo_datas'))).toBe(
       '01/02/2026 – 10/02/2026',
     );
+
     expect(
       valorParaPlanilha(lead, campo('consultor', 'usuario'), {
         responsaveis: new Map([[USUARIO, 'Bia']]),

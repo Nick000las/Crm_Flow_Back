@@ -1,4 +1,8 @@
 /**
+ * @file Layout de tenant que nunca configurou, por `systemKey` (o service troca pelo `id` do
+ * campo no tenant) ou referência fixa. Sem seções: tudo numa seção só.
+ */
+/**
  * Layout do lead (docs/produto/crm-pessoas-e-campos.md, M4): identificador,
  * subtítulo, destaques, seções do drawer e colunas padrão da tabela.
  *

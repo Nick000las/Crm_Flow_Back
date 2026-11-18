@@ -1,8 +1,14 @@
+/**
+ * @file SERVICE: o forecast (FC2). Realizado (ganhas do mês), ponderado e melhor caso (abertas
+ * previstas para o mês, de hoje em diante) e os blocos fora dos meses.
+ */
 import { createHash } from 'node:crypto';
+
 import { lerComCache } from '#core/cache/cache.js';
 import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { FUSO_HORARIO_PADRAO } from '#shared/constants/index.js';
 import { normalizarFusoHorario } from '#shared/validators/index.js';
+
 import {
   agregarForecast,
   buscarFusoDoTenant,
@@ -91,6 +97,7 @@ export function deslocarMes(mes, quantidade) {
   const indice = ano * MESES_NO_ANO + (mesDoAno - 1) + quantidade;
   const novoAno = Math.floor(indice / MESES_NO_ANO);
   const novoMes = (indice % MESES_NO_ANO) + 1;
+
   return `${novoAno}-${String(novoMes).padStart(DIGITOS_DO_MES, '0')}`;
 }
 
@@ -98,8 +105,10 @@ export function deslocarMes(mes, quantidade) {
 export function mesesEntre(de, ate) {
   const indice = (mes) => {
     const [ano, mesDoAno] = mes.split('-').map(Number);
+
     return ano * MESES_NO_ANO + mesDoAno;
   };
+
   return indice(ate) - indice(de) + 1;
 }
 
@@ -111,6 +120,7 @@ export function mesesEntre(de, ate) {
  */
 export function periodoPadrao(hoje) {
   const atual = hoje.slice(0, hoje.lastIndexOf('-'));
+
   return {
     de: deslocarMes(atual, -LIMITES_FORECAST.MESES_ANTES_PADRAO),
     ate: deslocarMes(atual, LIMITES_FORECAST.MESES_DEPOIS_PADRAO),
@@ -127,15 +137,18 @@ export function periodoPadrao(hoje) {
 export function periodoDoPedido({ de, ate }, hoje) {
   const padrao = periodoPadrao(hoje);
   const periodo = { de: de ?? padrao.de, ate: ate ?? padrao.ate };
+
   if (periodo.de > periodo.ate) {
     throw erroDeValidacao('de', 'O mês inicial precisa vir antes do final');
   }
+
   if (mesesEntre(periodo.de, periodo.ate) > LIMITES_FORECAST.MESES_MAXIMOS) {
     throw erroDeValidacao(
       'ate',
       `Escolha um período de até ${LIMITES_FORECAST.MESES_MAXIMOS} meses`,
     );
   }
+
   return periodo;
 }
 
@@ -146,7 +159,11 @@ export function periodoDoPedido({ de, ate }, hoje) {
  */
 export function mesesDoPeriodo(de, ate) {
   const meses = [];
-  for (let mes = de; mes <= ate; mes = deslocarMes(mes, 1)) meses.push(mes);
+
+  for (let mes = de; mes <= ate; mes = deslocarMes(mes, 1)) {
+    meses.push(mes);
+  }
+
   return meses;
 }
 
@@ -163,6 +180,7 @@ export const primeiroDia = (mes) => `${mes}-01`;
 export function centavos(texto) {
   const [inteiro, fracao = ''] = texto.split('.');
   const centavosDaFracao = BigInt(fracao.padEnd(CASAS_DECIMAIS, '0').slice(0, CASAS_DECIMAIS));
+
   return BigInt(inteiro) * CENTAVOS_POR_REAL + centavosDaFracao;
 }
 
@@ -205,22 +223,31 @@ const nivelVazio = (meses) => ({
  */
 function preencher(nivel, linha) {
   const doMes = nivel.meses.get(linha.chave);
+
   if (doMes) {
     doMes.realizado = {
       quantidade: linha.realizado_quantidade,
       soma: Number(linha.realizado_soma),
     };
+
     doMes.ponderado = { quantidade: linha.aberto_quantidade, soma: Number(linha.aberto_ponderado) };
     doMes.melhorCaso = { soma: Number(linha.aberto_soma) };
     doMes.previsto = Number(linha.previsto);
     doMes.ganhasSemValor = linha.ganhas_sem_valor;
     nivel.previsto += centavos(linha.previsto);
     nivel.quantidade += linha.realizado_quantidade + linha.aberto_quantidade;
+
     return;
   }
+
   const bloco = BLOCO_NA_RESPOSTA[linha.chave];
-  if (!bloco) return;
+
+  if (!bloco) {
+    return;
+  }
+
   nivel.quantidade += linha.aberto_quantidade;
+
   nivel.blocos[bloco] =
     bloco === 'semValor'
       ? { quantidade: linha.aberto_quantidade }
@@ -251,22 +278,29 @@ export function montarAgregado(linhas, meses, agrupar) {
       preencher(total, linha);
       continue;
     }
+
     let grupo = grupos.get(linha.grupo_chave);
+
     if (!grupo) {
       const rotulo =
         linha.grupo_chave === null && agrupar === AGRUPAMENTOS_FORECAST.RESPONSAVEL
           ? ROTULO_SEM_RESPONSAVEL
           : (linha.grupo_rotulo ?? linha.grupo_chave ?? '');
+
       grupo = { ...nivelVazio(meses), rotulo };
       grupos.set(linha.grupo_chave, grupo);
     }
+
     preencher(grupo, linha);
   }
 
   const ordenados = [...grupos.entries()]
     .filter(([, grupo]) => grupo.quantidade > 0)
     .sort(([, a], [, b]) => {
-      if (a.previsto !== b.previsto) return a.previsto > b.previsto ? -1 : 1;
+      if (a.previsto !== b.previsto) {
+        return a.previsto > b.previsto ? -1 : 1;
+      }
+
       return a.rotulo.localeCompare(b.rotulo, 'pt-BR');
     });
 
@@ -365,10 +399,17 @@ export function itemParaOPapel(linha, schema) {
     responsavelId: linha.owner_id,
     atualizadaEm: linha.updated_at,
   };
+
   for (const [campo, saidas] of Object.entries(SAIDAS_DO_ITEM)) {
-    if (ve(schema, campo)) continue;
-    for (const saida of saidas) delete item[saida];
+    if (ve(schema, campo)) {
+      continue;
+    }
+
+    for (const saida of saidas) {
+      delete item[saida];
+    }
   }
+
   return item;
 }
 
@@ -382,6 +423,7 @@ export function chaveDoCache(tenantId, marca, pedido) {
     .update(JSON.stringify(pedido))
     .digest('hex')
     .slice(0, TAMANHO_DO_HASH);
+
   return `crm:forecast:${tenantId}:${marca}:${hash}`;
 }
 
@@ -396,6 +438,7 @@ export function chaveDoCache(tenantId, marca, pedido) {
  */
 export async function fusoDoTenant(tenantId) {
   const configurado = await buscarFusoDoTenant(tenantId);
+
   return (configurado && normalizarFusoHorario(configurado)) || FUSO_HORARIO_PADRAO;
 }
 
@@ -418,6 +461,7 @@ async function prepararEscopo({ tenantId, role }, filtros) {
   if (filtros.agrupar === AGRUPAMENTOS_FORECAST.STATUS && !ve(schema, CHAVE_STATUS)) {
     throw erroDeValidacao('agrupar', 'Este campo não está disponível para agrupar');
   }
+
   if (filtros.pipelineId) {
     const pipeline = (await buscarPipelines(tenantId)).find(
       (item) => item.id === filtros.pipelineId,
@@ -427,7 +471,10 @@ async function prepararEscopo({ tenantId, role }, filtros) {
       pipeline.tipo === TIPOS_PIPELINE.VENDAS &&
       pipeline.ativo &&
       !ocultos.includes(pipeline.id);
-    if (!valido) throw erroNaoEncontrado('Pipeline não encontrado');
+
+    if (!valido) {
+      throw erroNaoEncontrado('Pipeline não encontrado');
+    }
   }
 
   return {
@@ -477,6 +524,7 @@ export async function consultarForecast(context, filtros) {
         ate: primeiroDia(ate),
         agrupar,
       });
+
       return {
         vazio: semOportunidades,
         ...montarAgregado(linhas, mesesDoPeriodo(de, ate), agrupar),
@@ -485,6 +533,7 @@ export async function consultarForecast(context, filtros) {
   );
 
   const veValor = ve(schema, CHAVE_VALOR);
+
   return {
     fuso,
     hoje,
@@ -528,6 +577,7 @@ export async function listarOportunidadesDoForecast(context, pedido) {
     limite: tamanho,
     offset: (pagina - 1) * tamanho,
   });
+
   return { itens: linhas.map((linha) => itemParaOPapel(linha, schema)), total, pagina, tamanho };
 }
 
@@ -547,27 +597,36 @@ export async function definirDataPrevistaEmLote({ tenantId, userId, role }, dado
     obterSchemaDoPapel(tenantId, role),
     pipelinesOcultos(tenantId, role),
   ]);
+
   garantirEscritaPermitida(schema, { dataPrevistaFechamento });
 
   let atualizadas = 0;
   const ignoradas = [];
+
   for (const id of oportunidadeIds) {
     const deal = await buscarOportunidade(tenantId, id);
+
     if (!deal || ocultos.includes(deal.pipeline_id)) {
       ignoradas.push({ id, motivo: MOTIVOS_IGNORADA_FORECAST.NAO_ENCONTRADA });
       continue;
     }
+
     if (deal.status_category !== CATEGORIAS_STATUS.ABERTO) {
       ignoradas.push({ id, motivo: MOTIVOS_IGNORADA_FORECAST.NAO_ABERTA });
       continue;
     }
+
     try {
       await editarOportunidade(tenantId, id, { dataPrevistaFechamento }, userId, { papel: role });
       atualizadas += 1;
     } catch (erro) {
-      if (!(erro instanceof AppError)) throw erro;
+      if (!(erro instanceof AppError)) {
+        throw erro;
+      }
+
       ignoradas.push({ id, motivo: erro.code });
     }
   }
+
   return { atualizadas, ignoradas };
 }

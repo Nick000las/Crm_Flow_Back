@@ -1,6 +1,7 @@
 import { z } from 'zod';
+
 import { MODULES } from '#api/modules.js';
-import { getAdminClient, disconnectDatabase } from '#core/db/tenantClient.js';
+import { disconnectDatabase, getAdminClient } from '#core/db/tenantClient.js';
 import { registrarModulos } from '#core/registry/modules.js';
 import { provisionarTenant } from '#core/tenant/provisioning.js';
 
@@ -82,6 +83,7 @@ async function main() {
       `Já existe um tenant com o subdomínio "${args.subdomain}" (id: ${tenantExistente.id}). Nada foi criado.`,
     );
   }
+
   if (usuarioExistente) {
     throw new Error(
       `Já existe um usuário com o e-mail "${args['owner-email']}" (id: ${usuarioExistente.id}, role: ${usuarioExistente.role}). Nada foi criado.`,
@@ -98,6 +100,7 @@ async function main() {
   console.log('Tenant criado:', tenantId, `(${args.nome} / ${args.subdomain})`);
   console.log('Dono (DONO):', usuarioId, '-', args['owner-nome'], `<${args['owner-email']}>`);
   console.log('Módulos contratados:', args.modulos.join(', '));
+
   console.log(
     '\nSem senha definida. Entre em POST /auth/login com esse e-mail — o fluxo de ' +
       'ativação manda o código de criação de senha.',
@@ -109,17 +112,21 @@ function parseArgs() {
   const bruto = Object.fromEntries(
     process.argv.slice(CLI_ARGS_START_INDEX).map((arg) => {
       const [chave, ...valorPartes] = arg.replace(/^--/, '').split('=');
+
       return [chave, valorPartes.join('=')];
     }),
   );
 
   const resultado = argsSchema.safeParse(bruto);
+
   if (!resultado.success) {
     const mensagens = resultado.error.issues
       .map((issue) => `  --${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
+
     throw new Error(`${USO}\n\n${mensagens}`);
   }
+
   return resultado.data;
 }
 

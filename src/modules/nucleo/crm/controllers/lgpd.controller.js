@@ -1,9 +1,13 @@
+/**
+ * @file CONTROLLER: base legal LGPD (M15).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
-import { salvarLgpdBodySchema } from '../schemas/lgpd.schema.js';
 import { leadIdParamSchema } from '../schemas/leads.schema.js';
+import { salvarLgpdBodySchema } from '../schemas/lgpd.schema.js';
 import {
   anonimizarLeadDoTitular,
   obterConfigLgpd,
@@ -30,18 +34,21 @@ export function registrarRotasLgpd(app) {
 
   app.get('/crm/configuracoes/lgpd', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await obterConfigLgpd(tenantId));
   });
 
   app.put('/crm/configuracoes/lgpd', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = salvarLgpdBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarConfigLgpd(tenantId, body));
   });
 
   app.post('/crm/leads/:id/anonimizar', apenasGestao, async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await anonimizarLeadDoTitular(tenantId, leadId, userId ?? null));
   });
 }

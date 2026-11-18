@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de score, na área de CRM, antes da execução dos casos de
+ * uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { FILTRO_OPERADORES, LIMITES_SCORE } from '../constants.js';
 
 // Pontuação de leads (M14). Forma só: se o campo existe, se o operador

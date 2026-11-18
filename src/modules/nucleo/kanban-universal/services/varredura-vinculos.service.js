@@ -1,6 +1,12 @@
+/**
+ * @file SERVICE: varredura diária dos vínculos de card (M6). O nome já some na leitura; este
+ * job tira a referência que sobrou: registro apagado ou anonimizado perde o vínculo, e registro
+ * mesclado passa para o principal. O outbox `crm_event` substitui o job quando chegar (M3).
+ */
 import { provedoresDeEntidade } from '#core/quadros/registro.js';
 import { listarTenantsDoModulo } from '#core/tenant/module-access.js';
-import { agendarVarreduraDiaria } from '../adapters/manutencao-queue.repository.js';
+
+import { agendarVarreduraDiaria } from '../adapters/manutencao-queue.adapter.js';
 import { aplicarVarredura, listarEntidadesVinculadas } from '../adapters/vinculos.repository.js';
 import { MODULO_KANBAN, VINCULO } from '../constants.js';
 
@@ -17,6 +23,7 @@ import { MODULO_KANBAN, VINCULO } from '../constants.js';
  */
 export function classificar(resolvidos) {
   const entradas = Object.entries(resolvidos);
+
   return {
     orfaos: entradas.filter(([, atual]) => atual === null).map(([id]) => id),
     trocas: entradas
@@ -36,18 +43,24 @@ async function varrerTipo(tenantId, provedor) {
   const total = { removidos: 0, repontados: 0 };
   let cursor = null;
   let ids;
+
   do {
     ids = await listarEntidadesVinculadas(tenantId, provedor.tipo, cursor);
+
     if (ids.length > 0) {
       const mudancas = classificar(await provedor.resolverVinculos(tenantId, ids));
+
       if (mudancas.orfaos.length > 0 || mudancas.trocas.length > 0) {
         const { removidos, repontados } = await aplicarVarredura(tenantId, provedor.tipo, mudancas);
+
         total.removidos += removidos;
         total.repontados += repontados;
       }
+
       cursor = ids.at(-1);
     }
   } while (ids.length === VINCULO.LOTE_VARREDURA);
+
   return total;
 }
 
@@ -66,6 +79,7 @@ export async function varrerVinculos() {
     try {
       for (const provedor of provedoresDeEntidade()) {
         const { removidos, repontados } = await varrerTipo(tenantId, provedor);
+
         relatorio.removidos += removidos;
         relatorio.repontados += repontados;
       }
@@ -76,6 +90,7 @@ export async function varrerVinculos() {
       });
     }
   }
+
   return relatorio;
 }
 

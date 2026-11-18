@@ -1,4 +1,7 @@
 /**
+ * @file Ação do import pra linha duplicada (mesmos valores de `ESTRATEGIAS_DUPLICATA`).
+ */
+/**
  * Duplicidade e mesclagem (M7, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 

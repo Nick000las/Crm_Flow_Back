@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -23,21 +23,27 @@ const OUTPUT_PATH = join(ROOT_DIR, 'prisma', 'modules-schema.generated.sql');
 function encontrarSchemaParts(dir) {
   /** @type {string[]} */
   const partes = [];
+
   for (const categoria of readdirSync(dir, { withFileTypes: true })) {
     if (!categoria.isDirectory()) {
       continue;
     }
+
     const categoriaPath = join(dir, categoria.name);
+
     for (const modulo of readdirSync(categoriaPath, { withFileTypes: true })) {
       if (!modulo.isDirectory()) {
         continue;
       }
+
       const partPath = join(categoriaPath, modulo.name, 'prisma', 'schema.prisma.part');
+
       if (existsSync(partPath)) {
         partes.push(partPath);
       }
     }
   }
+
   return partes;
 }
 
@@ -46,6 +52,7 @@ function main() {
 
   if (partes.length === 0) {
     console.log('Nenhum schema.prisma.part encontrado.');
+
     return;
   }
 

@@ -1,5 +1,9 @@
+/**
+ * @file SERVICE: layout do lead (docs/produto/crm-pessoas-e-campos.md, M4).
+ */
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { erroDeValidacao } from '#core/errors/app-error.js';
+
 import {
   buscarLayoutPadrao,
   buscarOverride,
@@ -9,10 +13,10 @@ import {
 } from '../adapters/crm-layout.repository.js';
 import {
   CAMADA,
+  CAMPOS_SISTEMA,
   CONTEXTOS_VISIBILIDADE,
   IDENTIFICADORES_DO_SISTEMA,
   LAYOUT_INICIAL,
-  CAMPOS_SISTEMA,
   LIMITES_LAYOUT,
   LISTAS_MESCLADAS,
   NOME_SECAO_OUTROS,
@@ -115,6 +119,7 @@ export async function obterLayout(tenantId, usuarioId, acesso = {}) {
 function padraoDoTenant(tenantId) {
   return lerComCache(chaveDoPadrao(tenantId), TTL_CACHE_SEGUNDOS, async () => {
     const salvo = await buscarLayoutPadrao(tenantId);
+
     return {
       padrao: salvo ?? layoutInicial(await listarConfiguracaoCampos(tenantId)),
       configurado: Boolean(salvo),
@@ -133,6 +138,7 @@ export async function salvarPadrao(tenantId, usuarioId, layout) {
   validarLayout(layout, await catalogo(tenantId));
   await salvarLayoutPadrao(tenantId, layout);
   await Promise.all([cacheDel(chaveCache(tenantId)), cacheDel(chaveDoPadrao(tenantId))]);
+
   return obterLayout(tenantId, usuarioId);
 }
 
@@ -147,6 +153,7 @@ export async function salvarPadrao(tenantId, usuarioId, layout) {
  */
 export async function salvarMeu(tenantId, usuarioId, parcial, acesso = {}) {
   const camposConfig = await listarConfiguracaoCampos(tenantId);
+
   validarLayout(parcial, catalogoDe(camposConfig), { parcial: true });
 
   const padrao = (await buscarLayoutPadrao(tenantId)) ?? layoutInicial(camposConfig);
@@ -155,7 +162,9 @@ export async function salvarMeu(tenantId, usuarioId, parcial, acesso = {}) {
       (propriedade) => [propriedade, padrao[propriedade]],
     ),
   );
+
   await salvarOverride(tenantId, usuarioId, parcial, padraoVisto);
+
   return obterLayout(tenantId, usuarioId, acesso);
 }
 
@@ -168,6 +177,7 @@ export async function salvarMeu(tenantId, usuarioId, parcial, acesso = {}) {
  */
 export async function removerMeu(tenantId, usuarioId, acesso = {}) {
   await excluirOverride(tenantId, usuarioId);
+
   return obterLayout(tenantId, usuarioId, acesso);
 }
 
@@ -181,13 +191,21 @@ export async function removerMeu(tenantId, usuarioId, acesso = {}) {
 export async function identificadorDoLayout(tenantId) {
   const ref = await lerComCache(chaveCache(tenantId), TTL_CACHE_SEGUNDOS, async () => {
     const salvo = await buscarLayoutPadrao(tenantId);
+
     return salvo?.identificador ?? null;
   });
-  if (!ref) return null;
+
+  if (!ref) {
+    return null;
+  }
 
   const { campos } = await obterSchemaCampos(tenantId);
   const campo = campos.find((item) => item.id === ref);
-  if (!campo) return null;
+
+  if (!campo) {
+    return null;
+  }
+
   return {
     chave: campo.chave,
     tipo: campo.tipo,
@@ -205,6 +223,7 @@ export async function identificadorDoLayout(tenantId) {
  */
 export async function identificadorDaBusca(tenantId) {
   const campo = await identificadorDoLayout(tenantId);
+
   return campo && campo.chave !== 'nome' && campo.chave !== 'email' ? campo : null;
 }
 
@@ -246,18 +265,27 @@ export function layoutInicial(camposConfig) {
  * @returns {LayoutRefs}
  */
 export function mesclarLayout(padrao, override) {
-  if (!override) return padrao;
+  if (!override) {
+    return padrao;
+  }
+
   const { layout, padraoVisto = {} } = override;
   const mesclado = { ...padrao, ...layout };
 
   for (const propriedade of LISTAS_MESCLADAS) {
     const doUsuario = layout[propriedade];
-    if (!doUsuario) continue;
+
+    if (!doUsuario) {
+      continue;
+    }
+
     const visto = new Set(padraoVisto[propriedade] ?? []);
     const novos = padrao[propriedade].filter((ref) => !visto.has(ref) && !doUsuario.includes(ref));
     const limite = LIMITE_DA_LISTA[propriedade] ?? Number.POSITIVE_INFINITY;
+
     mesclado[propriedade] = [...doUsuario, ...novos].slice(0, Math.max(doUsuario.length, limite));
   }
+
   return mesclado;
 }
 
@@ -283,9 +311,17 @@ export function resolverLayout(layout, campos) {
    */
   const item = (visiveis, ref) => {
     const fixa = REFERENCIAS_FIXAS[ref];
-    if (fixa) return referenciaOculta(fixa, campos) ? undefined : { ref, ...fixa };
+
+    if (fixa) {
+      return referenciaOculta(fixa, campos) ? undefined : { ref, ...fixa };
+    }
+
     const campo = visiveis.get(ref);
-    if (!campo) return undefined;
+
+    if (!campo) {
+      return undefined;
+    }
+
     return {
       ref,
       chave: campo.chave,
@@ -309,6 +345,7 @@ export function resolverLayout(layout, campos) {
     .filter((secao) => secao.campos.length > 0);
   const colocados = new Set(secoes.flatMap((secao) => secao.campos.map((campo) => campo.ref)));
   const soltos = [...naFicha.keys()].filter((id) => id && !colocados.has(id));
+
   if (soltos.length > 0) {
     secoes.push({
       nome: layout.secoes.length === 0 ? NOME_SECAO_UNICA : NOME_SECAO_OUTROS,
@@ -366,21 +403,26 @@ function catalogoDe(camposConfig) {
 export function validarLayout(layout, refs, { parcial = false } = {}) {
   /** @param {string} campo @param {string} ref */
   const exigirRef = (campo, ref) => {
-    if (!refs.has(ref)) throw erroDeValidacao(campo, `"${ref}" não é um campo ativo`);
+    if (!refs.has(ref)) {
+      throw erroDeValidacao(campo, `"${ref}" não é um campo ativo`);
+    }
   };
   /** @param {string} campo @param {string[]} lista */
   const semRepetir = (campo, lista) => {
-    if (new Set(lista).size !== lista.length)
+    if (new Set(lista).size !== lista.length) {
       throw erroDeValidacao(campo, 'Cada campo só pode aparecer uma vez');
+    }
   };
 
   if (layout.identificador !== undefined) {
     exigirRef('identificador', layout.identificador);
+
     const campo = refs.get(layout.identificador);
     const permitido = campo
       ? IDENTIFICADORES_DO_SISTEMA.includes(campo.systemKey) ||
         (campo.camada === CAMADA.CAMADA_3 && campo.tipo === TIPOS_CAMPO.TEXTO)
       : false;
+
     if (!permitido) {
       throw erroDeValidacao(
         'identificador',
@@ -391,26 +433,37 @@ export function validarLayout(layout, refs, { parcial = false } = {}) {
 
   for (const propriedade of ['subtitulo', 'destaques', 'colunas']) {
     const lista = layout[propriedade];
-    if (lista === undefined) continue;
+
+    if (lista === undefined) {
+      continue;
+    }
+
     lista.forEach((ref) => exigirRef(propriedade, ref));
     semRepetir(propriedade, lista);
   }
+
   if (layout.colunas !== undefined && layout.colunas.length === 0) {
     throw erroDeValidacao('colunas', 'Escolha ao menos uma coluna');
   }
 
   if (layout.secoes !== undefined) {
     const nomes = layout.secoes.map((secao) => secao.nome.trim().toLowerCase());
-    if (new Set(nomes).size !== nomes.length)
+
+    if (new Set(nomes).size !== nomes.length) {
       throw erroDeValidacao('secoes', 'Duas seções com o mesmo nome');
+    }
+
     const todos = layout.secoes.flatMap((secao) => secao.campos);
+
     todos.forEach((ref) => exigirRef('secoes', ref));
     semRepetir('secoes', todos);
   }
 
   if (!parcial) {
     const faltando = PROPRIEDADES_LAYOUT.filter((propriedade) => layout[propriedade] === undefined);
-    if (faltando.length > 0)
+
+    if (faltando.length > 0) {
       throw erroDeValidacao(faltando[0], 'O padrão precisa do layout completo');
+    }
   }
 }

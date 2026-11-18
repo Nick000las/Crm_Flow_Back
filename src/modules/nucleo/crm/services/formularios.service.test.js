@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { CAMADA, POLITICAS_ESCRITA } from '../constants.js';
 import {
   camposElegiveis,
@@ -61,6 +62,7 @@ describe('camposElegiveis', () => {
 
   it('contato e documento preenchem só se vazio; o resto sobrescreve', () => {
     const politica = Object.fromEntries(ELEGIVEIS.map((c) => [c.chave, c.politicaPadrao]));
+
     expect(politica).toMatchObject({
       email: POLITICAS_ESCRITA.PREENCHER_SE_VAZIO,
       nome: POLITICAS_ESCRITA.SOBRESCREVER,
@@ -113,6 +115,7 @@ describe('validarRascunho', () => {
       rascunho([{ campoId: ID.email, politica: POLITICAS_ESCRITA.SOBRESCREVER }]),
       ELEGIVEIS,
     );
+
     expect(secoes[0].itens[0].politica).toBe(POLITICAS_ESCRITA.SOBRESCREVER);
   });
 
@@ -147,6 +150,7 @@ describe('validarRascunho', () => {
 
   it('rascunho vazio salva; para publicar, exige um campo e o termo', () => {
     expect(validarRascunho({ secoes: [] }, ELEGIVEIS).secoes).toEqual([]);
+
     expect(() =>
       validarRascunho({ secoes: [], termo: '  ' }, ELEGIVEIS, { publicar: true }),
     ).toThrow(
@@ -160,6 +164,7 @@ describe('validarRascunho', () => {
 describe('retratoDosCampos', () => {
   it('guarda label, tipo e opções de cada campo usado, sem a política padrão', () => {
     const validado = validarRascunho(rascunho2(), ELEGIVEIS);
+
     expect(retratoDosCampos(validado, ELEGIVEIS)).toEqual({
       [ID.alergias]: {
         chave: 'alergias',
@@ -192,6 +197,7 @@ describe('temAlteracoesNaoPublicadas', () => {
         },
       ],
     };
+
     expect(temAlteracoesNaoPublicadas(doBanco, rascunho)).toBe(false);
     expect(temAlteracoesNaoPublicadas({ ...doBanco, termo: 'Outro' }, rascunho)).toBe(true);
   });
@@ -207,11 +213,14 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
 
   it('campo sensível não pode ser pré-preenchido; os outros podem', () => {
     const podem = Object.fromEntries(ELEGIVEIS.map((c) => [c.chave, c.podePreencher]));
+
     expect(podem).toMatchObject({ nome: true, email: true, alergias: false });
+
     expect(
       validarRascunho(comItens([{ campoId: ID.email, preencher: true }]), ELEGIVEIS).secoes[0]
         .itens[0].preencher,
     ).toBe(true);
+
     expect(() =>
       validarRascunho(comItens([{ campoId: ID.alergias, preencher: true }]), ELEGIVEIS),
     ).toThrow(
@@ -238,6 +247,7 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
       ELEGIVEIS,
     );
     const [fuma, dor] = secoes[0].itens;
+
     expect(fuma).toEqual({
       pergunta: {
         id: expect.stringMatching(/^[0-9a-f-]{36}$/),
@@ -249,6 +259,7 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
       },
       obrigatorio: false,
     });
+
     expect(dor.pergunta).toMatchObject({ id: PERGUNTA_ID, opcoes: ['leve', 'forte'] });
     expect(dor.obrigatorio).toBe(true);
   });
@@ -276,6 +287,7 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
 
   it('a mesma pergunta duas vezes é 400', () => {
     const pergunta = { id: PERGUNTA_ID, rotulo: 'Fuma?', tipo: 'booleano' };
+
     expect(() => validarRascunho(comItens([{ pergunta }, { pergunta }]), ELEGIVEIS)).toThrow(
       expect.objectContaining({
         fields: { 'rascunho.secoes.0.itens.1.pergunta.id': [expect.any(String)] },
@@ -289,6 +301,7 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
       ELEGIVEIS,
       { publicar: true },
     );
+
     expect(retratoDosCampos(validado, ELEGIVEIS)).toEqual({});
   });
 
@@ -296,6 +309,7 @@ describe('FM2b: perguntas próprias e pré-preenchimento', () => {
     const antigo = [
       { titulo: null, itens: [{ campoId: ID.nome, obrigatorio: false, politica: 'overwrite' }] },
     ];
+
     expect(comPadroes(antigo)[0].itens[0]).toEqual({
       campoId: ID.nome,
       obrigatorio: false,

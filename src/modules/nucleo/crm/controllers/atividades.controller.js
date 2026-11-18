@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: atividades e histórico do lead (M6).
+ */
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, OPCOES_CATEGORIA_EVENTO } from '../constants.js';
 import {
   atividadeParamSchema,
@@ -34,12 +38,14 @@ export function registrarRotasAtividades(app) {
   // Tipos pro formulário — não depende de `crm.listas` (a tela de Listas).
   app.get('/crm/atividades/tipos', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarTiposDeAtividade(tenantId));
   });
 
   app.get('/crm/leads/:id/atividades', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await listarAtividades(tenantId, leadId));
   });
 
@@ -47,6 +53,7 @@ export function registrarRotasAtividades(app) {
     const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = criarAtividadeBodySchema.parse(req.body);
+
     return sendSuccess(
       reply,
       await registrarAtividade(tenantId, leadId, body, userId),
@@ -58,12 +65,14 @@ export function registrarRotasAtividades(app) {
     const { tenantId } = req.tenantContext;
     const { id: leadId, atividadeId } = atividadeParamSchema.parse(req.params);
     const body = editarAtividadeBodySchema.parse(req.body);
+
     return sendSuccess(reply, await editarAtividade(tenantId, leadId, atividadeId, body));
   });
 
   app.delete('/crm/leads/:id/atividades/:atividadeId', comFlag, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const { id: leadId, atividadeId } = atividadeParamSchema.parse(req.params);
+
     return sendSuccess(reply, await removerAtividade(tenantId, leadId, atividadeId));
   });
 
@@ -77,6 +86,7 @@ export function registrarRotasAtividades(app) {
     const { tenantId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const paginacao = historicoQuerySchema.parse(req.query);
+
     return sendSuccess(reply, await listarHistorico(tenantId, leadId, paginacao, { papel: role }));
   });
 }

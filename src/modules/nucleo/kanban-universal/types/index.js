@@ -1,4 +1,8 @@
 /**
+ * @file Registra e expõe as integrações de Kanban definidas nesta pasta, preservando o contrato
+ * público do módulo.
+ */
+/**
  * @typedef {object} Board
  * @property {string} id
  * @property {string} boardType
@@ -23,6 +27,14 @@
 
 /**
  * @typedef {object} CardDetails
+ * @property {string} [bloqueio]
+ * @property {string | null} [leadId]
+ * @property {boolean} [modelo]
+ * @property {string[]} [seguidores] Alterado apenas pela rota seguir.
+ * @property {'nenhuma'|'diaria'|'semanal'|'mensal'} [recorrencia]
+ * @property {{colunaId:string,concluir:boolean,responsavelId:string|null}[]} [automacoes]
+ * @property {{id:string,nome:string,url:string}[]} [links]
+ * @property {{id:string,nome:string,conteudo:string}[]} [anexos]
  * @property {string} [descricao]
  * @property {'sem_prioridade' | 'baixa' | 'media' | 'alta' | 'urgente'} [prioridade]
  * @property {string | null} [prazo] Data YYYY-MM-DD, sem conversão de fuso.

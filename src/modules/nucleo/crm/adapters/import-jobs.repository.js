@@ -1,5 +1,10 @@
+/**
+ * @file ADAPTER: `modulo_crm.import_jobs` (migration 0010).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { IMPORT_JOB_STATUS } from '../constants.js';
 
 const FIRST_RESULT_INDEX = 0;
@@ -25,9 +30,12 @@ const COLUNAS_STATUS = Prisma.sql`
 export function criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, payload }) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      INSERT INTO modulo_crm.import_jobs (tenant_id, usuario_id, estrategia_duplicata, payload, total_linhas)
-      VALUES (${tenantId}::uuid, ${usuarioId}::uuid, ${estrategiaDuplicata}, ${JSON.stringify(payload)}::jsonb, ${payload.length})
-      RETURNING id
+      INSERT INTO
+        modulo_crm.import_jobs (tenant_id, usuario_id, estrategia_duplicata, payload, total_linhas)
+      VALUES
+        (${tenantId}::uuid, ${usuarioId}::uuid, ${estrategiaDuplicata}, ${JSON.stringify(payload)}::jsonb, ${payload.length})
+      RETURNING
+        id
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -40,9 +48,13 @@ export function criarImportJob(tenantId, { usuarioId, estrategiaDuplicata, paylo
 export function buscarImportJob(tenantId, jobId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT ${COLUNAS_STATUS}
-      FROM modulo_crm.import_jobs
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
+      SELECT
+        ${COLUNAS_STATUS}
+      FROM
+        modulo_crm.import_jobs
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -57,9 +69,18 @@ export function buscarImportJob(tenantId, jobId) {
 export function buscarImportJobComPayload(tenantId, jobId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT id, status, estrategia_duplicata, payload, usuario_id, acoes
-      FROM modulo_crm.import_jobs
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
+      SELECT
+        id,
+        status,
+        estrategia_duplicata,
+        payload,
+        usuario_id,
+        acoes
+      FROM
+        modulo_crm.import_jobs
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -77,10 +98,16 @@ export async function definirAcoesDuplicata(tenantId, jobId, acoes) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
-      UPDATE modulo_crm.import_jobs SET acoes = ${JSON.stringify(acoes)}::jsonb
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid AND status = ${IMPORT_JOB_STATUS.PENDENTE}
+      UPDATE modulo_crm.import_jobs
+      SET
+        acoes = ${JSON.stringify(acoes)}::jsonb
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND status = ${IMPORT_JOB_STATUS.PENDENTE}
     `,
   );
+
   return linhas > 0;
 }
 
@@ -99,9 +126,14 @@ export function transicionarStatus(tenantId, jobId, de, para) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       UPDATE modulo_crm.import_jobs
-      SET status = ${para}
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid AND status = ${de}
-      RETURNING id
+      SET
+        status = ${para}
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND status = ${de}
+      RETURNING
+        id
     `.then((rows) => rows.length > 0),
   );
 }
@@ -124,6 +156,7 @@ export function transicionarStatus(tenantId, jobId, de, para) {
  */
 export function registrarProgresso(tenantId, jobId, progresso) {
   const concluido = progresso.statusFinal !== undefined;
+
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
@@ -136,8 +169,13 @@ export function registrarProgresso(tenantId, jobId, progresso) {
         linhas_com_erro = ${progresso.linhasComErro},
         relatorio_erro = ${JSON.stringify(progresso.relatorioErro)}::jsonb,
         status = COALESCE(${progresso.statusFinal ?? null}, status),
-        concluido_em = CASE WHEN ${concluido} THEN now() ELSE concluido_em END
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
+        concluido_em = CASE
+          WHEN ${concluido} THEN now()
+          ELSE concluido_em
+        END
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `,
   );
 }
@@ -153,8 +191,12 @@ export function marcarFalha(tenantId, jobId) {
     tenantId,
     (tx) => tx.$executeRaw`
       UPDATE modulo_crm.import_jobs
-      SET status = ${IMPORT_JOB_STATUS.FALHOU}, concluido_em = now()
-      WHERE id = ${jobId}::uuid AND tenant_id = ${tenantId}::uuid
+      SET
+        status = ${IMPORT_JOB_STATUS.FALHOU},
+        concluido_em = now()
+      WHERE
+        id = ${jobId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `,
   );
 }

@@ -1,3 +1,7 @@
+/**
+ * @file RBAC governa ação humana direta (Bloco 8.1) — diferente do Human-in-the-Loop (Bloco
+ * 6.2).
+ */
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendError } from '#shared/http/response.js';
@@ -14,9 +18,11 @@ import { sendError } from '#shared/http/response.js';
 export async function authenticateHook(req, reply) {
   try {
     const payload = await req.accessJwtVerify();
+
     if (!isTenantContext(payload)) {
       throw new Error('Payload JWT inválido');
     }
+
     req.tenantContext = {
       tenantId: payload.tenantId,
       userId: payload.userId,
@@ -36,7 +42,9 @@ function isTenantContext(payload) {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
+
   const value = /** @type {Partial<TenantContext>} */ (payload);
+
   return (
     (typeof value.tenantId === 'string' || (value.tenantId === null && value.role === 'MASTER')) &&
     typeof value.userId === 'string' &&
@@ -55,6 +63,7 @@ export function requireRole(allowedRoles) {
    */
   return async (req, reply) => {
     const ctx = req.tenantContext;
+
     if (!ctx || !allowedRoles.includes(ctx.role)) {
       return sendError(reply, {
         statusCode: HTTP_STATUS.FORBIDDEN,

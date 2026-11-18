@@ -1,3 +1,6 @@
+/**
+ * @file `01310100` → `01310-100`. @param {string} cep.
+ */
 // Utilitários genéricos, SEM regra de negócio e SEM acesso a dado.
 import { BRAZIL_DOCUMENTS, BRAZIL_PHONE, CURRENCY } from '#shared/constants/index.js';
 
@@ -11,6 +14,7 @@ import { BRAZIL_DOCUMENTS, BRAZIL_PHONE, CURRENCY } from '#shared/constants/inde
  */
 function mascarar(texto, padrao, montar) {
   const partes = padrao.exec(texto);
+
   return partes ? montar(...partes.slice(1)) : texto;
 }
 
@@ -43,18 +47,21 @@ export function formatarCep(cep) {
  */
 export function formatarTelefoneBR(telefone) {
   const digitos = telefone.replace(/\D/g, '');
+
   if (digitos.length === BRAZIL_PHONE.MOBILE_LENGTH) {
     return `(${digitos.slice(0, BRAZIL_PHONE.AREA_CODE_LENGTH)}) ${digitos.slice(
       BRAZIL_PHONE.AREA_CODE_LENGTH,
       BRAZIL_PHONE.MOBILE_PREFIX_END,
     )}-${digitos.slice(BRAZIL_PHONE.MOBILE_PREFIX_END)}`;
   }
+
   if (digitos.length === BRAZIL_PHONE.LANDLINE_LENGTH) {
     return `(${digitos.slice(0, BRAZIL_PHONE.AREA_CODE_LENGTH)}) ${digitos.slice(
       BRAZIL_PHONE.AREA_CODE_LENGTH,
       BRAZIL_PHONE.LANDLINE_PREFIX_END,
     )}-${digitos.slice(BRAZIL_PHONE.LANDLINE_PREFIX_END)}`;
   }
+
   return telefone;
 }
 

@@ -1,7 +1,11 @@
+/**
+ * @file Card com pessoa nova: o formulário de Novo lead, sem status (é a coluna).
+ */
 import { z } from 'zod';
+
 import { DIRECOES_DE_ORDEM, ORDEM_PADRAO_DO_QUADRO, ORDENS_DO_QUADRO } from '../constants.js';
-import { filtroLeadsSchema } from './leads-search.schema.js';
 import { criarLeadBodySchema } from './leads.schema.js';
+import { filtroLeadsSchema } from './leads-search.schema.js';
 import { criarOportunidadeBodySchema, mudarStatusBodySchema } from './oportunidades.schema.js';
 
 /** O mesmo filtro da tabela. `situacao` não entra: o quadro só tem cards ativos (P9). */

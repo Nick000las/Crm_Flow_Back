@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de atividades, na área de CRM, antes da execução dos
+ * casos de uso.
+ */
 import { z } from 'zod';
+
 import { PAGINATION, TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { LIMITES_ATIVIDADE, LISTA_CATEGORIAS_EVENTO, PAGINACAO_EVENTOS } from '../constants.js';
 
 // Atividades e histórico do lead (M6). Se o `tipo` é uma opção ativa da

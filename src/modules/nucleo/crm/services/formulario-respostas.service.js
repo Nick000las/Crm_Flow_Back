@@ -1,8 +1,12 @@
+/**
+ * @file SERVICE: resposta do formulário (FM4).
+ */
 import { createHash, randomUUID } from 'node:crypto';
-import { AppError } from '#core/errors/app-error.js';
-import { erroNaoEncontrado } from '#core/errors/app-error.js';
+
+import { AppError, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
   buscarResposta,
   buscarRespostasDaPessoa,
@@ -22,11 +26,11 @@ import {
 } from '../constants.js';
 import { encontrarDuplicados } from './duplicidade.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
+import { alertasDaResposta } from './formulario-alertas.service.js';
 import { indisponivel, resolverLink, valorDaPessoa } from './formulario-publico.service.js';
+import { regraDeVisibilidade } from './formulario-visibilidade.service.js';
 import { camposElegiveis, comPadroes, ehPergunta } from './formularios.service.js';
 import { atualizarLeadExistente } from './leads.service.js';
-import { alertasDaResposta } from './formulario-alertas.service.js';
-import { regraDeVisibilidade } from './formulario-visibilidade.service.js';
 import { normalizarValorDoTipo, valorAusente, valorValidoParaTipo } from './tipos-campo.service.js';
 
 /**
@@ -71,12 +75,20 @@ const TENTATIVAS = 2;
  * @returns {string}
  */
 function canonico(valor) {
-  if (valor instanceof Date) return JSON.stringify(valor.toISOString());
-  if (Array.isArray(valor)) return `[${valor.map(canonico).join(',')}]`;
+  if (valor instanceof Date) {
+    return JSON.stringify(valor.toISOString());
+  }
+
+  if (Array.isArray(valor)) {
+    return `[${valor.map(canonico).join(',')}]`;
+  }
+
   if (valor && typeof valor === 'object') {
     const chaves = Object.keys(valor).sort();
+
     return `{${chaves.map((chave) => `${JSON.stringify(chave)}:${canonico(valor[chave])}`).join(',')}}`;
   }
+
   return JSON.stringify(valor ?? null);
 }
 
@@ -91,6 +103,7 @@ export function itensDaVersao(secoes, retratos) {
     secao.itens.map((item) => {
       if (ehPergunta(item)) {
         const { pergunta } = /** @type {any} */ (item);
+
         return {
           chave: pergunta.id,
           ehPergunta: true,
@@ -101,8 +114,10 @@ export function itensDaVersao(secoes, retratos) {
           sensivel: pergunta.sensivel ?? false,
         };
       }
+
       const { campoId, obrigatorio, politica } = /** @type {any} */ (item);
       const retrato = retratos[campoId] ?? {};
+
       return {
         chave: campoId,
         ehPergunta: false,
@@ -129,24 +144,33 @@ export function validarRespostas(itens, respostas) {
   /** @type {Record<string, string[]>} */
   const erros = {};
   const conhecidas = new Set(itens.map((item) => item.chave));
+
   for (const chave of Object.keys(respostas)) {
-    if (!conhecidas.has(chave))
+    if (!conhecidas.has(chave)) {
       erros[`respostas.${chave}`] = ['Esta pergunta não está no formulário'];
+    }
   }
 
   const campos = {};
   const perguntas = {};
+
   for (const item of itens) {
     const bruto = respostas[item.chave];
     const valor = typeof bruto === 'string' ? bruto.trim() : bruto;
+
     if (valorAusente(valor)) {
-      if (item.obrigatorio) erros[`respostas.${item.chave}`] = ['Responda esta pergunta'];
+      if (item.obrigatorio) {
+        erros[`respostas.${item.chave}`] = ['Responda esta pergunta'];
+      }
+
       continue;
     }
+
     if (!valorValidoParaTipo(item.tipo, valor, item.opcoes)) {
       erros[`respostas.${item.chave}`] = [`Resposta inválida para "${item.label}"`];
       continue;
     }
+
     (item.ehPergunta ? perguntas : campos)[item.chave] = normalizarValorDoTipo(item.tipo, valor);
   }
 
@@ -158,6 +182,7 @@ export function validarRespostas(itens, respostas) {
       fields: erros,
     });
   }
+
   return { campos, perguntas };
 }
 
@@ -174,17 +199,22 @@ export function validarRespostas(itens, respostas) {
 export function planejarPelaPolitica(itens, valores, pessoa, elegiveisAgora) {
   const relatorio = [];
   const aGravar = [];
+
   for (const item of itens.filter((candidato) => !candidato.ehPergunta)) {
     const linha = { campoId: item.chave, label: item.label };
+
     if (!(item.chave in valores)) {
       relatorio.push({
         ...linha,
         resultado: RESULTADOS_ESCRITA.IGNORADO,
         motivo: MOTIVOS_ESCRITA.SEM_RESPOSTA,
       });
+
       continue;
     }
+
     const atual = elegiveisAgora.get(item.chave);
+
     if (!atual) {
       // Campo desligado ou removido depois da publicação: não há onde gravar.
       relatorio.push({
@@ -192,26 +222,34 @@ export function planejarPelaPolitica(itens, valores, pessoa, elegiveisAgora) {
         resultado: RESULTADOS_ESCRITA.REVISAO,
         motivo: MOTIVOS_ESCRITA.CAMPO_INDISPONIVEL,
       });
+
       continue;
     }
+
     const salvo = valorDaPessoa(pessoa, atual);
+
     if (canonico(salvo) === canonico(valores[item.chave])) {
       relatorio.push({
         ...linha,
         resultado: RESULTADOS_ESCRITA.IGNORADO,
         motivo: MOTIVOS_ESCRITA.IGUAL,
       });
+
       continue;
     }
+
     if (item.politica === POLITICAS_ESCRITA.PREENCHER_SE_VAZIO && !valorAusente(salvo)) {
       relatorio.push({
         ...linha,
         resultado: RESULTADOS_ESCRITA.REVISAO,
         motivo: MOTIVOS_ESCRITA.VALOR_DIFERENTE,
       });
+
       continue;
     }
+
     relatorio.push({ ...linha, resultado: RESULTADOS_ESCRITA.GRAVADO });
+
     aGravar.push({
       campoId: item.chave,
       chave: atual.chave,
@@ -219,6 +257,7 @@ export function planejarPelaPolitica(itens, valores, pessoa, elegiveisAgora) {
       valor: valores[item.chave],
     });
   }
+
   return { relatorio, aGravar };
 }
 
@@ -230,10 +269,15 @@ export function planejarPelaPolitica(itens, valores, pessoa, elegiveisAgora) {
 export function entradaDoLead(aGravar) {
   const entrada = {};
   const customFields = {};
+
   for (const { chave, camada, valor } of aGravar) {
-    if (camada === CAMADA.CAMADA_3) customFields[chave] = valor;
-    else entrada[chave] = valor;
+    if (camada === CAMADA.CAMADA_3) {
+      customFields[chave] = valor;
+    } else {
+      entrada[chave] = valor;
+    }
   }
+
   return Object.keys(customFields).length > 0 ? { ...entrada, customFields } : entrada;
 }
 
@@ -264,11 +308,16 @@ async function planejarEscrita(tenantId, link, itens, valores) {
     buscarLeadPorId(tenantId, link.lead_id),
     obterSchemaCampos(tenantId),
   ]);
-  if (!pessoa || pessoa.anonimizado_em || pessoa.archived_at) throw indisponivel();
+
+  if (!pessoa || pessoa.anonimizado_em || pessoa.archived_at) {
+    throw indisponivel();
+  }
+
   const elegiveisAgora = new Map(camposElegiveis(campos).map((campo) => [campo.id, campo]));
   let { relatorio, aGravar } = planejarPelaPolitica(itens, valores, pessoa, elegiveisAgora);
 
   const contatos = aGravar.filter((item) => CHAVES_DE_CONTATO.includes(item.chave));
+
   if (contatos.length > 0) {
     const duplicados = await encontrarDuplicados(
       tenantId,
@@ -279,11 +328,13 @@ async function planejarEscrita(tenantId, link, itens, valores) {
     const recusados = new Set(
       contatos.filter((item) => deOutraPessoa.has(item.chave)).map((item) => item.campoId),
     );
+
     if (recusados.size > 0) {
       relatorio = paraRevisao(relatorio, recusados, MOTIVOS_ESCRITA.CONTATO_DE_OUTRA_PESSOA);
       aGravar = aGravar.filter((item) => !recusados.has(item.campoId));
     }
   }
+
   return { pessoa, relatorio, aGravar };
 }
 
@@ -339,9 +390,13 @@ export async function enviarResposta(token, corpo, origem) {
       if (!(await gravarRespostaSemEditarPessoa(tenantId, resposta(relatorioFinal)))) {
         throw indisponivel();
       }
+
       return { linkId: link.id, respostaId };
     };
-    if (aGravar.length === 0) return semEscrita(relatorio);
+
+    if (aGravar.length === 0) {
+      return semEscrita(relatorio);
+    }
 
     try {
       await atualizarLeadExistente(
@@ -357,27 +412,41 @@ export async function enviarResposta(token, corpo, origem) {
               ) {
                 throw PESSOA_MUDOU;
               }
-              if (!(await travarLinkParaEnvio(tx, tenantId, link.id))) throw indisponivel();
+
+              if (!(await travarLinkParaEnvio(tx, tenantId, link.id))) {
+                throw indisponivel();
+              }
             },
             depoisDeGravar: (tx) => gravarResposta(tx, tenantId, resposta(relatorio)),
             detalhes: { origem: 'formulario', formularioId: link.formulario_id, respostaId },
           },
         },
       );
+
       return { linkId: link.id, respostaId };
     } catch (erro) {
-      if (erro === PESSOA_MUDOU && tentativa < TENTATIVAS) continue;
-      if (erro === PESSOA_MUDOU) throw indisponivel();
+      if (erro === PESSOA_MUDOU && tentativa < TENTATIVAS) {
+        continue;
+      }
+
+      if (erro === PESSOA_MUDOU) {
+        throw indisponivel();
+      }
+
       if (recusadoPelasRegras(erro)) {
         const recusados = new Set(aGravar.map((item) => item.campoId));
+
         return semEscrita(paraRevisao(relatorio, recusados, MOTIVOS_ESCRITA.REGRA_DO_CRM));
       }
+
       if (erro instanceof AppError && erro.statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR) {
         throw indisponivel();
       }
+
       throw erro;
     }
   }
+
   throw indisponivel();
 }
 
@@ -388,6 +457,7 @@ export async function enviarResposta(token, corpo, origem) {
 /** @param {LinhaDoRelatorio[]} relatorio */
 function contagem(relatorio) {
   const contar = (resultado) => relatorio.filter((linha) => linha.resultado === resultado).length;
+
   return {
     gravados: contar(RESULTADOS_ESCRITA.GRAVADO),
     ignorados: contar(RESULTADOS_ESCRITA.IGNORADO),
@@ -432,7 +502,11 @@ export async function listarRespostasDaPessoa(tenantId, leadId) {
  */
 export async function obterResposta(tenantId, leadId, respostaId, papel) {
   const linha = await buscarResposta(tenantId, leadId, respostaId);
-  if (!linha) throw erroNaoEncontrado('Resposta não encontrada');
+
+  if (!linha) {
+    throw erroNaoEncontrado('Resposta não encontrada');
+  }
+
   const { gestao, veCampo, vePergunta } = await regraDeVisibilidade(tenantId, papel);
   const relatorio = new Map(
     /** @type {LinhaDoRelatorio[]} */ (linha.relatorio).map((item) => [item.campoId, item]),
@@ -444,6 +518,7 @@ export async function obterResposta(tenantId, leadId, respostaId, papel) {
       if (ehPergunta(item)) {
         const { pergunta } = /** @type {any} */ (item);
         const oculto = !vePergunta(pergunta.sensivel);
+
         return {
           pergunta: {
             id: pergunta.id,
@@ -456,10 +531,12 @@ export async function obterResposta(tenantId, leadId, respostaId, papel) {
             : { valor: linha.respostas.perguntas?.[pergunta.id] ?? null }),
         };
       }
+
       const { campoId } = /** @type {any} */ (item);
       const retrato = linha.campos[campoId] ?? {};
       const oculto = !veCampo(campoId, retrato);
       const escrita = relatorio.get(campoId);
+
       return {
         campoId,
         campo: {

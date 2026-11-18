@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { MODULES } from '#api/modules.js';
 import { registrarModulos } from '#core/registry/modules.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
 import { reconciliarModulos } from '#core/tenant/reconcile.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { provisionarTenant } from './provisioning.js';
 
 const mockTx = {
@@ -45,6 +47,7 @@ describe('provisionarTenant', () => {
       statusCode: HTTP_STATUS.BAD_REQUEST,
       message: expect.stringContaining('modulo-inventado'),
     });
+
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -72,8 +75,10 @@ describe('provisionarTenant', () => {
         ativo: true,
       },
     });
+
     // sem senha nenhuma na criação — fluxo é convite por e-mail (ver login.service.js)
     const dadosUsuario = mockTx.usuario.create.mock.calls[0][0].data;
+
     expect(dadosUsuario).not.toHaveProperty('senha');
     expect(dadosUsuario).not.toHaveProperty('senhaHash');
 
@@ -88,6 +93,7 @@ describe('provisionarTenant', () => {
     await provisionarTenant({ ...inputValido, owner: { ...inputValido.owner, role: 'OPERADOR' } });
 
     const dadosUsuario = mockTx.usuario.create.mock.calls[0][0].data;
+
     expect(dadosUsuario.role).toBe('DONO');
   });
 

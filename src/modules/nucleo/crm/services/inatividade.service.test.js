@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { criarNotificacoes } from '#core/notificacoes/notificacoes.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { listarTenantsAtivosDoModulo } from '#core/tenant/module-access.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   buscarDiasPorStatus,
   contarEsfriandoPorResponsavel,
@@ -19,15 +21,19 @@ import {
 vi.mock('#core/notificacoes/notificacoes.js', () => ({
   criarNotificacoes: vi.fn(async (_t, itens) => itens.length),
 }));
+
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
 vi.mock('#core/tenant/module-access.js', () => ({ listarTenantsAtivosDoModulo: vi.fn() }));
+
 vi.mock('../adapters/crm-inatividade.repository.js', () => ({
   buscarDiasPorStatus: vi.fn(),
   contarEsfriandoPorResponsavel: vi.fn(),
   definirDiasPorStatus: vi.fn(),
 }));
+
 vi.mock('../adapters/usuarios.repository.js', () => ({ listarDonosAtivosDoTenant: vi.fn() }));
-vi.mock('../adapters/manutencao-queue.repository.js', () => ({
+
+vi.mock('../adapters/manutencao-queue.adapter.js', () => ({
   agendarNotificacaoEsfriando: vi.fn(),
 }));
 
@@ -69,9 +75,11 @@ describe('configuração dos dias por status', () => {
       statusCode: HTTP_STATUS.BAD_REQUEST,
       fields: { 'status.sumiu': [expect.stringContaining('não existe')] },
     });
+
     await expect(salvarInatividade(TENANT, { status: { ganho: DIAS } })).rejects.toThrow(
       'não esfria',
     );
+
     expect(definirDiasPorStatus).not.toHaveBeenCalled();
 
     await salvarInatividade(TENANT, { status: { ganho: null } });
@@ -85,10 +93,12 @@ describe('dataEHoraLocal', () => {
       data: '2026-10-17',
       hora: HORA_DO_RESUMO,
     });
+
     expect(dataEHoraLocal(new Date('2026-10-17T02:00:00Z'), SAO_PAULO)).toEqual({
       data: '2026-10-16',
       hora: HORA_NA_VESPERA,
     });
+
     expect(dataEHoraLocal(AS_OITO_E_MEIA, 'Asia/Tokyo')).toEqual({
       data: '2026-10-17',
       hora: HORA_EM_TOQUIO,
@@ -113,6 +123,7 @@ describe('montarNotificacoesDoDia', () => {
       [DONO],
       '2026-10-17',
     );
+
     expect(itens).toEqual([
       expect.objectContaining({
         usuarioId: VENDEDORA,
@@ -148,13 +159,17 @@ describe('notificarLeadsEsfriando (job de hora em hora)', () => {
       { usuario_id: VENDEDORA, total: LEADS_DA_VENDEDORA },
       { usuario_id: null, total: LEADS_SEM_RESPONSAVEL },
     ]);
+
     const umaPraVendedoraOutraProDono = [VENDEDORA, DONO].length;
+
     await expect(notificarLeadsEsfriando(AS_OITO_E_MEIA)).resolves.toEqual({
       tenants: 1,
       notificacoes: umaPraVendedoraOutraProDono,
       falhas: [],
     });
+
     expect(contarEsfriandoPorResponsavel).toHaveBeenCalledWith(TENANT, AS_OITO_E_MEIA);
+
     expect(criarNotificacoes).toHaveBeenCalledWith(TENANT, [
       expect.objectContaining({ usuarioId: VENDEDORA }),
       expect.objectContaining({ usuarioId: DONO }),
@@ -180,6 +195,7 @@ describe('notificarLeadsEsfriando (job de hora em hora)', () => {
       { tenantId: TENANT, fusoHorario: SAO_PAULO },
       { tenantId: OUTRO_TENANT, fusoHorario: SAO_PAULO },
     ]);
+
     contarEsfriandoPorResponsavel
       .mockRejectedValueOnce(new Error('timeout'))
       .mockResolvedValueOnce([{ usuario_id: VENDEDORA, total: 1 }]);

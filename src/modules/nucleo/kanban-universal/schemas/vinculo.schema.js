@@ -1,4 +1,8 @@
+/**
+ * @file O tipo é validado pelo registro de provedores: desconhecido responde 404.
+ */
 import { z } from 'zod';
+
 import { QUADRO_ENTIDADE } from '../constants.js';
 
 export const cardVinculoParamsSchema = z.object({ id: z.string().uuid() }).strict();

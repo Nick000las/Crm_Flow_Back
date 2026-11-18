@@ -1,4 +1,8 @@
 /**
+ * @file Alias temporário para consumidores do nome anterior. Novas rotas de board devem ser
+ * implementadas em `boards.controller.js`.
+ */
+/**
  * Alias temporário para consumidores do nome anterior.
  * Novas rotas de board devem ser implementadas em `boards.controller.js`.
  */

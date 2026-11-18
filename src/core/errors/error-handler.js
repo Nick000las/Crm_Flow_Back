@@ -1,4 +1,9 @@
+/**
+ * @file Implementa a integração de error handler, na área de aplicação, mantendo seus recursos
+ * e contratos compartilhados.
+ */
 import { ZodError } from 'zod';
+
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
@@ -65,6 +70,7 @@ export function registerErrorHandlers(app) {
     }
 
     const statusCode = Number(error.statusCode);
+
     if (statusCode >= HTTP_STATUS.BAD_REQUEST && statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR) {
       return sendError(reply, {
         statusCode,
@@ -74,6 +80,7 @@ export function registerErrorHandlers(app) {
     }
 
     request.log.error({ err: error }, 'Erro não tratado durante a requisição');
+
     return sendError(reply, {
       statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
       code: ERROR_CODES.INTERNAL_ERROR,
@@ -86,8 +93,10 @@ export function registerErrorHandlers(app) {
 function groupIssuesByField(issues) {
   return issues.reduce((fields, issue) => {
     const field = issue.path.join('.') || '_form';
+
     fields[field] ??= [];
     fields[field].push(field === '_form' ? 'Corpo da requisição inválido' : issue.message);
+
     return fields;
   }, /** @type {Record<string, string[]>} */ ({}));
 }

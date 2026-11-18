@@ -1,3 +1,9 @@
+/**
+ * @file Entrega os tokens de uma sessão recém-aberta. Refresh tokens vão somente em cookies
+ * httpOnly distintos por área. Tenant e MASTER sobrevivem ao F5 sem sobrescrever a outra
+ * sessão.
+ */
+import { LOGIN_MFA, PASSWORD_ACTIVATION, REFRESH_SESSION } from '#core/auth/constants.js';
 import {
   signAccessToken,
   signLoginMfaToken,
@@ -7,11 +13,11 @@ import {
   verifyPasswordActivationToken,
   verifyRefreshToken,
 } from '#core/auth/jwt.js';
-import { LOGIN_MFA, PASSWORD_ACTIVATION, REFRESH_SESSION } from '#core/auth/constants.js';
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS, ROLES } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import {
   activatePasswordBodySchema,
   loginBodySchema,
@@ -23,16 +29,16 @@ import {
   verifyCodeBodySchema,
 } from '../schemas/login.schema.js';
 import {
-  identifyEmail,
-  authenticateWithPassword,
-  verifyActivationCode as verifyActivationCodeService,
-  verifyLoginMfaCode,
   activatePassword as activatePasswordService,
-  enableMfa as enableMfaService,
+  authenticateWithPassword,
   disableMfa as disableMfaService,
+  enableMfa as enableMfaService,
+  getSessionUser,
   getUserContext,
   getUserSettings as getUserSettingsService,
-  getSessionUser,
+  identifyEmail,
+  verifyActivationCode as verifyActivationCodeService,
+  verifyLoginMfaCode,
 } from '../services/login.service.js';
 
 const ACTIVATION_COOKIE_NAME = 'activation_token';
@@ -68,6 +74,7 @@ export async function loginWithPassword(request, response) {
 
   if (resultado.mfaRequired) {
     const mfaToken = signLoginMfaToken(request.server, resultado);
+
     response.setCookie(MFA_COOKIE_NAME, mfaToken, {
       httpOnly: true,
       secure: request.server.config.NODE_ENV === 'production',
@@ -75,6 +82,7 @@ export async function loginWithPassword(request, response) {
       path: MFA_COOKIE_PATH,
       maxAge: LOGIN_MFA.TOKEN_EXPIRATION_SECONDS,
     });
+
     return sendSuccess(response, { nextStep: 'mfaCode' });
   }
 
@@ -126,6 +134,7 @@ export async function verifyMfaCode(request, response) {
   }
 
   let payload;
+
   try {
     payload = verifyLoginMfaToken(request.server, mfaToken);
   } catch {
@@ -155,6 +164,7 @@ export async function verifyMfaCode(request, response) {
  */
 export async function enableMfa(request, response) {
   const data = await enableMfaService({ userId: request.tenantContext.userId });
+
   return sendSuccess(response, data);
 }
 
@@ -171,6 +181,7 @@ export async function disableMfa(request, response) {
     userId: request.tenantContext.userId,
     senha,
   });
+
   return sendSuccess(response, data);
 }
 
@@ -191,6 +202,7 @@ export async function activatePassword(request, response) {
   }
 
   let payload;
+
   try {
     payload = verifyPasswordActivationToken(request.server, activationToken);
   } catch {
@@ -225,12 +237,19 @@ export async function refreshAccessToken(request, response) {
   const veioDoCookie = refreshDoCorpo === undefined;
 
   let payload;
+
   try {
-    if (!refreshToken) throw new Error('Sem refresh token');
+    if (!refreshToken) {
+      throw new Error('Sem refresh token');
+    }
+
     payload = verifyRefreshToken(request.server, refreshToken);
   } catch {
     // Cookie vencido ou adulterado não deve ficar sendo reenviado.
-    if (veioDoCookie) clearRefreshCookie(response, scope);
+    if (veioDoCookie) {
+      clearRefreshCookie(response, scope);
+    }
+
     throw new AppError({
       statusCode: HTTP_STATUS.UNAUTHORIZED,
       code: ERROR_CODES.AUTH_INVALID_REFRESH_TOKEN,
@@ -241,10 +260,12 @@ export async function refreshAccessToken(request, response) {
   const tenantContext = await getUserContext({
     userId: payload.userId,
   });
+
   if (veioDoCookie) {
     assertSessionScope(tenantContext, scope);
     setRefreshCookie(request, response, refreshToken, scope);
   }
+
   return sendSuccess(response, {
     accessToken: signAccessToken(request.server, tenantContext),
   });
@@ -271,43 +292,63 @@ export async function restoreCurrentSession(request, response) {
     if (!(error instanceof AppError) || error.statusCode !== HTTP_STATUS.UNAUTHORIZED) {
       throw error;
     }
+
     const { scope } = sessionQuerySchema.parse(request.query);
+
     clearRefreshCookie(response, scope);
+
     return sendSuccess(response, { accessToken: null, user: null });
   }
 }
 
 async function respondWithSession(request, response, { restore = false } = {}) {
   const { scope } = sessionQuerySchema.parse(request.query);
+
   response.header('Cache-Control', 'no-store');
+
   let context = request.tenantContext;
+
   if (!context) {
     const token = request.cookies[refreshCookieName(scope)];
+
     if (!token) {
-      if (restore) return sendSuccess(response, { accessToken: null, user: null });
+      if (restore) {
+        return sendSuccess(response, { accessToken: null, user: null });
+      }
+
       throw invalidSessionError();
     }
+
     let payload;
+
     try {
       payload = verifyRefreshToken(request.server, token);
     } catch {
       clearRefreshCookie(response, scope);
+
       throw invalidSessionError();
     }
+
     context = await getUserContext({ userId: payload.userId });
     assertSessionScope(context, scope);
-    if (restore) setRefreshCookie(request, response, token, scope);
+
+    if (restore) {
+      setRefreshCookie(request, response, token, scope);
+    }
   } else {
     // Revalida usuário ativo e papel no banco, sem confiar em permissões antigas.
     context = await getUserContext({ userId: context.userId });
   }
+
   assertSessionScope(context, scope);
+
   const [sessionUser, settings] = await Promise.all([
     context.tenantId
       ? getSessionUser(context)
       : { ...context, modulosAtivos: [], featuresAtivas: [] },
     getUserSettingsService({ userId: context.userId }),
   ]);
+
   return sendSuccess(response, {
     accessToken: signAccessToken(request.server, context),
     user: { ...sessionUser, ...settings },
@@ -338,6 +379,7 @@ export async function getUserSettings(request, response) {
   const data = await getUserSettingsService({
     userId: request.tenantContext.userId,
   });
+
   return sendSuccess(response, data);
 }
 
@@ -350,9 +392,11 @@ export async function getUserSettings(request, response) {
 export async function logout(request, response) {
   const scope =
     request.body?.scope ?? (request.tenantContext.role === ROLES.MASTER ? 'admin' : 'tenant');
+
   sessionQuerySchema.parse({ scope });
   assertSessionScope(request.tenantContext, scope);
   clearRefreshCookie(response, scope);
+
   return sendSuccess(response, {});
 }
 
@@ -369,8 +413,10 @@ export async function logout(request, response) {
 function sendAuthTokens(request, response, tenantContext) {
   const { accessToken, refreshToken } = createAuthTokens(request.server, tenantContext);
   const scope = request.body?.scope ?? (tenantContext.role === ROLES.MASTER ? 'admin' : 'tenant');
+
   assertSessionScope(tenantContext, scope);
   setRefreshCookie(request, response, refreshToken, scope);
+
   return sendSuccess(response, { accessToken });
 }
 
@@ -386,6 +432,7 @@ function setRefreshCookie(request, response, refreshToken, scope) {
     path: REFRESH_SESSION.COOKIE_PATH,
     maxAge: REFRESH_SESSION.TOKEN_EXPIRATION_SECONDS,
   });
+
   // Remove o cookie antigo para não haver dois tokens com o mesmo nome.
   response.clearCookie(refreshCookieName(scope), { path: REFRESH_SESSION.LEGACY_COOKIE_PATH });
 }

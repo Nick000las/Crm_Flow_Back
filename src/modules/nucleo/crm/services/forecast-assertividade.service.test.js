@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   LIMITES_ASSERTIVIDADE,
   LIMITES_FORECAST,
@@ -6,6 +7,7 @@ import {
   ROTULO_SEM_RESPONSAVEL,
   SNAPSHOT_FORECAST,
 } from '../constants.js';
+import { deslocarMes, mesesDoPeriodo } from './forecast.service.js';
 import {
   montarMesDaAssertividade,
   montarPorResponsavel,
@@ -14,7 +16,6 @@ import {
   realizadosPorMes,
   snapshotsPorMes,
 } from './forecast-assertividade.service.js';
-import { deslocarMes, mesesDoPeriodo } from './forecast.service.js';
 
 const HOJE = '2026-11-20';
 const OUT = '2026-10';
@@ -96,6 +97,7 @@ const snapshot = (extra) => ({
 describe('periodoDaAssertividade', () => {
   it('sem período: os seis meses fechados antes do atual', () => {
     const { de, ate } = periodoDaAssertividade({}, HOJE);
+
     expect({ de, ate }).toEqual({ de: '2026-05', ate: OUT });
     expect(mesesDoPeriodo(de, ate)).toHaveLength(LIMITES_ASSERTIVIDADE.MESES_PADRAO);
   });
@@ -113,7 +115,9 @@ describe('periodoDaAssertividade', () => {
 
   it('aceita até o limite de meses e recusa um a mais, em ate', () => {
     const de = deslocarMes(OUT, 1 - LIMITES_FORECAST.MESES_MAXIMOS);
+
     expect(periodoDaAssertividade({ de, ate: OUT }, HOJE)).toEqual({ de, ate: OUT });
+
     expect(() => periodoDaAssertividade({ de: deslocarMes(de, -1), ate: OUT }, HOJE)).toThrow(
       expect.objectContaining({ fields: { ate: [expect.any(String)] } }),
     );
@@ -140,12 +144,14 @@ describe('snapshotsPorMes', () => {
       tirado_em: new Date('2026-09-28T09:00:00.000Z'),
     });
     const escolhidos = snapshotsPorMes([segundo, daSemanaDeSetembro, primeiro]);
+
     expect(escolhidos.get(OUT)).toBe(primeiro);
     expect(escolhidos.has(SET)).toBe(false);
   });
 
   it('só snapshot de semana do mês anterior: mês sem dados', () => {
     const escolhidos = snapshotsPorMes([snapshot({ semana: '2026-09-28' })]);
+
     expect(escolhidos.size).toBe(0);
   });
 });
@@ -174,7 +180,9 @@ describe('realizadosPorMes', () => {
       linha({ do_total: false, grupo_chave: JOAO, aberto_quantidade: 1, aberto_soma: '50' }),
     ]);
     const outubro = realizados.get(OUT);
+
     expect(outubro?.total).toBe(C_TOTAL_OUT);
+
     expect([...(outubro?.porDono.entries() ?? [])]).toEqual([
       [MARIA, C_MARIA],
       [SEM, C_SEM],
@@ -238,6 +246,7 @@ describe('montarMesDaAssertividade', () => {
       { total: C_TOTAL_OUT, porDono: new Map() },
       NOMES,
     );
+
     expect(mes).toEqual({
       mes: OUT,
       semDados: false,
@@ -274,6 +283,7 @@ describe('montarMesDaAssertividade', () => {
       undefined,
       NOMES,
     );
+
     expect(mes.previsto).toBe(0);
     expect(mes.realizado).toBe(0);
     expect(mes.assertividade).toBeNull();

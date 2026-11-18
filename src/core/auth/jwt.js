@@ -1,3 +1,7 @@
+/**
+ * @file Implementa a integração de jwt, na área de autenticação, mantendo seus recursos e
+ * contratos compartilhados.
+ */
 import { JWT_EXPIRATION } from '#core/auth/constants.js';
 
 /** @typedef {import('#core/types/module.js').TenantContext} TenantContext */
@@ -60,9 +64,11 @@ export function verifyRefreshToken(app, token) {
   const payload = /** @type {{ userId?: string, purpose?: string }} */ (
     app.jwt.refresh.verify(token)
   );
+
   if (payload.purpose !== 'refresh' || typeof payload.userId !== 'string') {
     throw new Error('Refresh token inválido');
   }
+
   return /** @type {{ userId: string }} */ (payload);
 }
 

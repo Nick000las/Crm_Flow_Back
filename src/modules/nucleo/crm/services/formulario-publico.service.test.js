@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { CAMADA } from '../constants.js';
 import { valorDaPessoa, versaoPublica } from './formulario-publico.service.js';
 
@@ -18,12 +19,15 @@ describe('valorDaPessoa', () => {
     expect(valorDaPessoa(PESSOA, { id: NOME, chave: 'nome', camada: CAMADA.CAMADA_1 })).toBe(
       'Maria Souza',
     );
+
     expect(valorDaPessoa(PESSOA, { id: CPF, chave: 'cpf', camada: CAMADA.CAMADA_2 })).toBe(
       '12345678909',
     );
+
     expect(
       valorDaPessoa(PESSOA, { id: ALERGIAS, chave: 'alergias', camada: CAMADA.CAMADA_3 }),
     ).toBe('Dipirona');
+
     expect(valorDaPessoa(PESSOA, { id: 'x', chave: 'email', camada: CAMADA.CAMADA_1 })).toBeNull();
   });
 });
@@ -68,6 +72,7 @@ describe('versaoPublica', () => {
       [CPF, { id: CPF, chave: 'cpf', camada: CAMADA.CAMADA_2, podePreencher: false }],
     ]);
     const [nome, cpf] = versaoPublica(link, agora).secoes[0].itens;
+
     expect(nome.valor).toBe('Maria Souza');
     expect(cpf.valor).toBeNull();
     expect(versaoPublica(link, new Map()).secoes[0].itens[0].valor).toBeNull();

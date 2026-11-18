@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { URLSearchParams } from 'node:url';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { TenantManagement } from '#core/tenant/management.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CATEGORIAS_STATUS, CRM_FEATURES, MODULO_CRM, TIPOS_PIPELINE } from '../constants.js';
-import { reconciliarTenant } from '../services/reconcile.service.js';
 import { tirarSnapshotDoTenant } from '../services/forecast-snapshot.service.js';
+import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
  * FC3 (docs/produto/crm-forecast.md): snapshots semanais do
@@ -75,13 +78,16 @@ const razao = (realizado, previsto) =>
 const hojeLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: FUSO });
 const somarDias = (iso, dias) => {
   const data = new Date(`${iso}T12:00:00Z`);
+
   data.setUTCDate(data.getUTCDate() + dias);
+
   return data.toISOString().slice(0, TAMANHO_DATA);
 };
 const somarMeses = (mes, n) => {
   const [ano, numero] = mes.split('-').map(Number);
   const total = ano * MESES_NO_ANO + (numero - 1) + n;
   const novoMes = String((total % MESES_NO_ANO) + 1).padStart(DIGITOS_MES, '0');
+
   return `${Math.floor(total / MESES_NO_ANO)}-${novoMes}`;
 };
 const ultimoDiaDoMes = (mes) => somarDias(`${somarMeses(mes, 1)}-01`, -1);
@@ -89,6 +95,7 @@ const ultimoDiaDoMes = (mes) => somarDias(`${somarMeses(mes, 1)}-01`, -1);
 const primeiraSegunda = (mes) => {
   const diaDaSemana = new Date(`${mes}-01T12:00:00Z`).getUTCDay();
   const dia = 1 + ((DOMINGO_E_SEGUNDA - diaDaSemana) % DIAS_NA_SEMANA);
+
   return `${mes}-${String(dia).padStart(DIGITOS_MES, '0')}`;
 };
 
@@ -131,16 +138,21 @@ rodar(
         headers: { authorization: `Bearer ${token}` },
       });
       const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
       return { status: resposta.statusCode, corpo, dados: corpo?.data };
     }
+
     const operador = { papel: 'OPERADOR', userId: operadorId };
     const ok = async (promessa, status = HTTP_STATUS.OK) => {
       const resposta = await promessa;
+
       expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
       return resposta.dados;
     };
     const statusDeVendas = async () => {
       const pipelines = await ok(chamar('GET', '/crm/configuracoes/pipelines'));
+
       return pipelines.find((p) => p.id === vendas.id).status;
     };
     const abertosDeVendas = async () =>
@@ -171,10 +183,12 @@ rodar(
         chamar('POST', '/crm/leads', { nome: 'Pessoa', email: `${randomUUID()}@smoke.test` }),
         HTTP_STATUS.CREATED,
       );
+
       await prisma.$executeRaw`
       DELETE FROM modulo_crm.crm_deal
       WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${lead.id}::uuid
     `;
+
       const criada = await ok(
         chamar('POST', `/crm/leads/${lead.id}/oportunidades`, {
           ...(status && { status }),
@@ -184,6 +198,7 @@ rodar(
         }),
         HTTP_STATUS.CREATED,
       );
+
       return criada.id;
     }
 
@@ -195,12 +210,15 @@ rodar(
           lost_at = NULL, probability_override = NULL
       WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+
       await invalidarCache();
     }
 
     async function criarGanha(valor, responsavelId, quando) {
       const id = await criar({ valor, responsavelId });
+
       await marcarGanha(id, quando);
+
       return id;
     }
 
@@ -248,6 +266,7 @@ rodar(
           subdomain: `smoke-fc3-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
         },
       });
+
       await prisma.usuario.createMany({
         data: [
           { id: donoId, role: 'DONO' },
@@ -261,7 +280,9 @@ rodar(
           role,
         })),
       });
+
       await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
       await prisma.tenantModuleFeature.createMany({
         data: [CRM_FEATURES.PERMISSOES].map((featureKey) => ({
           tenantId,
@@ -269,8 +290,10 @@ rodar(
           featureKey,
         })),
       });
+
       await invalidarFeatures(tenantId);
       await reconciliarTenant(tenantId);
+
       app = await buildApp({
         config: {
           APP_NAME: 'crm-forecast-fc3',
@@ -280,17 +303,22 @@ rodar(
           JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
         },
       });
+
       await TenantManagement.atualizarFeaturesTenant(tenantId, COM_FORECAST);
+
       const pipelines = await ok(chamar('GET', '/crm/configuracoes/pipelines'));
+
       vendas = pipelines.find((p) => p.tipo === TIPOS_PIPELINE.VENDAS && p.padrao);
       ganhoKey = (await statusDeVendas()).find((s) => s.category === CATEGORIAS_STATUS.GANHO).key;
     });
 
     beforeEach(async () => {
       await prisma.$executeRaw`DELETE FROM modulo_crm.crm_deal WHERE tenant_id = ${tenantId}::uuid`;
+
       await prisma.$executeRaw`
       DELETE FROM modulo_crm.crm_forecast_snapshot WHERE tenant_id = ${tenantId}::uuid
     `;
+
       await invalidarCache();
     });
 
@@ -298,6 +326,7 @@ rodar(
       await prisma.$executeRaw`
       DELETE FROM modulo_crm.crm_forecast_snapshot WHERE tenant_id = ${tenantId}::uuid
     `;
+
       await prisma.$executeRaw`DELETE FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid`;
       await prisma.$executeRaw`DELETE FROM modulo_crm.crm_event WHERE tenant_id = ${tenantId}::uuid`;
       await prisma.tenant.deleteMany({ where: { id: tenantId } });
@@ -310,9 +339,14 @@ rodar(
       expect(await lerSnapshots()).toHaveLength(0);
 
       expect(await tirarSnapshotDoTenant(tenantId, SEGUNDA_06H30)).toBe('gravado');
+
       const linhas = await lerSnapshots();
+
       expect(linhas.map((l) => l.mes)).toEqual(mesesDoSnapshot);
-      for (const linha of linhas) expect(linha.semana).toBe(segunda);
+
+      for (const linha of linhas) {
+        expect(linha.semana).toBe(segunda);
+      }
 
       expect(await tirarSnapshotDoTenant(tenantId, SEGUNDA_06H30)).toBe('ja_existia');
       expect(await lerSnapshots()).toHaveLength(MESES_DO_SNAPSHOT);
@@ -320,13 +354,19 @@ rodar(
 
     it('caso 2: recuperação, sem snapshot na semana uma quarta grava com a segunda daquela semana', async () => {
       expect(await tirarSnapshotDoTenant(tenantId, QUARTA)).toBe('gravado');
+
       const linhas = await lerSnapshots();
+
       expect(linhas).toHaveLength(MESES_DO_SNAPSHOT);
-      for (const linha of linhas) expect(linha.semana).toBe(segunda);
+
+      for (const linha of linhas) {
+        expect(linha.semana).toBe(segunda);
+      }
     });
 
     it('caso 3: flag crm.forecast desligada não grava nada', async () => {
       await TenantManagement.atualizarFeaturesTenant(tenantId, [CRM_FEATURES.PERMISSOES]);
+
       try {
         expect(await tirarSnapshotDoTenant(tenantId, SEGUNDA_06H30)).toBe('sem_flag');
         expect(await lerSnapshots()).toHaveLength(0);
@@ -339,35 +379,42 @@ rodar(
       const abertos = await abertosDeVendas();
       const data = ultimoDiaDoMes(mesAtual);
       const noMes = `${mesAtual}-01 12:00:00`;
+
       await criar({
         valor: VALOR_ABERTA_DONO_A,
         data,
         status: abertos[0].key,
         responsavelId: donoId,
       });
+
       await criar({
         valor: VALOR_ABERTA_DONO_B,
         data,
         status: abertos[1].key,
         responsavelId: donoId,
       });
+
       await criar({
         valor: VALOR_ABERTA_OPERADOR,
         data,
         status: abertos[0].key,
         responsavelId: operadorId,
       });
+
       const semDono = await criar({ valor: VALOR_ABERTA_SEM_DONO, data, status: abertos[0].key });
+
       // A oportunidade nova herda o responsável da pessoa: o "sem responsável" é feito no banco.
       await prisma.$executeRaw`
       UPDATE modulo_crm.crm_deal SET owner_id = NULL
       WHERE id = ${semDono}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+
       await criarGanha(VALOR_GANHA_DONO, donoId, noMes);
       await criarGanha(VALOR_GANHA_OPERADOR, operadorId, noMes);
       await invalidarCache();
 
       expect(await tirarSnapshotDoTenant(tenantId, SEGUNDA_06H30)).toBe('gravado');
+
       const [doMes] = (await lerSnapshots()).filter((l) => l.mes === mesAtual);
       const dados = await ok(forecast({ de: mesAtual, ate: mesAtual }));
       const mes = mesDe(dados, mesAtual);
@@ -382,21 +429,27 @@ rodar(
       expect(Object.keys(doMes.by_owner).sort()).toEqual(
         [donoId, operadorId, SEM_RESPONSAVEL].sort(),
       );
+
       const donos = Object.values(doMes.by_owner);
       const somar = (campo) => donos.reduce((total, d) => total + emCentavos(d[campo]), 0);
+
       expect(somar('realized')).toBe(emCentavos(doMes.realized));
+
       // Cada nível arredonda o ponderado da própria soma exata: as partes podem
       // diferir do total em até 1 centavo por responsável.
       expect(Math.abs(somar('weighted') - emCentavos(doMes.weighted))).toBeLessThanOrEqual(
         donos.length,
       );
+
       expect(somar('best_case')).toBe(emCentavos(doMes.best_case));
       expect(donos.reduce((total, d) => total + d.won_count, 0)).toBe(doMes.won_count);
       expect(donos.reduce((total, d) => total + d.open_count, 0)).toBe(doMes.open_count);
       expect(emCentavos(doMes.by_owner[donoId].realized)).toBe(emCentavos(VALOR_GANHA_DONO));
+
       expect(emCentavos(doMes.by_owner[operadorId].best_case)).toBe(
         emCentavos(VALOR_ABERTA_OPERADOR),
       );
+
       expect(emCentavos(doMes.by_owner[SEM_RESPONSAVEL].best_case)).toBe(
         emCentavos(VALOR_ABERTA_SEM_DONO),
       );
@@ -404,13 +457,17 @@ rodar(
 
     it('caso 5: o snapshot é imutável (probabilidade, reabrir, UPDATE com o tenant e com o admin)', async () => {
       const novo = (await abertosDeVendas())[0];
+
       await criar({
         valor: VALOR_PARA_PROBABILIDADE,
         data: ultimoDiaDoMes(mesAtual),
         status: novo.key,
       });
+
       const ganha = await criarGanha(VALOR_GANHA_DONO, donoId, `${mesAtual}-01 12:00:00`);
+
       expect(await tirarSnapshotDoTenant(tenantId, SEGUNDA_06H30)).toBe('gravado');
+
       const antes = await lerSnapshots();
       const forecastAntes = await ok(forecast({ de: mesAtual, ate: mesAtual }));
 
@@ -418,12 +475,16 @@ rodar(
       const editado =
         novo.probabilidadePadrao === PADRAO_EDITADO ? PADRAO_EDITADO + 1 : PADRAO_EDITADO;
       const url = `/crm/configuracoes/pipelines/${vendas.id}/status/${novo.id}`;
+
       await ok(chamar('PUT', url, { probabilidadePadrao: editado }));
+
       try {
         const forecastDepois = await ok(forecast({ de: mesAtual, ate: mesAtual }));
+
         expect(mesDe(forecastDepois, mesAtual).ponderado.soma).not.toBe(
           mesDe(forecastAntes, mesAtual).ponderado.soma,
         );
+
         expect(await lerSnapshots()).toEqual(antes);
       } finally {
         await ok(chamar('PUT', url, { probabilidadePadrao: novo.probabilidadePadrao }));
@@ -431,7 +492,9 @@ rodar(
 
       // Reabrir uma ganha muda o forecast e não o snapshot.
       await ok(chamar('PATCH', `/crm/oportunidades/${ganha}/status`, { status: novo.key }));
+
       const reaberto = await ok(forecast({ de: mesAtual, ate: mesAtual }));
+
       expect(mesDe(reaberto, mesAtual).realizado.quantidade).toBe(0);
       expect(await lerSnapshots()).toEqual(antes);
 
@@ -445,12 +508,14 @@ rodar(
         `,
         ),
       ).rejects.toThrow();
+
       await expect(
         prisma.$executeRaw`
         UPDATE modulo_crm.crm_forecast_snapshot SET realized = 1
         WHERE tenant_id = ${tenantId}::uuid
       `,
       ).rejects.toThrow();
+
       expect(await lerSnapshots()).toEqual(antes);
     });
 
@@ -466,18 +531,21 @@ rodar(
           [operadorId]: donoDoSnapshot('0.00', SNAPSHOT_OPERADOR_WEIGHTED),
         },
       });
+
       await criarGanha(GANHA_DONO_FECHADO, donoId, `${mesM}-10 15:00:00`);
       await criarGanha(GANHA_OPERADOR_FECHADO, operadorId, `${mesM}-12 15:00:00`);
       await criarGanha(GANHA_DO_MES_ANTERIOR, donoId, `${mesA}-10 15:00:00`);
       await invalidarCache();
 
       const dados = await ok(assertividade({ de: mesA, ate: mesO }));
+
       expect(dados.fuso).toBe(FUSO);
       expect(dados.periodo).toEqual({ de: mesA, ate: mesO });
       expect(dados.meses.map((m) => m.mes)).toEqual([mesO, mesM, mesA]);
 
       const realizado = GANHA_DONO_FECHADO + GANHA_OPERADOR_FECHADO;
       const setembro = mesDe(dados, mesM);
+
       expect(setembro.semDados).toBe(false);
       expect(setembro.snapshot.semana).toBe(semanaDeM);
       expect(emCentavos(setembro.previsto)).toBe(emCentavos(PREVISTO_TOTAL));
@@ -487,7 +555,9 @@ rodar(
       expect(setembro.assertividade).toBe(razao(realizado, PREVISTO_TOTAL));
 
       expect(setembro.porResponsavel.map((r) => r.responsavelId)).toEqual([donoId, operadorId]);
+
       const [doDono, doOperador] = setembro.porResponsavel;
+
       expect(doDono.rotulo).toBe('Dona Maria');
       expect(emCentavos(doDono.previsto)).toBe(emCentavos(PREVISTO_DONO));
       expect(emCentavos(doDono.realizado)).toBe(emCentavos(GANHA_DONO_FECHADO));
@@ -498,6 +568,7 @@ rodar(
       expect(doOperador.assertividade).toBe(razao(GANHA_OPERADOR_FECHADO, PREVISTO_OPERADOR));
 
       const agosto = mesDe(dados, mesA);
+
       expect(agosto.semDados).toBe(true);
       expect(agosto.snapshot).toBeNull();
       expect(agosto.previsto).toBeNull();
@@ -512,6 +583,7 @@ rodar(
 
       const dados = await ok(assertividade({ de: mesO, ate: mesO }));
       const outubro = mesDe(dados, mesO);
+
       expect(outubro.semDados).toBe(false);
       expect(outubro.snapshot.semana).toBe(semanaDeO);
       expect(emCentavos(outubro.previsto)).toBe(emCentavos(PONDERADO_VALIDO));
@@ -520,7 +592,9 @@ rodar(
       DELETE FROM modulo_crm.crm_forecast_snapshot
       WHERE tenant_id = ${tenantId}::uuid AND week_start = ${semanaDeO}::date
     `;
+
       const soAntigo = mesDe(await ok(assertividade({ de: mesO, ate: mesO })), mesO);
+
       expect(soAntigo.semDados).toBe(true);
       expect(soAntigo.snapshot).toBeNull();
       expect(soAntigo.previsto).toBeNull();
@@ -533,6 +607,7 @@ rodar(
 
       const dados = await ok(assertividade({ de: mesM, ate: mesM }));
       const mes = mesDe(dados, mesM);
+
       expect(mes.semDados).toBe(false);
       expect(Number(mes.previsto)).toBe(0);
       expect(emCentavos(mes.realizado)).toBe(emCentavos(GANHA_COM_PREVISTO_ZERO));
@@ -545,10 +620,12 @@ rodar(
       );
 
       const noMesAtual = await assertividade({ de: mesA, ate: mesAtual });
+
       expect(noMesAtual.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(JSON.stringify(noMesAtual.corpo)).toMatch(/"fields":\{"ate"/);
 
       const invertido = await assertividade({ de: mesO, ate: mesA });
+
       expect(invertido.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(JSON.stringify(invertido.corpo)).toMatch(/"fields":\{"de"/);
 
@@ -556,15 +633,18 @@ rodar(
       const esperados = Array.from({ length: MESES_PADRAO_FECHADOS }, (_, i) =>
         somarMeses(mesAtual, -(i + 1)),
       );
+
       expect(padrao.periodo).toEqual({ de: esperados.at(-1), ate: esperados[0] });
       expect(padrao.meses.map((m) => m.mes)).toEqual(esperados);
 
       await TenantManagement.atualizarFeaturesTenant(tenantId, [CRM_FEATURES.PERMISSOES]);
+
       try {
         expect((await assertividade({ de: mesA, ate: mesO })).status).toBe(HTTP_STATUS.FORBIDDEN);
       } finally {
         await TenantManagement.atualizarFeaturesTenant(tenantId, COM_FORECAST);
       }
+
       expect((await assertividade({ de: mesA, ate: mesO })).status).toBe(HTTP_STATUS.OK);
     });
   },

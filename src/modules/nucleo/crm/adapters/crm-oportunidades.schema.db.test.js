@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
 
 /**
@@ -34,6 +36,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
         VALUES (${tenant}::uuid, 'Pipeline', ${tipo}) RETURNING id::text
       `,
     );
+
     return id;
   }
 
@@ -42,6 +45,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
       INSERT INTO modulo_crm.leads (tenant_id, nome, email)
       VALUES (${tenant}::uuid, ${nome}, ${`${randomUUID()}@smoke.test`}) RETURNING id::text
     `;
+
     return id;
   }
 
@@ -64,6 +68,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
         RETURNING id::text
       `,
     );
+
     return id;
   }
 
@@ -75,6 +80,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
         subdomain: `smoke-oport-${id.slice(0, TAMANHO_SUFIXO)}`,
       })),
     });
+
     vendas = await criarPipeline(tenantId);
     pipelineDeOutro = await criarPipeline(outroTenantId);
     lead = await criarLead(tenantId);
@@ -82,12 +88,14 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
 
   afterAll(async () => {
     await prisma.tenant.deleteMany({ where: { id: { in: [tenantId, outroTenantId] } } });
+
     const [{ sobras }] = await prisma.$queryRaw`
       SELECT (SELECT count(*) FROM modulo_crm.crm_deal
               WHERE tenant_id IN (${tenantId}::uuid, ${outroTenantId}::uuid))::int
            + (SELECT count(*) FROM modulo_crm.crm_pipeline
               WHERE tenant_id IN (${tenantId}::uuid, ${outroTenantId}::uuid))::int AS sobras
     `;
+
     expect(sobras).toBe(0);
   });
 
@@ -95,13 +103,16 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
     const [{ tabela }] = await prisma.$queryRaw`
       SELECT to_regclass('modulo_crm.funil_estagios')::text AS tabela
     `;
+
     expect(tabela).toBeNull();
+
     const colunas = await prisma.$queryRaw`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'modulo_crm' AND table_name = 'leads'
         AND column_name IN ('status', 'valor', 'funil_estagio_id', 'data_conversao',
           'probabilidade_fechamento', 'data_prevista_fechamento', 'motivo_perda')
     `;
+
     expect(colunas).toEqual([]);
   });
 
@@ -109,14 +120,17 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
     const [linha] = await prisma.$queryRaw`
       SELECT lifecycle_stage, principal_deal_id FROM modulo_crm.leads WHERE id = ${lead}::uuid
     `;
+
     expect(linha).toEqual({ lifecycle_stage: 'lead', principal_deal_id: null });
   });
 
   it('oportunidade: ganho exige data, e a data exige ganho', async () => {
     await expect(criarDeal({ categoria: 'ganho' })).rejects.toThrow(/chk_crm_deal_datas/);
+
     await expect(criarDeal({ categoria: 'aberto', ganhaEm: VENDIDO_EM })).rejects.toThrow(
       /chk_crm_deal_datas/,
     );
+
     await expect(criarDeal({ categoria: 'ganho', ganhaEm: VENDIDO_EM })).resolves.toEqual(
       expect.any(String),
     );
@@ -124,12 +138,15 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
 
   it('não aponta para pessoa ou pipeline de outra empresa', async () => {
     await expect(criarDeal({ pipeline: pipelineDeOutro })).rejects.toThrow(/fk_crm_deal_pipeline/);
+
     const pessoaDeOutro = await criarLead(outroTenantId);
+
     await expect(criarDeal({ pessoa: pessoaDeOutro })).rejects.toThrow(/fk_crm_deal_lead/);
   });
 
   it('RLS: uma empresa não enxerga nem grava pela outra', async () => {
     await criarDeal();
+
     const contar = (tenant) =>
       getTenantClient(
         tenant,
@@ -139,6 +156,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
         `,
       );
     const [deOutro] = await contar(outroTenantId);
+
     expect(deOutro.oportunidades).toBe(0);
     expect(deOutro.pipelines).toBe(1);
 
@@ -171,9 +189,11 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
           (tenant_id, name, type, is_default, auto_create_enabled)
         VALUES (${tenantId}::uuid, 'Regra', ${tipo}, ${padrao}, ${automatico})
       `;
+
     await expect(inserir('sales', { automatico: true })).rejects.toThrow(
       /chk_crm_pipeline_auto_criacao/,
     );
+
     await expect(inserir('service', { padrao: true })).rejects.toThrow(/chk_crm_pipeline_padrao/);
     await inserir('sales', { padrao: true });
     await expect(inserir('sales', { padrao: true })).rejects.toThrow(VIOLA_UNICIDADE);
@@ -182,6 +202,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
   it('apagar a pessoa leva as oportunidades e limpa a principal', async () => {
     const pessoa = await criarLead(tenantId, 'Purga');
     const deal = await criarDeal({ pessoa });
+
     await prisma.$executeRaw`
       UPDATE modulo_crm.leads SET principal_deal_id = ${deal}::uuid WHERE id = ${pessoa}::uuid
     `;
@@ -191,6 +212,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
     const linhas = await prisma.$queryRaw`
       SELECT id FROM modulo_crm.crm_deal WHERE id = ${deal}::uuid
     `;
+
     expect(linhas).toEqual([]);
   });
 
@@ -204,6 +226,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
           RETURNING id::text
         `,
       );
+
       return id;
     }
 
@@ -219,6 +242,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
           `,
         ),
       ).resolves.toBe(1);
+
       await expect(
         atualizar(
           (tx) => tx.$executeRaw`
@@ -230,6 +254,7 @@ rodar('schema de pipelines e oportunidades (CRM_DB_TESTS=1)', { timeout: TIMEOUT
 
     it('o tenant não apaga evento', async () => {
       const id = await criarEvento();
+
       await expect(
         getTenantClient(
           tenantId,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { SNAPSHOT_FORECAST } from '../constants.js';
 import {
   linhasDoSnapshot,
@@ -55,6 +56,7 @@ describe('momentoDoSnapshot', () => {
       semana: '2026-11-16',
       cedo: true,
     });
+
     expect(momentoDoSnapshot(new Date('2026-11-16T09:00:00Z'), SAO_PAULO)).toEqual({
       hoje: '2026-11-16',
       semana: '2026-11-16',

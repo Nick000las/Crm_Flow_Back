@@ -1,3 +1,7 @@
+/**
+ * @file Mesmo 403 do `exigirFeature`, pra quando só uma parte da requisição depende da feature
+ * (ex.: um valor de filtro) — chamado no service.
+ */
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
@@ -36,6 +40,7 @@ export function listarFeaturesAtivas(tenantId) {
       select: { featureKey: true },
       orderBy: { featureKey: 'asc' },
     });
+
     return linhas.map((linha) => linha.featureKey);
   });
 }
@@ -71,7 +76,11 @@ export function exigirFeature(featureKey) {
   /** @param {import('fastify').FastifyRequest} req */
   return async (req) => {
     const tenantId = req.tenantContext?.tenantId;
-    if (!tenantId) throw erroFeatureDesligada(featureKey);
+
+    if (!tenantId) {
+      throw erroFeatureDesligada(featureKey);
+    }
+
     await garantirFeature(tenantId, featureKey);
   };
 }
@@ -84,7 +93,9 @@ export function exigirFeature(featureKey) {
  * @param {string} featureKey
  */
 export async function garantirFeature(tenantId, featureKey) {
-  if (!(await featureAtiva(tenantId, featureKey))) throw erroFeatureDesligada(featureKey);
+  if (!(await featureAtiva(tenantId, featureKey))) {
+    throw erroFeatureDesligada(featureKey);
+  }
 }
 
 /** @param {string} featureKey */

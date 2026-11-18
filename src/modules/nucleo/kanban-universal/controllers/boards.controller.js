@@ -1,4 +1,8 @@
+/**
+ * @file CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
+ */
 import { sendSuccess } from '#shared/http/response.js';
+
 import { listarBoardsDoTenant } from '../services/boards.service.js';
 
 /**
@@ -8,6 +12,7 @@ import { listarBoardsDoTenant } from '../services/boards.service.js';
 export function registrarRotasBoards(app) {
   app.get('/kanban/boards', async (request, reply) => {
     const boards = await listarBoardsDoTenant(request.tenantContext, request.log);
+
     return sendSuccess(reply, boards);
   });
 }

@@ -1,4 +1,8 @@
 /**
+ * @file Colunas que só o export conhece (M10): as referências fixas do layout que não são
+ * mapeáveis no import. Com elas, as colunas padrão (as da tabela do usuário) saem inteiras.
+ */
+/**
  * Colunas de planilha que não são "campos" do formulário (não estão em
  * `GET /crm/leads/fields`) mas fazem sentido em import/export: o estágio do
  * funil pelo nome (no import, casado contra o nome dos status

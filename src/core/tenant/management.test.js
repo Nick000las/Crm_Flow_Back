@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { MODULES } from '#api/modules.js';
-import { registrarModulos } from '#core/registry/modules.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
 import { cacheGet, cacheSet, encerrarCache } from '#core/cache/cache.js';
+import { registrarModulos } from '#core/registry/modules.js';
 import { avisarFeaturesLigadas, reconciliarModulos } from '#core/tenant/reconcile.js';
-import { TenantManagement, listarCatalogoFeatures } from './management.js';
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
+import { listarCatalogoFeatures, TenantManagement } from './management.js';
 
 const mockTx = {
   tenant: { findUnique: vi.fn() },
@@ -59,6 +61,7 @@ describe('TenantManagement.listTenants', () => {
         modulosAtivos: { where: { disabledAt: null }, select: { moduleKey: true } },
       },
     });
+
     expect(resultado).toEqual([
       { id: tenantId, nome: 'Estúdio', modulosContratados: ['crm', 'agendamento'] },
     ]);
@@ -82,6 +85,7 @@ describe('TenantManagement.getTenantById', () => {
       { moduleKey: 'crm', disabledAt: null },
       { moduleKey: 'agendamento', disabledAt: desligadoEm },
     ];
+
     mockPrisma.tenant.findUnique.mockResolvedValue({
       id: tenantId,
       fusoHorario: 'America/Sao_Paulo',
@@ -127,6 +131,7 @@ describe('TenantManagement.atualizarTenant', () => {
     ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
+
     expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
   });
 
@@ -140,6 +145,7 @@ describe('TenantManagement.atualizarTenant', () => {
       where: { id: tenantId },
       data: { nome: 'Novo Nome' },
     });
+
     expect(resultado).toEqual({ id: tenantId, nome: 'Novo Nome' });
   });
 });
@@ -165,6 +171,7 @@ describe('TenantManagement.atualizarStatusTenant', () => {
       where: { id: tenantId },
       data: { status: 'active' },
     });
+
     expect(resultado.status).toBe('active');
   });
 });
@@ -184,6 +191,7 @@ describe('TenantManagement.atualizarModulosTenant', () => {
     ).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
+
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -200,6 +208,7 @@ describe('TenantManagement.atualizarModulosTenant', () => {
       { moduleKey: 'crm' },
       { moduleKey: 'agendamento' },
     ]);
+
     mockTx.tenant.findUnique.mockResolvedValue({
       id: tenantId,
       modulosAtivos: [{ moduleKey: 'kanban_universal' }],
@@ -214,10 +223,12 @@ describe('TenantManagement.atualizarModulosTenant', () => {
     expect(mockTx.tenantModule.deleteMany).toHaveBeenCalledWith({
       where: { tenantId, moduleKey: { in: ['crm'] } },
     });
+
     // 'kanban_universal' é novo -> adiciona.
     expect(mockTx.tenantModule.createMany).toHaveBeenCalledWith({
       data: [{ tenantId, moduleKey: 'kanban_universal' }],
     });
+
     expect(resultado.modulosAtivos).toEqual([{ moduleKey: 'kanban_universal' }]);
     // Só o recém-contratado é reconciliado.
     expect(reconciliarModulos).toHaveBeenCalledWith(tenantId, ['kanban_universal']);
@@ -232,6 +243,7 @@ describe('TenantManagement.atualizarModulosTenant', () => {
       where: { tenantId, moduleKey: { in: ['crm'] } },
       data: { disabledAt: null, enabledAt: expect.any(Date) },
     });
+
     expect(mockTx.tenantModule.createMany).not.toHaveBeenCalled();
     expect(mockTx.tenantModule.deleteMany).not.toHaveBeenCalled();
     expect(reconciliarModulos).toHaveBeenCalledWith(tenantId, ['crm']);
@@ -277,6 +289,7 @@ describe('TenantManagement.desligarModuleTenant', () => {
       where: { tenantId, moduleKey: 'crm', disabledAt: null },
       data: { disabledAt: expect.any(Date) },
     });
+
     expect(resultado).toEqual({ tenantId, moduleKey: 'crm', disabled: true });
   });
 });
@@ -290,6 +303,7 @@ describe('TenantManagement.deleteTenant', () => {
     await expect(TenantManagement.deleteTenant(tenantId)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
+
     expect(mockPrisma.tenant.delete).not.toHaveBeenCalled();
   });
 
@@ -314,6 +328,7 @@ describe('feature flags do tenant', () => {
 
   it('o catálogo vem do que cada módulo declara, com o módulo dono', () => {
     const catalogo = listarCatalogoFeatures();
+
     expect(catalogo).toContainEqual({ moduleKey: 'crm', featureKey: 'crm.layout' });
     expect(catalogo.every((item) => item.featureKey.startsWith(`${item.moduleKey}.`))).toBe(true);
   });
@@ -322,6 +337,7 @@ describe('feature flags do tenant', () => {
     await expect(
       TenantManagement.atualizarFeaturesTenant(tenantId, ['crm.layout', 'crm.nao_existe']),
     ).rejects.toMatchObject({ statusCode: HTTP_STATUS.BAD_REQUEST });
+
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -334,6 +350,7 @@ describe('feature flags do tenant', () => {
     expect(mockTx.tenantModuleFeature.deleteMany).toHaveBeenCalledWith({
       where: { tenantId, featureKey: { notIn: ['crm.listas', 'crm.layout'] } },
     });
+
     expect(mockTx.tenantModuleFeature.createMany).toHaveBeenCalledWith({
       data: [
         { tenantId, moduleKey: 'crm', featureKey: 'crm.listas' },
@@ -341,11 +358,13 @@ describe('feature flags do tenant', () => {
       ],
       skipDuplicates: true,
     });
+
     expect(ligadas).toEqual(['crm.layout', 'crm.listas']);
   });
 
   it('lista vazia desliga tudo (kill switch)', async () => {
     await TenantManagement.atualizarFeaturesTenant(tenantId, []);
+
     expect(mockTx.tenantModuleFeature.deleteMany).toHaveBeenCalledWith({
       where: { tenantId, featureKey: { notIn: [] } },
     });
@@ -359,6 +378,7 @@ describe('feature flags do tenant', () => {
 
   it('404 quando o tenant não existe', async () => {
     mockTx.tenant.findUnique.mockResolvedValue(null);
+
     await expect(TenantManagement.atualizarFeaturesTenant(tenantId, [])).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });

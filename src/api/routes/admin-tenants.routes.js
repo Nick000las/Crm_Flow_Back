@@ -1,9 +1,14 @@
+/**
+ * @file Rotas administrativas de tenant (Bloco 1.1.5) — não são produto de nenhum módulo, por
+ * isso moram em api/routes/ e não em modules/.
+ */
 import { z } from 'zod';
+
 import { authenticateHook, requireRole } from '#core/auth/rbac.js';
+import { listarCatalogoFeatures, TenantManagement } from '#core/tenant/management.js';
+import { provisionarTenant } from '#core/tenant/provisioning.js';
 import { HTTP_STATUS, TENANT_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
-import { provisionarTenant } from '#core/tenant/provisioning.js';
-import { TenantManagement, listarCatalogoFeatures } from '#core/tenant/management.js';
 import { fusoHorarioSchema } from '#shared/validators/index.js';
 
 const criarTenantBodySchema = z.object({
@@ -75,17 +80,20 @@ export function registerAdminTenantRoutes(app) {
   app.post('/admin/tenants', protegida, async (req, reply) => {
     const body = criarTenantBodySchema.parse(req.body);
     const resultado = await provisionarTenant(body);
+
     return sendSuccess(reply, resultado, HTTP_STATUS.CREATED);
   });
 
   app.get('/admin/tenants', protegida, async (req, reply) => {
     const tenants = await TenantManagement.listTenants();
+
     return sendSuccess(reply, tenants);
   });
 
   app.get('/admin/tenants/:id', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const tenant = await TenantManagement.getTenantById(id);
+
     return sendSuccess(reply, tenant);
   });
 
@@ -93,6 +101,7 @@ export function registerAdminTenantRoutes(app) {
     const { id } = idParamSchema.parse(req.params);
     const body = atualizarTenantBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarTenant(id, body);
+
     return sendSuccess(reply, tenant);
   });
 
@@ -100,6 +109,7 @@ export function registerAdminTenantRoutes(app) {
     const { id } = idParamSchema.parse(req.params);
     const { status } = atualizarStatusBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarStatusTenant(id, status);
+
     return sendSuccess(reply, tenant);
   });
 
@@ -107,6 +117,7 @@ export function registerAdminTenantRoutes(app) {
     const { id } = idParamSchema.parse(req.params);
     const { modulosContratados } = atualizarModulosBodySchema.parse(req.body);
     const tenant = await TenantManagement.atualizarModulosTenant(id, modulosContratados);
+
     return sendSuccess(reply, tenant);
   });
 
@@ -119,18 +130,21 @@ export function registerAdminTenantRoutes(app) {
     const { id } = idParamSchema.parse(req.params);
     const { features } = atualizarFeaturesBodySchema.parse(req.body);
     const ligadas = await TenantManagement.atualizarFeaturesTenant(id, features);
+
     return sendSuccess(reply, { features: ligadas });
   });
 
   app.delete('/admin/tenants/:id/modules/:moduleKey', protegida, async (req, reply) => {
     const { id, moduleKey } = moduleKeyParamSchema.parse(req.params);
     const resultado = await TenantManagement.desligarModuleTenant(id, moduleKey);
+
     return sendSuccess(reply, resultado);
   });
 
   app.delete('/admin/tenants/:id', protegida, async (req, reply) => {
     const { id } = idParamSchema.parse(req.params);
     const tenant = await TenantManagement.deleteTenant(id);
+
     return sendSuccess(reply, tenant);
   });
 }

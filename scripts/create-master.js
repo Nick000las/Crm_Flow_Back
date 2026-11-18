@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { getAdminClient, disconnectDatabase } from '#core/db/tenantClient.js';
+
+import { disconnectDatabase, getAdminClient } from '#core/db/tenantClient.js';
 
 /**
  * Cria (ou reaproveita) o tenant-plataforma e cria um usuário MASTER dentro
@@ -105,6 +106,7 @@ async function main() {
 
   console.log('Tenant-plataforma:', tenant.id, `(${tenant.subdomain})`);
   console.log('Usuário MASTER criado:', usuario.id, '-', usuario.nome, `<${usuario.email}>`);
+
   console.log(
     '\nSem senha definida. Peça pra essa pessoa logar em POST /auth/login com esse ' +
       'e-mail — o fluxo de ativação já existente manda o código de criação de senha.',
@@ -116,19 +118,23 @@ function parseArgs() {
   const bruto = Object.fromEntries(
     process.argv.slice(CLI_ARGS_START_INDEX).map((arg) => {
       const [chave, ...valorPartes] = arg.replace(/^--/, '').split('=');
+
       return [chave, valorPartes.join('=')];
     }),
   );
 
   const resultado = argsSchema.safeParse(bruto);
+
   if (!resultado.success) {
     const mensagens = resultado.error.issues
       .map((issue) => `  --${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
+
     throw new Error(
       `Uso: node scripts/create-master.js --email=pessoa@empresa.com --nome="Nome Completo"\n\n${mensagens}`,
     );
   }
+
   return resultado.data;
 }
 

@@ -1,5 +1,11 @@
+/**
+ * @file ADAPTER: o forecast (FC2). Somas, ponderado e previsto saem do banco: o Node só monta a
+ * resposta.
+ */
 import { Prisma } from '@prisma/client';
+
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
+
 import {
   AGRUPAMENTOS_FORECAST,
   BLOCOS_FORECAST,
@@ -115,53 +121,94 @@ function consultaAgregada(consulta) {
   ), 0)`;
 
   return Prisma.sql`
-    WITH b AS (
-      SELECT d.amount, d.status_category, d.expected_close_date,
-             ${PROBABILIDADE} AS probabilidade, ${mesDoGanho(fuso)} AS mes_ganho,
-             ${COLUNAS_DO_GRUPO[agrupar]}
-      FROM modulo_crm.crm_deal d
-      ${JUNCOES}
-      ${agrupar === AGRUPAMENTOS_FORECAST.RESPONSAVEL ? JUNCAO_DO_RESPONSAVEL : Prisma.empty}
-      WHERE ${noEscopo(consulta)}
-    ),
-    f AS (
-      SELECT b.*, faixa.chave, faixa.tipo
-      FROM b
-      CROSS JOIN LATERAL (VALUES
-        (
-          -- Uma faixa por oportunidade; toda aberta cai em alguma, para os totais
-          -- baterem com o pipeline.
-          CASE
-            WHEN b.status_category = ${GANHO} THEN
-              CASE WHEN b.mes_ganho BETWEEN ${de}::date AND ${ate}::date
-                THEN to_char(b.mes_ganho, 'YYYY-MM') END
-            WHEN b.expected_close_date IS NULL THEN ${BLOCOS_FORECAST.SEM_PREVISAO}
-            WHEN b.expected_close_date < ${hoje}::date THEN ${BLOCOS_FORECAST.ATRASADAS}
-            WHEN b.expected_close_date < ${de}::date THEN ${BLOCOS_FORECAST.ANTES_DO_PERIODO}
-            WHEN b.expected_close_date >= (${ate}::date + interval '1 month')
-              THEN ${BLOCOS_FORECAST.ALEM_DO_HORIZONTE}
-            ELSE to_char(b.expected_close_date, 'YYYY-MM')
-          END,
-          CASE WHEN b.status_category = ${GANHO} THEN ${REALIZADO} ELSE ${TIPO_ABERTO} END
-        ),
-        (
-          CASE WHEN b.status_category = ${ABERTO} AND b.amount IS NULL
-            THEN ${BLOCOS_FORECAST.SEM_VALOR} END,
-          ${TIPO_ABERTO}
+    WITH
+      b AS (
+        SELECT
+          d.amount,
+          d.status_category,
+          d.expected_close_date,
+          ${PROBABILIDADE} AS probabilidade,
+          ${mesDoGanho(fuso)} AS mes_ganho,
+          ${COLUNAS_DO_GRUPO[agrupar]}
+        FROM
+          modulo_crm.crm_deal d ${JUNCOES} ${agrupar === AGRUPAMENTOS_FORECAST.RESPONSAVEL ? JUNCAO_DO_RESPONSAVEL : Prisma.empty}
+        WHERE
+          ${noEscopo(consulta)}
+      ),
+      f AS (
+        SELECT
+          b.*,
+          faixa.chave,
+          faixa.tipo
+        FROM
+          b
+          CROSS JOIN LATERAL (
+            VALUES
+              (
+                -- Uma faixa por oportunidade; toda aberta cai em alguma, para os totais
+                -- baterem com o pipeline.
+                CASE
+                  WHEN b.status_category = ${GANHO} THEN CASE
+                    WHEN b.mes_ganho BETWEEN ${de}::date AND ${ate}::date THEN to_char(b.mes_ganho, 'YYYY-MM')
+                  END
+                  WHEN b.expected_close_date IS NULL THEN ${BLOCOS_FORECAST.SEM_PREVISAO}
+                  WHEN b.expected_close_date < ${hoje}::date THEN ${BLOCOS_FORECAST.ATRASADAS}
+                  WHEN b.expected_close_date < ${de}::date THEN ${BLOCOS_FORECAST.ANTES_DO_PERIODO}
+                  WHEN b.expected_close_date >= (${ate}::date + interval '1 month') THEN ${BLOCOS_FORECAST.ALEM_DO_HORIZONTE}
+                  ELSE to_char(b.expected_close_date, 'YYYY-MM')
+                END,
+                CASE
+                  WHEN b.status_category = ${GANHO} THEN ${REALIZADO}
+                  ELSE ${TIPO_ABERTO}
+                END
+              ),
+              (
+                CASE
+                  WHEN b.status_category = ${ABERTO}
+                  AND b.amount IS NULL THEN ${BLOCOS_FORECAST.SEM_VALOR}
+                END,
+                ${TIPO_ABERTO}
+              )
+          ) AS faixa (chave, tipo)
+        WHERE
+          faixa.chave IS NOT NULL
+      )
+    SELECT
+      ${nivel},
+      f.chave,
+      (
+        count(*) FILTER (
+          WHERE
+            f.tipo = ${REALIZADO}
         )
-      ) AS faixa (chave, tipo)
-      WHERE faixa.chave IS NOT NULL
-    )
-    SELECT ${nivel}, f.chave,
-      (count(*) FILTER (WHERE f.tipo = ${REALIZADO}))::int AS realizado_quantidade,
+      )::int AS realizado_quantidade,
       ${somaRealizada}::text AS realizado_soma,
-      (count(*) FILTER (WHERE f.tipo = ${REALIZADO} AND f.amount IS NULL))::int AS ganhas_sem_valor,
-      (count(*) FILTER (WHERE f.tipo = ${TIPO_ABERTO}))::int AS aberto_quantidade,
-      COALESCE(sum(f.amount) FILTER (WHERE f.tipo = ${TIPO_ABERTO}), 0)::text AS aberto_soma,
+      (
+        count(*) FILTER (
+          WHERE
+            f.tipo = ${REALIZADO}
+            AND f.amount IS NULL
+        )
+      )::int AS ganhas_sem_valor,
+      (
+        count(*) FILTER (
+          WHERE
+            f.tipo = ${TIPO_ABERTO}
+        )
+      )::int AS aberto_quantidade,
+      COALESCE(
+        sum(f.amount) FILTER (
+          WHERE
+            f.tipo = ${TIPO_ABERTO}
+        ),
+        0
+      )::text AS aberto_soma,
       ${ponderado}::text AS aberto_ponderado,
       (${somaRealizada} + ${ponderado})::text AS previsto
-    FROM f
-    GROUP BY ${agrupamento}
+    FROM
+      f
+    GROUP BY
+      ${agrupamento}
   `;
 }
 
@@ -176,13 +223,21 @@ function consultaAgregada(consulta) {
 export function agregarForecast(consulta) {
   const { tenantId, ocultos } = consulta;
   const todoOTenant = noEscopo({ tenantId, ocultos, pipelineId: null, responsavelId: null });
+
   return getTenantClient(tenantId, async (tx) => {
     const linhas = await tx.$queryRaw(consultaAgregada(consulta));
     const [{ existe }] = await tx.$queryRaw`
-      SELECT EXISTS (
-        SELECT 1 FROM modulo_crm.crm_deal d ${JUNCOES} WHERE ${todoOTenant}
-      ) AS existe
+      SELECT
+        EXISTS (
+          SELECT
+            1
+          FROM
+            modulo_crm.crm_deal d ${JUNCOES}
+          WHERE
+            ${todoOTenant}
+        ) AS existe
     `;
+
     return { linhas, vazio: !existe };
   });
 }
@@ -199,6 +254,7 @@ export async function buscarFusoDoTenant(tenantId) {
     where: { id: tenantId },
     select: { fusoHorario: true },
   });
+
   return tenant?.fusoHorario ?? null;
 }
 
@@ -215,15 +271,31 @@ export function buscarMarcaEHoje(tenantId, fuso) {
   return getTenantClient(tenantId, async (tx) => {
     const [linha] = await tx.$queryRaw`
       SELECT
-        COALESCE((
-          SELECT max(e.occurred_at) FROM modulo_crm.crm_event e
-          WHERE e.tenant_id = ${tenantId}::uuid
-        )::text, '-') || '|' || COALESCE((
-          SELECT max(o.updated_at) FROM modulo_crm.crm_option o
-          WHERE o.tenant_id = ${tenantId}::uuid AND o.kind = 'status'
-        )::text, '-') AS marca,
+        COALESCE(
+          (
+            SELECT
+              max(e.occurred_at)
+            FROM
+              modulo_crm.crm_event e
+            WHERE
+              e.tenant_id = ${tenantId}::uuid
+          )::text,
+          '-'
+        ) || '|' || COALESCE(
+          (
+            SELECT
+              max(o.updated_at)
+            FROM
+              modulo_crm.crm_option o
+            WHERE
+              o.tenant_id = ${tenantId}::uuid
+              AND o.kind = 'status'
+          )::text,
+          '-'
+        ) AS marca,
         to_char((now() AT TIME ZONE ${fuso})::date, 'YYYY-MM-DD') AS hoje
     `;
+
     return linha;
   });
 }
@@ -240,16 +312,21 @@ export function buscarMarcaEHoje(tenantId, fuso) {
  */
 function condicaoDaSelecao(selecao, { fuso, hoje }) {
   const aberta = Prisma.sql`d.status_category = ${ABERTO}`;
+
   if ('mes' in selecao) {
     const { mes, tipo } = selecao;
+
     if (tipo === TIPOS_MES_FORECAST.REALIZADO) {
       return Prisma.sql`d.status_category = ${GANHO} AND ${mesDoGanho(fuso)} = ${mes}::date`;
     }
+
     return Prisma.sql`${aberta} AND d.expected_close_date >= ${hoje}::date
       AND d.expected_close_date >= ${mes}::date
       AND d.expected_close_date < (${mes}::date + interval '1 month')`;
   }
+
   const { bloco, de, ate } = selecao;
+
   switch (bloco) {
     case BLOCOS_FORECAST.ATRASADAS:
       return Prisma.sql`${aberta} AND d.expected_close_date < ${hoje}::date`;
@@ -282,23 +359,44 @@ export function buscarOportunidadesDoForecast(consulta) {
   const { tenantId, fuso, hoje, selecao, limite, offset } = consulta;
   const onde = Prisma.sql`${noEscopo(consulta)} AND ${condicaoDaSelecao(selecao, { fuso, hoje })}`;
   const ganhas = 'mes' in selecao && selecao.tipo === TIPOS_MES_FORECAST.REALIZADO;
+
   return getTenantClient(tenantId, async (tx) => {
     const linhas = await tx.$queryRaw`
-      SELECT d.id::text, d.lead_id::text, l.nome AS pessoa, d.pipeline_id::text,
-             d.status, o.label AS status_label, d.status_category,
-             d.amount::text AS valor, ${PROBABILIDADE}::int AS probabilidade,
-             round(d.amount * ${PROBABILIDADE} / 100.0, 2)::text AS ponderado,
-             to_char(d.expected_close_date, 'YYYY-MM-DD') AS data_prevista,
-             d.won_at, d.owner_id::text, d.updated_at
-      FROM modulo_crm.crm_deal d
-      ${JUNCOES}
-      WHERE ${onde}
-      ORDER BY ${ganhas ? ORDEM_DAS_GANHAS : ORDEM_DAS_ABERTAS}
-      LIMIT ${limite} OFFSET ${offset}
+      SELECT
+        d.id::text,
+        d.lead_id::text,
+        l.nome AS pessoa,
+        d.pipeline_id::text,
+        d.status,
+        o.label AS status_label,
+        d.status_category,
+        d.amount::text AS valor,
+        ${PROBABILIDADE}::int AS probabilidade,
+        round(d.amount * ${PROBABILIDADE} / 100.0, 2)::text AS ponderado,
+        to_char(d.expected_close_date, 'YYYY-MM-DD') AS data_prevista,
+        d.won_at,
+        d.owner_id::text,
+        d.updated_at
+      FROM
+        modulo_crm.crm_deal d ${JUNCOES}
+      WHERE
+        ${onde}
+      ORDER BY
+        ${ganhas ? ORDEM_DAS_GANHAS : ORDEM_DAS_ABERTAS}
+      LIMIT
+        ${limite}
+      OFFSET
+        ${offset}
     `;
     const [{ total }] = await tx.$queryRaw`
-      SELECT count(*)::int AS total FROM modulo_crm.crm_deal d ${JUNCOES} WHERE ${onde}
+      SELECT
+        count(*)::int AS total
+      FROM
+        modulo_crm.crm_deal d ${JUNCOES}
+      WHERE
+        ${onde}
     `;
+
     return { linhas, total };
   });
 }

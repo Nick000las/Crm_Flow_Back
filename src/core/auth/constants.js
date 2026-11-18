@@ -1,3 +1,7 @@
+/**
+ * @file Sessões de tenant e admin persistidas em cookies httpOnly distintos. O cookie vive o
+ * mesmo tanto que o refresh token que carrega.
+ */
 const MILLISECONDS_PER_MINUTE = 60_000;
 const SECONDS_PER_MINUTE = 60;
 const ACTIVATION_CODE_EXPIRATION_MINUTES = 10;
@@ -58,6 +62,11 @@ export const REFRESH_SESSION = Object.freeze({
 export const PASSWORD_POLICY = Object.freeze({
   MIN_LENGTH: 8,
   HASH_ROUNDS: 12,
+});
+
+export const PASSWORD_RECOVERY = Object.freeze({
+  ...PASSWORD_ACTIVATION,
+  PURPOSE: 'recuperacao_senha',
 });
 
 export const JWT_SECRET_MIN_LENGTH = 32;

@@ -1,3 +1,7 @@
+/**
+ * @file Centraliza o transporte HTTP de health routes, na área de aplicação, preservando os
+ * contratos da API.
+ */
 import { sendSuccess } from '#shared/http/response.js';
 
 /**

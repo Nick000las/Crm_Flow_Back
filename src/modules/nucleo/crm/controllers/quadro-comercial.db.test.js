@@ -1,12 +1,15 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
@@ -49,11 +52,15 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
 
@@ -85,6 +92,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
   const ligarPermissao = async (acessos) => {
     const { campos } = await ok(chamar('GET', '/crm/configuracoes/permissoes'));
     const id = (chave) => campos.find((campo) => campo.chave === chave).id;
+
     await ok(
       chamar('PUT', '/crm/configuracoes/permissoes', {
         OPERADOR: Object.fromEntries(
@@ -104,6 +112,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         subdomain: `smoke-quadro-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -117,9 +126,11 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         role,
       })),
     });
+
     await prisma.tenantModule.createMany({
       data: [MODULO_CRM, 'kanban_universal'].map((moduleKey) => ({ tenantId, moduleKey })),
     });
+
     await prisma.tenantModuleFeature.createMany({
       data: [
         { moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.QUADRO_COMERCIAL },
@@ -134,11 +145,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         { moduleKey: 'kanban_universal', featureKey: FLAG_KANBAN },
       ].map((linha) => ({ tenantId, ...linha })),
     });
+
     await invalidarFeatures(tenantId);
     // Tenant padrão: nada é ligado aqui. O aceite do M3 depende de
     // `motivoPerda` nascer ligado (P0); ligar o campo na preparação escondia
     // que ele nascia desligado.
     await reconciliarTenant(tenantId);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-quadro',
@@ -148,6 +161,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     [vendas, atendimento] = await ok(chamar('GET', '/crm/configuracoes/pipelines'));
   });
 
@@ -179,9 +193,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       await ok(mover(vendas.id, deal.id, 'proposta'));
 
       expect((await ok(chamar('GET', `/crm/leads/${leadId}`))).status).toBe('proposta');
+
       const { itens } = await cards(vendas.id, 'proposta');
+
       expect(itens.map((card) => card.entidadeId)).toContain(deal.id);
+
       const historico = await ok(chamar('GET', `/crm/leads/${leadId}/historico`));
+
       expect(JSON.stringify(historico.itens)).toContain('proposta');
     });
 
@@ -196,7 +214,9 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           .map((item) => item.quadroRef);
 
       expect(await refs()).toContain(novo.id);
+
       const colunas = await ok(chamar('GET', `${quadro(novo.id)}/colunas`));
+
       expect(colunas.map((coluna) => coluna.ref)).toEqual(['novo', 'ganho', 'perdido']);
 
       await ok(chamar('PUT', `/crm/configuracoes/pipelines/${novo.id}`, { ativo: false }));
@@ -207,11 +227,14 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('venda ganha gera card no quadro de atendimento; desligada, não', async () => {
       const comAutomacao = await novoLead();
       const [venda] = await oportunidades(comAutomacao);
+
       await ok(mover(vendas.id, venda.id, 'ganho'));
+
       const { itens } = await cards(atendimento.id, 'aguardando');
       const noQuadro = (await oportunidades(comAutomacao)).find(
         (deal) => deal.pipelineId === atendimento.id,
       );
+
       expect(itens.map((card) => card.entidadeId)).toContain(noQuadro.id);
 
       await ok(
@@ -219,10 +242,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           automacao: { ativa: false },
         }),
       );
+
       const semAutomacao = await novoLead();
       const [outra] = await oportunidades(semAutomacao);
+
       await ok(mover(vendas.id, outra.id, 'ganho'));
       expect(await oportunidades(semAutomacao)).toHaveLength(1);
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${atendimento.id}`, {
           automacao: { ativa: true },
@@ -232,33 +258,44 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('OPERADOR sem acesso a Valor não recebe valor nem soma', async () => {
       const leadId = await novoLead({ status: 'qualificado', valor: VALOR });
+
       await ligarPermissao({ valor: 'hidden' });
 
       const dono = await ok(
         chamar('POST', `${quadro(vendas.id)}/resumo`, { colunaRef: 'qualificado' }),
       );
+
       expect(dono.soma).toBe(VALOR);
+
       const visto = await ok(
         chamar('POST', `${quadro(vendas.id)}/resumo`, { colunaRef: 'qualificado' }, operador),
       );
+
       expect(visto.soma).toBeNull();
 
       expect(JSON.stringify(await cards(vendas.id, 'qualificado', operador))).not.toContain(
         String(VALOR),
       );
+
       expect(
         await ok(chamar('GET', `/crm/leads/${leadId}`, undefined, operador)),
       ).not.toHaveProperty('valor');
+
       const [deal] = await oportunidades(leadId, operador);
+
       expect(deal).not.toHaveProperty('valor');
+
       const busca = await chamar(
         'POST',
         '/crm/leads/search',
         { valorMin: 1, paginacao: { pagina: 1, tamanho: LIMITE } },
         operador,
       );
+
       expect(busca.status).toBe(HTTP_STATUS.BAD_REQUEST);
+
       const escrita = await chamar('PUT', `/crm/leads/${leadId}`, { valor: 1 }, operador);
+
       expect(escrita.status).toBe(HTTP_STATUS.FORBIDDEN);
 
       await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
@@ -268,6 +305,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const nome = `Pessoa ${randomUUID()}`;
       const leadId = await novoLead({ nome });
       const [deal] = await oportunidades(leadId);
+
       await ok(mover(vendas.id, deal.id, 'proposta'));
 
       const colunas = await prisma.$queryRaw`
@@ -275,6 +313,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         WHERE table_schema = 'modulo_kanban_universal'
           AND data_type IN ('text', 'character varying', 'jsonb')
       `;
+
       for (const { table_name: tabela, column_name: coluna } of colunas) {
         const [{ total }] = await prisma.$queryRawUnsafe(
           `SELECT count(*)::int AS total FROM modulo_kanban_universal."${tabela}"
@@ -282,6 +321,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           tenantId,
           `%${nome}%`,
         );
+
         expect(total, `${tabela}.${coluna}`).toBe(0);
       }
     });
@@ -291,13 +331,17 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('traz layout, selos e rota, sem expor nada a mais', async () => {
       const leadId = await novoLead({ nome: 'Ana Card', valor: OUTRO_VALOR });
       const [deal] = await oportunidades(leadId);
+
       await ok(mover(vendas.id, deal.id, 'proposta'));
 
       const { itens } = await cards(vendas.id, 'proposta');
       const card = itens.find((item) => item.entidadeId === deal.id);
+
       expect(card).toMatchObject({ titulo: 'Ana Card', leadId, responsavelId: donoId });
       expect(card.rotaFicha).toContain(deal.id);
+
       const valor = card.destaques.find((item) => item.chave === 'valor');
+
       expect(valor?.valor).toBe(OUTRO_VALOR);
       expect(card.destaques.find((item) => item.chave === 'status')?.valor).toBe('Proposta');
     });
@@ -305,6 +349,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('venda reaberta marca o card de atendimento', async () => {
       const leadId = await novoLead();
       const [venda] = await oportunidades(leadId);
+
       await ok(mover(vendas.id, venda.id, 'ganho'));
       await ok(mover(vendas.id, venda.id, 'novo'));
 
@@ -313,23 +358,30 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         (deal) => deal.pipelineId === atendimento.id,
       );
       const card = itens.find((item) => item.entidadeId === atendimentoDela.id);
+
       expect(card.selos.map((selo) => selo.tipo)).toContain('origem_reaberta');
     });
 
     it('paginação por cursor passa por todos, sem repetir', async () => {
       const coluna = 'em_contato';
       const ids = [];
+
       for (let criados = 0; criados < TRES; criados += 1) {
         const [deal] = await oportunidades(await novoLead({ status: coluna }));
+
         ids.push(deal.id);
       }
+
       const vistos = [];
       let cursor;
+
       do {
         const pagina = await cards(vendas.id, coluna, undefined, { limite: 1, cursor });
+
         vistos.push(...pagina.itens.map((item) => item.entidadeId));
         cursor = pagina.proximoCursor ?? undefined;
       } while (cursor);
+
       expect(new Set(vistos).size).toBe(vistos.length);
       expect(vistos).toEqual(expect.arrayContaining(ids));
     });
@@ -348,9 +400,11 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
       await ok(chamar('POST', `/crm/oportunidades/${id}/excluir`));
       expect(await noQuadro()).toBe(false);
+
       const lixeira = await ok(
         chamar('GET', `/crm/leads/${leadId}/oportunidades?situacao=lixeira`),
       );
+
       expect(lixeira.map((deal) => deal.id)).toEqual([id]);
       await ok(chamar('POST', `/crm/oportunidades/${id}/restaurar`));
       expect(await noQuadro()).toBe(true);
@@ -359,23 +413,31 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('card de pessoa arquivada sai do quadro', async () => {
       const leadId = await novoLead({ status: 'em_contato' });
       const [{ id }] = await oportunidades(leadId);
+
       await ok(chamar('POST', `/crm/leads/${leadId}/arquivar`));
+
       const { itens } = await cards(vendas.id, 'em_contato');
+
       expect(itens.map((item) => item.entidadeId)).not.toContain(id);
     });
 
     it('status desativado com cards continua como coluna', async () => {
       await novoLead({ status: 'qualificado' });
+
       const opcao = vendas.status.find((item) => item.key === 'qualificado');
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${vendas.id}/status/${opcao.id}`, {
           ativo: false,
         }),
       );
+
       const colunas = await ok(chamar('GET', `${quadro(vendas.id)}/colunas`));
+
       expect(colunas.find((coluna) => coluna.ref === 'qualificado')).toMatchObject({
         ativa: false,
       });
+
       await ok(
         chamar('PUT', `/crm/configuracoes/pipelines/${vendas.id}/status/${opcao.id}`, {
           ativo: true,
@@ -404,11 +466,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const campos = await ok(chamar('GET', '/crm/configuracoes/campos'));
       const exigir = async (chave, status) => {
         const campo = campos.find((item) => item.chave === chave);
+
         await ok(
           chamar('PUT', `/crm/configuracoes/campos/${campo.id}`, {
             visibilidade: { create_form: true, detail: true, table: true, filter: true },
           }),
         );
+
         return ok(
           chamar('POST', '/crm/configuracoes/regras', {
             kind: 'required_from_status',
@@ -426,6 +490,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const [deal] = await oportunidades(leadId);
 
       const semData = await mover(vendas.id, deal.id, 'proposta');
+
       expect(semData.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(semData.corpo.error.fields).toHaveProperty('dataPrevistaFechamento');
 
@@ -435,22 +500,28 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           expectedUpdatedAt: deal.atualizadaEm,
         }),
       );
+
       const comData = await mover(vendas.id, deal.id, 'proposta');
+
       expect(comData.status, JSON.stringify(comData.corpo)).toBe(HTTP_STATUS.OK);
 
       const criada = await chamar('POST', `${quadro(vendas.id)}/cards`, {
         colunaRef: 'proposta',
         dados: { leadId, dataPrevistaFechamento: '2027-01-15T00:00:00.000Z' },
       });
+
       expect(criada.status, JSON.stringify(criada.corpo)).toBe(HTTP_STATUS.CREATED);
 
       // Ganhar carimba a data: a regra sobre ela não pede nada a quem arrasta.
       const ganhou = await mover(vendas.id, deal.id, 'ganho');
+
       expect(ganhou.status, JSON.stringify(ganhou.corpo)).toBe(HTTP_STATUS.OK);
+
       const criadaGanha = await chamar('POST', `${quadro(vendas.id)}/cards`, {
         colunaRef: 'ganho',
         dados: { leadId },
       });
+
       expect(criadaGanha.status, JSON.stringify(criadaGanha.corpo)).toBe(HTTP_STATUS.CREATED);
 
       for (const regra of regras) {
@@ -460,15 +531,19 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('quem tem Status em "só ver" não arrasta', async () => {
       const [deal] = await oportunidades(await novoLead());
+
       await ligarPermissao({ status: 'view' });
 
       const acoes = await ok(
         chamar('GET', `${quadro(vendas.id)}/cards/${deal.id}/acoes`, undefined, operador),
       );
+
       expect(acoes).toEqual([]);
+
       expect((await mover(vendas.id, deal.id, 'proposta', operador)).status).toBe(
         HTTP_STATUS.FORBIDDEN,
       );
+
       await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
     });
 
@@ -482,7 +557,9 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         HTTP_STATUS.CREATED,
       );
       const lista = await oportunidades(leadId);
+
       expect(lista).toHaveLength(DUAS);
+
       expect(lista.find((deal) => deal.id === criado.entidadeId)).toMatchObject({
         pipelineId: atendimento.id,
         status: 'em_atendimento',
@@ -499,11 +576,14 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         HTTP_STATUS.CREATED,
       );
       const lista = await oportunidades(criado.leadId);
+
       expect(lista).toHaveLength(1);
       expect(lista[0]).toMatchObject({ pipelineId: atendimento.id, status: 'em_atendimento' });
+
       const [lead] = await prisma.$queryRaw`
         SELECT lifecycle_stage FROM modulo_crm.leads WHERE id = ${criado.leadId}::uuid
       `;
+
       expect(lead.lifecycle_stage).toBe('oportunidade');
     });
 
@@ -513,11 +593,14 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         colunaRef: 'perdido',
         dados: { nome: 'Sem motivo', email },
       });
+
       expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(resposta.corpo.error.code).toBe(ERROR_CODES.CAMPOS_OBRIGATORIOS);
+
       const [{ total }] = await prisma.$queryRaw`
         SELECT count(*)::int AS total FROM modulo_crm.leads WHERE email = ${email}
       `;
+
       expect(total).toBe(0);
     });
   });
@@ -528,20 +611,26 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     const todasAsPaginas = async (coluna, filtros, ordem) => {
       const vistos = [];
       let cursor;
+
       do {
         const pagina = await buscar(coluna, filtros, ordem, cursor, 1);
+
         vistos.push(...pagina.itens);
         cursor = pagina.proximoCursor ?? undefined;
       } while (cursor);
+
       return vistos;
     };
 
     it('total e soma batem com a consulta direta, sobre o filtro inteiro', async () => {
       const marca = randomUUID();
+
       for (const valor of [VALOR, OUTRO_VALOR, TERCEIRO_VALOR]) {
         await novoLead({ nome: `Soma ${marca}`, valor });
       }
+
       await novoLead({ nome: `Fora ${marca}` });
+
       const filtros = { busca: `Soma ${marca}`, valorMin: OUTRO_VALOR + 1 };
 
       const pagina = await buscar('novo', filtros, undefined, undefined, 1);
@@ -564,7 +653,9 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('view salva na tabela produz o mesmo conjunto no quadro', async () => {
       const marca = randomUUID();
       const dentro = await novoLead({ nome: `View ${marca}`, valor: VALOR });
+
       await novoLead({ nome: `View ${marca}`, valor: OUTRO_VALOR });
+
       const view = await ok(
         chamar('POST', '/crm/filter-views', {
           nome: `View ${marca}`,
@@ -587,6 +678,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
       // O quadro só tem cards ativos: a situação da view não vale aqui.
       const naLixeira = await buscar('novo', { busca: marca, situacao: 'lixeira' });
+
       expect(naLixeira.itens).toHaveLength(DUAS);
     });
 
@@ -596,14 +688,18 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const leadId = await novoLead({ nome: 'Contato', email, telefone: '11987654321' });
 
       const porEmail = await buscar('novo', { busca: email });
+
       expect(porEmail.itens.map((card) => card.leadId)).toEqual([leadId]);
+
       const porTelefone = await buscar('novo', { busca: '(11) 98765-4321' });
+
       expect(porTelefone.itens.map((card) => card.leadId)).toContain(leadId);
     });
 
     it('filtro comercial olha a própria oportunidade, não a principal', async () => {
       const marca = randomUUID();
       const leadId = await novoLead({ nome: `Segunda ${marca}`, valor: VALOR });
+
       await ok(
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
           pipelineId: vendas.id,
@@ -614,6 +710,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       );
 
       const filtros = { busca: marca, valorMax: OUTRO_VALOR };
+
       expect((await buscar('proposta', filtros)).itens).toHaveLength(1);
       expect((await buscar('novo', filtros)).itens).toHaveLength(0);
     });
@@ -621,6 +718,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('responsável é o da oportunidade', async () => {
       const marca = randomUUID();
       const leadId = await novoLead({ nome: `Dono ${marca}`, usuarioResponsavelId: donoId });
+
       await ok(
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, {
           pipelineId: atendimento.id,
@@ -628,6 +726,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         }),
         HTTP_STATUS.CREATED,
       );
+
       const [{ ref }] = await ok(chamar('GET', `${quadro(atendimento.id)}/colunas`));
       const buscarDe = (usuarioResponsavelId) =>
         cards(atendimento.id, ref, undefined, {
@@ -644,15 +743,19 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     ])('ordena por valor %s, com vazio por último, sem repetir', async (direcao, esperado) => {
       const marca = randomUUID();
       const porLead = new Map();
+
       for (const valor of [VALOR, null, OUTRO_VALOR, OUTRO_VALOR]) {
         const campos = valor === null ? {} : { valor };
+
         porLead.set(await novoLead({ nome: `Ordem ${marca}`, ...campos }), valor);
       }
 
       const vistos = await todasAsPaginas('novo', { busca: marca }, { campo: 'valor', direcao });
 
       expect(new Set(vistos.map((card) => card.entidadeId)).size).toBe(porLead.size);
+
       const valores = vistos.map((card) => porLead.get(card.leadId));
+
       expect([...new Set(valores)]).toEqual(esperado);
     });
 
@@ -674,8 +777,11 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('sem ordem, a última atualização vem primeiro', async () => {
       const marca = randomUUID();
       const antigo = await novoLead({ nome: `Recente ${marca}` });
+
       await novoLead({ nome: `Recente ${marca}` });
+
       const [deal] = await oportunidades(antigo);
+
       await ok(
         chamar('PUT', `/crm/oportunidades/${deal.id}`, {
           titulo: 'Agora',
@@ -684,13 +790,16 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       );
 
       const { itens } = await buscar('novo', { busca: marca });
+
       expect(itens[0].leadId).toBe(antigo);
     });
 
     it('cursor vale só para a ordem em que nasceu, e adulterado é 400', async () => {
       const marca = randomUUID();
+
       await novoLead({ nome: `Cursor ${marca}`, valor: VALOR });
       await novoLead({ nome: `Cursor ${marca}`, valor: OUTRO_VALOR });
+
       const ordem = { campo: 'valor', direcao: 'asc' };
       const { proximoCursor } = await buscar('novo', { busca: marca }, ordem, undefined, 1);
       const adulterado = (valor) =>
@@ -708,6 +817,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           ordem: pedido,
           cursor,
         });
+
         expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
       }
     });
@@ -717,9 +827,11 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         colunaRef: 'novo',
         ordem: { campo: 'email' },
       });
+
       expect(foraDaLista.status).toBe(HTTP_STATUS.BAD_REQUEST);
 
       await ligarPermissao({ valor: 'hidden' });
+
       for (const pedido of [{ ordem: { campo: 'valor' } }, { filtros: { valorMin: 1 } }]) {
         const resposta = await chamar(
           'POST',
@@ -727,8 +839,10 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           { colunaRef: 'novo', ...pedido },
           operador,
         );
+
         expect(resposta.status, JSON.stringify(pedido)).toBe(HTTP_STATUS.BAD_REQUEST);
       }
+
       await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: {} }));
     });
 
@@ -745,11 +859,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
         );
 
       const dentro = await mexer('proposta', { busca: marca });
+
       expect(dentro.saiuDoFiltro).toBe(false);
 
       const fora = await mexer('qualificado', {
         filtros: [{ chave: 'status', operador: 'igual', valor: 'proposta' }],
       });
+
       expect(fora.saiuDoFiltro).toBe(true);
       expect((await oportunidades(leadId))[0].status).toBe('qualificado');
 
@@ -764,12 +880,14 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const filtros = { filtros: [{ chave: 'status', operador: 'igual', valor: 'novo' }] };
 
       const semMotivo = await chamar('PATCH', url, { colunaDestino: 'perdido', filtros });
+
       expect(semMotivo.corpo.error.fields).toHaveProperty('motivoPerda');
 
       const campoEstranho = await chamar('PATCH', url, {
         colunaDestino: 'perdido',
         campos: { motivoPerda: 'Preço', valor: 1 },
       });
+
       expect(campoEstranho.status).toBe(HTTP_STATUS.BAD_REQUEST);
       expect((await oportunidades(leadId))[0].status).toBe('novo');
 
@@ -782,6 +900,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       );
 
       expect(comMotivo.saiuDoFiltro).toBe(true);
+
       expect((await oportunidades(leadId))[0]).toMatchObject({
         status: 'perdido',
         motivoPerda: 'Preço',
@@ -790,6 +909,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('quem não edita o motivo não o grava pelo mover', async () => {
       const [deal] = await oportunidades(await novoLead());
+
       await ligarPermissao({ motivoPerda: 'view' });
 
       const resposta = await chamar(
@@ -823,6 +943,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       await ok(chamar('PUT', '/crm/layout/padrao', novo));
 
       const depois = await ok(chamar('GET', '/crm/layout'));
+
       expect(depois.padrao.subtitulo).toEqual([]);
       expect(depois.padraoConfigurado).toBe(true);
       await ok(chamar('PUT', '/crm/layout/padrao', antes.padrao));
@@ -844,11 +965,15 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       await prisma.$executeRaw`
         UPDATE modulo_crm.leads SET anonimizado_em = now() WHERE id = ${leadId}::uuid
       `;
+
       const anonimizado = await doCard();
+
       expect(anonimizado.podeMover).toBe(false);
+
       const acoes = await ok(
         chamar('GET', `${quadro(vendas.id)}/cards/${anonimizado.entidadeId}/acoes`),
       );
+
       expect(acoes).toEqual([]);
     });
   });
@@ -860,10 +985,12 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const versao = new Date(lido.updated_at).toISOString();
 
       await ok(chamar('PUT', `/crm/leads/${leadId}`, { nome: 'Um', expectedUpdatedAt: versao }));
+
       const velha = await chamar('PUT', `/crm/leads/${leadId}`, {
         nome: 'Dois',
         expectedUpdatedAt: versao,
       });
+
       expect(velha.status).toBe(HTTP_STATUS.CONFLICT);
       expect(velha.corpo.error.details.atual).toMatchObject({ nome: 'Um' });
       await ok(chamar('PUT', `/crm/leads/${leadId}`, { nome: 'Três' }));
@@ -873,15 +1000,21 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
   describe('visibilidade por pipeline (D4)', () => {
     it('pipeline oculto some do quadro e das configurações', async () => {
       await ocultar(atendimento.id, true);
+
       const boards = await ok(chamar('GET', '/kanban/boards', undefined, operador));
+
       expect(boards.map((item) => item.quadroRef)).not.toContain(atendimento.id);
+
       const pipelines = await ok(
         chamar('GET', '/crm/configuracoes/pipelines', undefined, operador),
       );
+
       expect(pipelines.map((item) => item.id)).not.toContain(atendimento.id);
+
       expect(
         (await chamar('GET', `${quadro(atendimento.id)}/colunas`, undefined, operador)).status,
       ).toBe(HTTP_STATUS.NOT_FOUND);
+
       await ocultar(atendimento.id, false);
     });
 
@@ -889,6 +1022,7 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
       const marca = randomUUID();
       const leadId = await novoLead({ nome: `Oculta ${marca}`, valor: VALOR });
       const [deal] = await oportunidades(leadId);
+
       await ocultar(vendas.id, true);
 
       for (const url of [
@@ -900,12 +1034,14 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           HTTP_STATUS.NOT_FOUND,
         );
       }
+
       const mudar = await chamar(
         'PATCH',
         `/crm/oportunidades/${deal.id}/status`,
         { status: 'proposta' },
         operador,
       );
+
       expect(mudar.status).toBe(HTTP_STATUS.NOT_FOUND);
 
       const busca = await ok(
@@ -916,7 +1052,9 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           operador,
         ),
       );
+
       expect(busca).toMatchObject({ itens: [], total: 0 });
+
       const massa = await ok(
         chamar(
           'PATCH',
@@ -925,9 +1063,11 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           operador,
         ),
       );
+
       expect(massa.falhas).toBe(1);
 
       const doDono = await ok(chamar('GET', `/crm/leads/${leadId}`));
+
       expect(Number(doDono.valor)).toBe(VALOR);
       await ocultar(vendas.id, false);
     });
@@ -935,24 +1075,31 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('com outra visível: a pessoa aparece, sem o comercial da principal oculta', async () => {
       const marca = randomUUID();
       const leadId = await novoLead({ nome: `Mista ${marca}`, valor: VALOR, status: 'proposta' });
+
       await ok(
         chamar('POST', `/crm/leads/${leadId}/oportunidades`, { pipelineId: atendimento.id }),
         HTTP_STATUS.CREATED,
       );
+
       // Um evento de cada caminho, para o filtro do histórico ter o que esconder.
       const venda = (await oportunidades(leadId)).find((deal) => deal.pipelineId === vendas.id);
+
       await ok(
         chamar('PUT', `/crm/oportunidades/${venda.id}`, {
           valor: TERCEIRO_VALOR,
           expectedUpdatedAt: venda.atualizadaEm,
         }),
       );
+
       await ok(chamar('PUT', `/crm/leads/${leadId}`, { valor: OUTRO_VALOR }));
       await ocultar(vendas.id, true);
 
       const lead = await ok(chamar('GET', `/crm/leads/${leadId}`, undefined, operador));
+
       expect(lead).toMatchObject({ status: null, valor: null });
+
       const lista = await oportunidades(leadId, operador);
+
       expect(lista.map((deal) => deal.pipelineId)).toEqual([atendimento.id]);
 
       const porStatus = await ok(
@@ -967,28 +1114,35 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
           operador,
         ),
       );
+
       expect(porStatus.total).toBe(0);
 
       const historico = await ok(
         chamar('GET', `/crm/leads/${leadId}/historico`, undefined, operador),
       );
       const doDono = await ok(chamar('GET', `/crm/leads/${leadId}/historico`));
+
       expect(
         doDono.itens.filter((evento) => evento.detalhes?.pipelineId === vendas.id),
       ).toHaveLength(DUAS);
+
       expect(historico.itens.map((evento) => evento.detalhes?.pipelineId)).not.toContain(vendas.id);
+
       expect(
         historico.itens.flatMap((evento) => evento.diff ?? []).map((d) => d.chave),
       ).not.toContain('valor');
 
       const editarComercial = await chamar('PUT', `/crm/leads/${leadId}`, { valor: 1 }, operador);
+
       expect(editarComercial.status).toBe(HTTP_STATUS.CONFLICT);
+
       const editarContato = await chamar(
         'PUT',
         `/crm/leads/${leadId}`,
         { nome: `Editada ${marca}` },
         operador,
       );
+
       expect(editarContato.status, JSON.stringify(editarContato.corpo)).toBe(HTTP_STATUS.OK);
       expect(editarContato.dados).toMatchObject({ status: null, valor: null });
 
@@ -997,13 +1151,16 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
 
     it('pipeline oculto não recebe oportunidade do OPERADOR', async () => {
       const leadId = await novoLead();
+
       await ocultar(atendimento.id, true);
+
       const resposta = await chamar(
         'POST',
         `/crm/leads/${leadId}/oportunidades`,
         { pipelineId: atendimento.id },
         operador,
       );
+
       expect(resposta.status).toBe(HTTP_STATUS.BAD_REQUEST);
       await ocultar(atendimento.id, false);
     });
@@ -1011,13 +1168,16 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     it('card de pessoa existente respeita o quadro, e referência fica restrita', async () => {
       const leadId = await novoLead();
       const [deal] = await oportunidades(leadId);
+
       await ocultar(vendas.id, true);
+
       const acoes = await chamar(
         'GET',
         `${quadro(vendas.id)}/cards/${deal.id}/acoes`,
         undefined,
         operador,
       );
+
       expect(acoes.dados ?? []).toEqual([]);
       await ocultar(vendas.id, false);
     });
@@ -1027,10 +1187,13 @@ rodar('quadro comercial (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () => {
     await prisma.tenantModuleFeature.deleteMany({
       where: { tenantId, featureKey: CRM_FEATURES.QUADRO_COMERCIAL },
     });
+
     await invalidarFeatures(tenantId);
 
     const boards = await ok(chamar('GET', '/kanban/boards'));
+
     expect(boards.filter((item) => item.modo === 'entidade')).toEqual([]);
+
     expect((await chamar('GET', `${quadro(vendas.id)}/colunas`)).status).toBe(
       HTTP_STATUS.NOT_FOUND,
     );

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { criarConexaoRedis } from '#core/queue/connection.js';
+
 import {
   cacheDel,
   cacheGet,
@@ -18,12 +20,14 @@ const MAIS_QUE_O_TTL_MS = 31_000;
 /** Redis falso: só o que o store usa (get/set/del/on/disconnect). */
 function criarRedisFalso() {
   const dados = new Map();
+
   return {
     dados,
     on: vi.fn(),
     get: vi.fn(async (chave) => dados.get(chave) ?? null),
     set: vi.fn(async (chave, valor) => {
       dados.set(chave, valor);
+
       return 'OK';
     }),
     del: vi.fn(async (...chaves) => chaves.forEach((chave) => dados.delete(chave))),
@@ -43,9 +47,11 @@ describe('store em memória', () => {
   it('guarda, devolve cópia e expira no TTL', async () => {
     const store = criarStoreMemoria();
     const valor = { lista: ['a'] };
+
     await store.set('k', valor, TTL_SEGUNDOS);
 
     const lido = await store.get('k');
+
     expect(lido).toEqual(valor);
     expect(lido).not.toBe(valor); // passa por JSON, igual ao Redis
 
@@ -55,6 +61,7 @@ describe('store em memória', () => {
 
   it('del remove só as chaves pedidas', async () => {
     const store = criarStoreMemoria();
+
     await store.set('a', 1, TTL_SEGUNDOS);
     await store.set('b', 'outro', TTL_SEGUNDOS);
     await store.del(['a']);
@@ -64,6 +71,7 @@ describe('store em memória', () => {
 
   it('valor falsy guardado não é confundido com miss', async () => {
     const store = criarStoreMemoria();
+
     await store.set('vazio', [], TTL_SEGUNDOS);
     await store.set('falso', false, TTL_SEGUNDOS);
     await expect(store.get('vazio')).resolves.toEqual([]);
@@ -77,12 +85,14 @@ describe('store Redis', () => {
     const store = criarStoreRedis(redis);
 
     await store.set('features:t1', ['crm.listas'], TTL_SEGUNDOS);
+
     expect(redis.set).toHaveBeenCalledWith(
       'cache:features:t1',
       '["crm.listas"]',
       'EX',
       TTL_SEGUNDOS,
     );
+
     await expect(store.get('features:t1')).resolves.toEqual(['crm.listas']);
 
     await store.del(['features:t1']);
@@ -93,9 +103,11 @@ describe('store Redis', () => {
   it('Redis fora do ar vira miss, sem lançar', async () => {
     const redis = criarRedisFalso();
     const caiu = () => Promise.reject(new Error('ECONNREFUSED'));
+
     redis.get.mockImplementation(caiu);
     redis.set.mockImplementation(caiu);
     redis.del.mockImplementation(caiu);
+
     const store = criarStoreRedis(redis);
 
     await expect(store.get('k')).resolves.toBeUndefined();
@@ -105,6 +117,7 @@ describe('store Redis', () => {
 
   it('registra listener de erro (senão o ioredis derruba o processo)', () => {
     const redis = criarRedisFalso();
+
     criarStoreRedis(redis);
     expect(redis.on).toHaveBeenCalledWith('error', expect.any(Function));
   });
@@ -120,7 +133,9 @@ describe('escolha do store', () => {
 
   it('com REDIS_URL usa o Redis', async () => {
     vi.stubEnv('REDIS_URL', 'redis://localhost:6379');
+
     const redis = criarRedisFalso();
+
     criarConexaoRedis.mockReturnValue(redis);
 
     await cacheSet('k', 'v', TTL_SEGUNDOS);
@@ -137,6 +152,7 @@ describe('escolha do store', () => {
 describe('lerComCache', () => {
   it('carrega só no miss', async () => {
     vi.stubEnv('REDIS_URL', '');
+
     const carregar = vi.fn().mockResolvedValue(['x']);
 
     await expect(lerComCache('k', TTL_SEGUNDOS, carregar)).resolves.toEqual(['x']);

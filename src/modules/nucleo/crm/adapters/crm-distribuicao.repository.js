@@ -1,3 +1,8 @@
+/**
+ * @file ADAPTER: configuração da distribuição automática (M12, migration 0026):
+ * `crm_distribuicao_config`, `crm_assignment_rule` e os grupos de usuários (`crm_user_group` +
+ * membros). O ponteiro do rodízio fica em `crm-rodizio.repository.js`.
+ */
 import { getTenantClient } from '#core/db/tenantClient.js';
 
 const FIRST_RESULT_INDEX = 0;
@@ -29,8 +34,13 @@ const FIRST_RESULT_INDEX = 0;
 export function buscarConfigDistribuicao(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT ativo, fallback FROM modulo_crm.crm_distribuicao_config
-      WHERE tenant_id = ${tenantId}::uuid
+      SELECT
+        ativo,
+        fallback
+      FROM
+        modulo_crm.crm_distribuicao_config
+      WHERE
+        tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[FIRST_RESULT_INDEX]),
   );
 }
@@ -45,10 +55,21 @@ export function listarRegrasDistribuicao(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id, nome, posicao, ativo, condicoes, destino_usuario_id, destino_grupo_id
-      FROM modulo_crm.crm_assignment_rule
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY posicao, created_at
+      SELECT
+        id,
+        nome,
+        posicao,
+        ativo,
+        condicoes,
+        destino_usuario_id,
+        destino_grupo_id
+      FROM
+        modulo_crm.crm_assignment_rule
+      WHERE
+        tenant_id = ${tenantId}::uuid
+      ORDER BY
+        posicao,
+        created_at
     `,
   );
 }
@@ -66,35 +87,66 @@ export function listarRegrasDistribuicao(tenantId) {
 export function salvarConfigERegras(tenantId, { ativo, fallback }, regras) {
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_distribuicao_config (tenant_id, ativo, fallback)
-      VALUES (${tenantId}::uuid, ${ativo}, ${fallback})
-      ON CONFLICT (tenant_id) DO UPDATE SET ativo = EXCLUDED.ativo, fallback = EXCLUDED.fallback, updated_at = now()
+      INSERT INTO
+        modulo_crm.crm_distribuicao_config (tenant_id, ativo, fallback)
+      VALUES
+        (${tenantId}::uuid, ${ativo}, ${fallback})
+      ON CONFLICT (tenant_id) DO UPDATE
+      SET
+        ativo = EXCLUDED.ativo,
+        fallback = EXCLUDED.fallback,
+        updated_at = now()
     `;
 
     const mantidas = regras.flatMap((regra) => (regra.id ? [regra.id] : []));
+
     await tx.$executeRaw`
       DELETE FROM modulo_crm.crm_assignment_rule
-      WHERE tenant_id = ${tenantId}::uuid AND NOT (id = ANY(${mantidas}::uuid[]))
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND NOT (id = ANY (${mantidas}::UUID[]))
     `;
 
     for (const [posicao, regra] of regras.entries()) {
       const condicoes = JSON.stringify(regra.condicoes);
+
       if (regra.id) {
         await tx.$executeRaw`
           UPDATE modulo_crm.crm_assignment_rule
-          SET nome = ${regra.nome}, posicao = ${posicao}, ativo = ${regra.ativo}, condicoes = ${condicoes}::jsonb,
-              destino_usuario_id = ${regra.destinoUsuarioId}::uuid, destino_grupo_id = ${regra.destinoGrupoId}::uuid,
-              updated_at = now()
-          WHERE id = ${regra.id}::uuid AND tenant_id = ${tenantId}::uuid
+          SET
+            nome = ${regra.nome},
+            posicao = ${posicao},
+            ativo = ${regra.ativo},
+            condicoes = ${condicoes}::jsonb,
+            destino_usuario_id = ${regra.destinoUsuarioId}::uuid,
+            destino_grupo_id = ${regra.destinoGrupoId}::uuid,
+            updated_at = now()
+          WHERE
+            id = ${regra.id}::uuid
+            AND tenant_id = ${tenantId}::uuid
         `;
       } else {
         await tx.$executeRaw`
-          INSERT INTO modulo_crm.crm_assignment_rule
-            (tenant_id, nome, posicao, ativo, condicoes, destino_usuario_id, destino_grupo_id)
-          VALUES (
-            ${tenantId}::uuid, ${regra.nome}, ${posicao}, ${regra.ativo}, ${condicoes}::jsonb,
-            ${regra.destinoUsuarioId}::uuid, ${regra.destinoGrupoId}::uuid
-          )
+          INSERT INTO
+            modulo_crm.crm_assignment_rule (
+              tenant_id,
+              nome,
+              posicao,
+              ativo,
+              condicoes,
+              destino_usuario_id,
+              destino_grupo_id
+            )
+          VALUES
+            (
+              ${tenantId}::uuid,
+              ${regra.nome},
+              ${posicao},
+              ${regra.ativo},
+              ${condicoes}::jsonb,
+              ${regra.destinoUsuarioId}::uuid,
+              ${regra.destinoGrupoId}::uuid
+            )
         `;
       }
     }
@@ -112,13 +164,30 @@ export function listarGrupos(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT g.id, g.nome,
-             COALESCE(array_agg(m.usuario_id ORDER BY m.usuario_id) FILTER (WHERE m.usuario_id IS NOT NULL), '{}') AS membros
-      FROM modulo_crm.crm_user_group g
-      LEFT JOIN modulo_crm.crm_user_group_member m ON m.grupo_id = g.id
-      WHERE g.tenant_id = ${tenantId}::uuid
-      GROUP BY g.id, g.nome
-      ORDER BY lower(g.nome)
+      SELECT
+        g.id,
+        g.nome,
+        COALESCE(
+          array_agg(
+            m.usuario_id
+            ORDER BY
+              m.usuario_id
+          ) FILTER (
+            WHERE
+              m.usuario_id IS NOT NULL
+          ),
+          '{}'
+        ) AS membros
+      FROM
+        modulo_crm.crm_user_group g
+        LEFT JOIN modulo_crm.crm_user_group_member m ON m.grupo_id = g.id
+      WHERE
+        g.tenant_id = ${tenantId}::uuid
+      GROUP BY
+        g.id,
+        g.nome
+      ORDER BY
+        lower(g.nome)
     `,
   );
 }
@@ -131,11 +200,16 @@ export function listarGrupos(tenantId) {
 export function inserirGrupo(tenantId, { nome, membros }) {
   return getTenantClient(tenantId, async (tx) => {
     const [{ id }] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_user_group (tenant_id, nome)
-      VALUES (${tenantId}::uuid, ${nome})
-      RETURNING id
+      INSERT INTO
+        modulo_crm.crm_user_group (tenant_id, nome)
+      VALUES
+        (${tenantId}::uuid, ${nome})
+      RETURNING
+        id
     `;
+
     await gravarMembros(tx, tenantId, id, membros);
+
     return id;
   });
 }
@@ -150,13 +224,22 @@ export function inserirGrupo(tenantId, { nome, membros }) {
 export function atualizarGrupo(tenantId, grupoId, { nome, membros }) {
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_user_group SET nome = ${nome}, updated_at = now()
-      WHERE id = ${grupoId}::uuid AND tenant_id = ${tenantId}::uuid
+      UPDATE modulo_crm.crm_user_group
+      SET
+        nome = ${nome},
+        updated_at = now()
+      WHERE
+        id = ${grupoId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     await tx.$executeRaw`
       DELETE FROM modulo_crm.crm_user_group_member
-      WHERE grupo_id = ${grupoId}::uuid AND tenant_id = ${tenantId}::uuid
+      WHERE
+        grupo_id = ${grupoId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     await gravarMembros(tx, tenantId, grupoId, membros);
   });
 }
@@ -170,10 +253,17 @@ export function atualizarGrupo(tenantId, grupoId, { nome, membros }) {
 export function excluirGrupo(tenantId, grupoId) {
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
-      DELETE FROM modulo_crm.crm_rodizio_ponteiro WHERE tenant_id = ${tenantId}::uuid AND chave = ${grupoId}
+      DELETE FROM modulo_crm.crm_rodizio_ponteiro
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND chave = ${grupoId}
     `;
+
     await tx.$executeRaw`
-      DELETE FROM modulo_crm.crm_user_group WHERE id = ${grupoId}::uuid AND tenant_id = ${tenantId}::uuid
+      DELETE FROM modulo_crm.crm_user_group
+      WHERE
+        id = ${grupoId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
   });
 }
@@ -185,10 +275,17 @@ export function excluirGrupo(tenantId, grupoId) {
  * @param {string[]} membros
  */
 function gravarMembros(tx, tenantId, grupoId, membros) {
-  if (membros.length === 0) return Promise.resolve(0);
+  if (membros.length === 0) {
+    return Promise.resolve(0);
+  }
+
   return tx.$executeRaw`
-    INSERT INTO modulo_crm.crm_user_group_member (tenant_id, grupo_id, usuario_id)
-    SELECT ${tenantId}::uuid, ${grupoId}::uuid, unnest(${membros}::uuid[])
+    INSERT INTO
+      modulo_crm.crm_user_group_member (tenant_id, grupo_id, usuario_id)
+    SELECT
+      ${tenantId}::uuid,
+      ${grupoId}::uuid,
+      unnest(${membros}::UUID[])
     ON CONFLICT DO NOTHING
   `;
 }

@@ -1,4 +1,7 @@
 /**
+ * @file `campo` das entradas do diff de personalizado (o `campoId` diz qual).
+ */
+/**
  * Atividades e histórico do lead (M6, `docs/produto/crm-historico-arquivo-e-lgpd.md`).
  */
 

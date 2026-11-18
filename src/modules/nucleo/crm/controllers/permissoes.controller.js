@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: Configurações → permissões por campo (M13).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { salvarPermissoesBodySchema } from '../schemas/permissoes.schema.js';
 import { obterPermissoes, salvarPermissoes } from '../services/permissoes.service.js';
@@ -24,12 +28,14 @@ export function registrarRotasPermissoes(app) {
 
   app.get('/crm/configuracoes/permissoes', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await obterPermissoes(tenantId));
   });
 
   app.put('/crm/configuracoes/permissoes', apenasGestao, async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = salvarPermissoesBodySchema.parse(req.body);
+
     return sendSuccess(reply, await salvarPermissoes(tenantId, body));
   });
 }

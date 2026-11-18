@@ -1,5 +1,9 @@
+/**
+ * @file SERVICE: visibilidade por pipeline (D4).
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
 import { ROLES } from '#shared/constants/index.js';
+
 import { buscarOportunidade } from '../adapters/crm-oportunidades.repository.js';
 import { buscarPipelinesOcultos } from '../adapters/crm-pipelines.repository.js';
 import { buscarPessoasVisiveis } from '../adapters/leads.repository.js';
@@ -25,7 +29,10 @@ export const papelComPipelinesOcultos = (papel) => papel === ROLES.OPERADOR;
  * @returns {Promise<string[]>} ids dos pipelines que este papel não vê
  */
 export async function pipelinesOcultos(tenantId, papel) {
-  if (!papelComPipelinesOcultos(papel)) return [];
+  if (!papelComPipelinesOcultos(papel)) {
+    return [];
+  }
+
   return buscarPipelinesOcultos(tenantId);
 }
 
@@ -37,7 +44,11 @@ export async function pipelinesOcultos(tenantId, papel) {
  */
 export async function pessoasVisiveis(tenantId, ids, papel) {
   const ocultos = await pipelinesOcultos(tenantId, papel);
-  if (ocultos.length === 0) return new Set(ids);
+
+  if (ocultos.length === 0) {
+    return new Set(ids);
+  }
+
   return new Set(await buscarPessoasVisiveis(tenantId, ids, ocultos));
 }
 
@@ -48,7 +59,10 @@ export async function pessoasVisiveis(tenantId, ids, papel) {
  */
 export async function garantirPessoaVisivel(tenantId, leadId, papel) {
   const visiveis = await pessoasVisiveis(tenantId, [leadId], papel);
-  if (!visiveis.has(leadId)) throw erroNaoEncontrado('Lead não encontrado');
+
+  if (!visiveis.has(leadId)) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
 }
 
 /**
@@ -58,8 +72,13 @@ export async function garantirPessoaVisivel(tenantId, leadId, papel) {
  */
 export async function garantirOportunidadeVisivel(tenantId, id, papel) {
   const ocultos = await pipelinesOcultos(tenantId, papel);
-  if (ocultos.length === 0) return;
+
+  if (ocultos.length === 0) {
+    return;
+  }
+
   const deal = await buscarOportunidade(tenantId, id, { incluirExcluidas: true });
+
   if (deal && ocultos.includes(deal.pipeline_id)) {
     throw erroNaoEncontrado('Oportunidade não encontrada');
   }

@@ -1,3 +1,6 @@
+/**
+ * @file Ações que não gravam: não pegam lock nem publicam evento.
+ */
 import { ROLES } from '#shared/constants/index.js';
 
 /** `Module.key` do Kanban (`tenant_modules.module_key`). */
@@ -55,6 +58,8 @@ export const VARREDURA_VINCULOS = Object.freeze({
 
 /** Ações que não gravam: não pegam lock nem publicam evento. */
 export const ACOES_DE_LEITURA = new Set([
+  'report.get',
+  'metrics.get',
   'board.get',
   'board.members',
   'card.get',

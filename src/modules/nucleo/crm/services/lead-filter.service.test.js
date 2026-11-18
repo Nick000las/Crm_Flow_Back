@@ -1,12 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
+import { HTTP_STATUS } from '#shared/constants/index.js';
+
+import { CAMADA } from '../constants.js';
 import {
   condicaoDaSituacao,
   dataDaPurga,
   inicioDaLixeira,
   montarCondicoes,
 } from './lead-filter.service.js';
-import { CAMADA } from '../constants.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
 
 const CAMPOS = [
   { chave: 'nome', label: 'Nome', tipo: 'texto', camada: CAMADA.CAMADA_1 },
@@ -45,12 +47,14 @@ function valoresDe(condicoes) {
 describe('montarCondicoes', () => {
   it('sem filtro nenhum, só a situação (ativos: fora da lixeira e do arquivo)', () => {
     const condicoes = montarCondicoes({}, CAMPOS);
+
     expect(condicoes).toHaveLength(1);
     expect(sqlDe(condicoes)).toBe('l.deleted_at IS NULL AND l.archived_at IS NULL');
   });
 
   it('busca textual vira ILIKE parametrizado com % e _ escapados', () => {
     const condicoes = montarCondicoes({ busca: '50%_off' }, CAMPOS);
+
     expect(sqlDe(condicoes)).toContain('l.nome ILIKE');
     expect(valoresDe(condicoes)).toContain('%50\\%\\_off%');
   });
@@ -66,6 +70,7 @@ describe('montarCondicoes', () => {
       CAMPOS,
     );
     const sql = sqlDe(condicoes);
+
     expect(sql).toContain('l.status =');
     expect(sql).toContain('l.lead_score >=');
     expect(sql).toContain('l.lead_score <=');
@@ -74,6 +79,7 @@ describe('montarCondicoes', () => {
 
   it('semResponsavel: sem responsável ou com responsável desativado', () => {
     const sql = sqlDe(montarCondicoes({ semResponsavel: true }, CAMPOS));
+
     expect(sql).toContain(
       'NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = l.usuario_responsavel_id AND u.ativo)',
     );
@@ -99,6 +105,7 @@ describe('montarCondicoes', () => {
       { filtros: [{ chave: 'nome', operador: 'contem', valor: ataque }] },
       CAMPOS,
     );
+
     expect(sqlDe(condicoes)).not.toContain('DROP');
     expect(valoresDe(condicoes)).toContain(`%${ataque}%`);
   });
@@ -108,6 +115,7 @@ describe('montarCondicoes', () => {
       { filtros: [{ chave: 'segmento', operador: 'igual', valor: 'varejo' }] },
       CAMPOS,
     );
+
     expect(sqlDe(condicoes)).toContain('l.custom_fields @>');
     expect(valoresDe(condicoes)).toContain(JSON.stringify({ segmento: 'varejo' }));
   });
@@ -117,6 +125,7 @@ describe('montarCondicoes', () => {
       { filtros: [{ chave: 'renda', operador: 'entre', valor: { de: SCORE_MINIMO } }] },
       CAMPOS,
     );
+
     expect(sqlDe(condicoes)).toContain('jsonb_typeof');
   });
 
@@ -125,12 +134,14 @@ describe('montarCondicoes', () => {
       { filtros: [{ chave: 'tags', operador: 'contem', valor: 'vip' }] },
       CAMPOS,
     );
+
     expect(sqlDe(contem)).toContain('= ANY(l.tags)');
 
     const algum = montarCondicoes(
       { filtros: [{ chave: 'tags', operador: 'e_um_dos', valor: ['vip', 'b2b'] }] },
       CAMPOS,
     );
+
     expect(sqlDe(algum)).toContain('l.tags &&');
   });
 
@@ -156,6 +167,7 @@ describe('montarCondicoes', () => {
         CAMPOS,
       ),
     ).toThrow('Informe um número');
+
     expect(() =>
       montarCondicoes(
         { filtros: [{ chave: 'aniversario', operador: 'igual', valor: 'ontem' }] },
@@ -180,6 +192,7 @@ describe('montarCondicoes', () => {
       },
       CAMPOS,
     );
+
     expect(condicoes).toHaveLength(['situacao', 'nome', 'segmento'].length);
   });
 });
@@ -195,6 +208,7 @@ describe('personalizado lido pelo id do campo', () => {
       { filtros: [{ chave: 'segmento', operador: 'igual', valor: 'varejo' }] },
       CAMPOS_POR_ID,
     );
+
     expect(valoresDe(condicoes)).toContain(JSON.stringify({ [ID_SEGMENTO]: 'varejo' }));
     expect(valoresDe(condicoes)).not.toContain(JSON.stringify({ segmento: 'varejo' }));
   });
@@ -204,6 +218,7 @@ describe('personalizado lido pelo id do campo', () => {
       { filtros: [{ chave: 'segmento', operador: 'vazio' }] },
       CAMPOS_POR_ID,
     );
+
     expect(valoresDe(condicoes)).toContain(ID_SEGMENTO);
   });
 });
@@ -222,6 +237,7 @@ describe('tipos MVP do M2 no filtro', () => {
       { filtros: [{ chave: 'celular', operador: 'igual', valor: '(11) 99999-0000' }] },
       CAMPOS_M2,
     );
+
     expect(valoresDe(condicoes)).toContain(JSON.stringify({ celular: '11999990000' }));
   });
 
@@ -230,6 +246,7 @@ describe('tipos MVP do M2 no filtro', () => {
       { filtros: [{ chave: 'contrato', operador: 'entre', valor: { de: VALOR_MIN } }] },
       CAMPOS_M2,
     );
+
     expect(sqlDe(condicoes)).toContain('jsonb_typeof');
     expect(valoresDe(condicoes)).toContain(VALOR_MIN);
   });
@@ -239,6 +256,7 @@ describe('tipos MVP do M2 no filtro', () => {
       { filtros: [{ chave: 'contato', operador: 'igual', valor: 'Ana@X.COM' }] },
       CAMPOS_M2,
     );
+
     expect(valoresDe(condicoes)).toContain(JSON.stringify({ contato: 'ana@x.com' }));
   });
 
@@ -260,6 +278,7 @@ describe('e-mail e telefone nativos (tipos email/telefone)', () => {
       { filtros: [{ chave: 'telefone', operador: 'contem', valor: '(11) 9888' }] },
       NATIVOS,
     );
+
     expect(sqlDe(condicoes)).toContain("regexp_replace(l.telefone, '[^0-9]', '', 'g') ILIKE");
     expect(valoresDe(condicoes)).toEqual(['%119888%']);
   });
@@ -269,16 +288,19 @@ describe('e-mail e telefone nativos (tipos email/telefone)', () => {
       { filtros: [{ chave: 'email', operador: 'igual', valor: ' Ana@X.com ' }] },
       NATIVOS,
     );
+
     expect(sqlDe(condicoes)).toContain('lower(l.email) =');
     expect(valoresDe(condicoes)).toEqual(['ana@x.com']);
   });
 
   it('busca com cara de telefone procura pelos dígitos; busca com letra, não', () => {
     const porTelefone = montarCondicoes({ busca: '(11) 9888-7' }, NATIVOS);
+
     expect(sqlDe(porTelefone)).toContain("regexp_replace(l.telefone, '[^0-9]', '', 'g') LIKE");
     expect(valoresDe(porTelefone)).toContain('%1198887%');
 
     const porNome = montarCondicoes({ busca: 'Ana 2' }, NATIVOS);
+
     expect(sqlDe(porNome)).toContain('l.telefone ILIKE');
   });
 });
@@ -303,6 +325,7 @@ describe('busca pelo identificador do layout (M4)', () => {
     expect(
       valoresDe(montarCondicoes({ busca: '12.abc.345/01de' }, CAMPOS, { identificador: CNPJ })),
     ).toContain('12ABC34501DE%');
+
     expect(sqlDe(montarCondicoes({ busca: '---' }, CAMPOS, { identificador: CNPJ }))).not.toContain(
       'dedup_cnpj',
     );
@@ -310,11 +333,13 @@ describe('busca pelo identificador do layout (M4)', () => {
     const empresa = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
       identificador: { chave: 'empresa', camada: CAMADA.CAMADA_2 },
     });
+
     expect(sqlDe(empresa)).toContain('l.empresa ILIKE');
 
     const personalizado = montarCondicoes({ busca: 'Acme' }, CAMPOS, {
       identificador: { chave: 'razao', camada: CAMADA.CAMADA_3, id: 'id-razao' },
     });
+
     expect(sqlDe(personalizado)).toContain('l.custom_fields->>');
     expect(valoresDe(personalizado)).toContain('id-razao');
   });
@@ -343,6 +368,7 @@ describe('situação do lead (M5)', () => {
 
   it('lixeira: só o que foi excluído dentro do prazo de 30 dias', () => {
     const condicao = condicaoDaSituacao('lixeira', { agora: AGORA });
+
     expect(condicao.sql).toBe('l.deleted_at >= ?');
     expect(condicao.values).toEqual([new Date('2026-09-16T12:00:00Z')]);
   });
@@ -353,6 +379,7 @@ describe('situação do lead (M5)', () => {
 
   it('prazo e purga são o mesmo intervalo', () => {
     const excluidoEm = new Date('2026-10-01T00:00:00Z');
+
     expect(dataDaPurga(excluidoEm)).toEqual(new Date('2026-10-31T00:00:00Z'));
     expect(inicioDaLixeira(dataDaPurga(excluidoEm))).toEqual(excluidoEm);
   });
@@ -381,6 +408,7 @@ describe('tipos do M11 no filtro', () => {
       CAMPOS_M11,
     );
     const sql = sqlDe(condicoes);
+
     expect(sql).toContain('l.dedup_cpf =');
     expect(sql).toContain('l.dedup_cnpj ILIKE');
     expect(sql).toContain("regexp_replace(l.cep, '[^0-9]', '', 'g') =");
@@ -392,6 +420,7 @@ describe('tipos do M11 no filtro', () => {
       { filtros: [{ chave: 'horario', operador: 'entre', valor: { de: '8:00', ate: '12:00' } }] },
       CAMPOS_M11,
     );
+
     expect(sqlDe(faixa)).toContain('::time');
     expect(valoresDe(faixa)).toEqual(expect.arrayContaining(['08:00', '12:00']));
 
@@ -399,7 +428,9 @@ describe('tipos do M11 no filtro', () => {
       { filtros: [{ chave: 'horario', operador: 'igual', valor: '9:05' }] },
       CAMPOS_M11,
     );
+
     expect(valoresDe(igual)).toContain(JSON.stringify({ horario: '09:05' }));
+
     expect(() =>
       montarCondicoes(
         { filtros: [{ chave: 'horario', operador: 'entre', valor: { de: 'meio-dia' } }] },
@@ -418,6 +449,7 @@ describe('tipos do M11 no filtro', () => {
       CAMPOS_M11,
     );
     const sql = sqlDe(condicoes);
+
     expect(sql).toContain("->>'de'");
     expect(sql).toContain("->>'ate'");
     expect(sql).toMatch(/<=.*>=/s);
@@ -428,6 +460,7 @@ describe('tipos do M11 no filtro', () => {
       { filtros: [{ chave: 'entrega', operador: 'contem', valor: 'Recife' }] },
       CAMPOS_M11,
     );
+
     expect(sqlDe(condicoes)).toContain('jsonb_each_text');
     expect(valoresDe(condicoes)).toContain('%Recife%');
   });
@@ -437,6 +470,7 @@ describe('tipos do M11 no filtro', () => {
       { filtros: [{ chave: 'entrega', operador: 'vazio' }] },
       CAMPOS_M11,
     );
+
     expect(sqlDe(condicoes)).toContain("'{}'::jsonb");
   });
 
@@ -449,9 +483,11 @@ describe('tipos do M11 no filtro', () => {
       },
       CAMPOS_M11,
     );
+
     expect(valoresDe(condicoes)).toContain(
       JSON.stringify({ consultor: '00000000-0000-0000-0000-0000000000aa' }),
     );
+
     expect(() =>
       montarCondicoes(
         { filtros: [{ chave: 'entrega', operador: 'igual', valor: 'x' }] },
@@ -475,6 +511,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
 
   it('cicloDeVida vira "é um dos" sobre o ciclo calculado', () => {
     const condicoes = doCiclo({ cicloDeVida: ['cliente', 'lead'] });
+
     expect(condicoes).toHaveLength(1);
     expect(sqlDe(condicoes)).toContain('= ANY(?::text[])');
     expect(sqlDe(condicoes)).toContain('bool_or');
@@ -502,8 +539,11 @@ describe('filtros do ciclo de vida (FC4)', () => {
       },
       { fuso: FUSO },
     );
+
     expect(condicoes).toHaveLength(QUATRO_LIMITES);
+
     const [desdeDe, desdeAte, ultimaDe, ultimaAte] = condicoes;
+
     expect(desdeDe.sql).toContain('min(d.won_at)');
     expect(desdeDe.sql).toMatch(/AT TIME ZONE 'UTC'\) AT TIME ZONE \?\)::date >= \?::date$/);
     expect(desdeAte.sql).toMatch(/::date <= \?::date$/);
@@ -516,6 +556,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
 
   it('sem fuso informado, o padrão', () => {
     const [condicao] = doCiclo({ ultimaCompraAte: '2026-10-31' });
+
     expect(condicao.values).toContain('America/Sao_Paulo');
   });
 
@@ -531,6 +572,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
         }),
       );
     }
+
     // O mesmo dia nas duas pontas vale.
     expect(doCiclo({ clienteDesdeDe: '2026-11-01', clienteDesdeAte: '2026-11-01' })).toHaveLength(
       DE_E_ATE,
@@ -542,11 +584,13 @@ describe('filtros do ciclo de vida (FC4)', () => {
       oportunidadesAbertasMin: DUAS_ABERTAS,
       oportunidadesAbertasMax: CINCO_ABERTAS,
     });
+
     expect(condicoes).toHaveLength(DE_E_ATE);
     expect(condicoes[0].sql).toMatch(/>= \?::int$/);
     expect(condicoes[1].sql).toMatch(/<= \?::int$/);
     expect(condicoes[0].sql).toContain('d.archived_at IS NULL');
     expect(condicoes[0].values.at(-1)).toBe(DUAS_ABERTAS);
+
     expect(() =>
       montarCondicoes(
         { oportunidadesAbertasMin: CINCO_ABERTAS, oportunidadesAbertasMax: DUAS_ABERTAS },
@@ -557,6 +601,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
         fields: { oportunidadesAbertasMin: ['O mínimo não pode ser maior que o máximo'] },
       }),
     );
+
     // Zero é um filtro de verdade (quem não tem nenhuma aberta).
     expect(doCiclo({ oportunidadesAbertasMax: 0 })).toHaveLength(1);
   });
@@ -565,6 +610,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
     const condicoes = montarCondicoes({ cicloDeVida: ['cliente'] }, CAMPOS, {
       pipelinesOcultos: [OCULTO],
     });
+
     // Situação, pessoa visível e o ciclo.
     expect(condicoes).toHaveLength(COM_PESSOA_VISIVEL);
     expect(condicoes[2].sql).toContain('d.pipeline_id <> ALL(?::uuid[])');
@@ -575,6 +621,7 @@ describe('filtros do ciclo de vida (FC4)', () => {
     const condicoes = montarCondicoes({ oportunidadesAbertasMin: 1 }, CAMPOS, {
       ocultosDoCiclo: [OCULTO],
     });
+
     // Situação e o ciclo.
     expect(condicoes).toHaveLength(DE_E_ATE);
     expect(condicoes[1].values).toContainEqual([OCULTO]);

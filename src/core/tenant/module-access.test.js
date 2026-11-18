@@ -1,11 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
+
 import {
-  moduloAtivo,
-  invalidarAcessoModulo,
   exigirModuloAtivo,
+  invalidarAcessoModulo,
   listarModulosAtivos,
+  moduloAtivo,
 } from './module-access.js';
 
 const findMany = vi.fn();
@@ -36,9 +38,11 @@ describe('moduloAtivo', () => {
     findMany.mockResolvedValue(contratados(['crm']));
     await expect(moduloAtivo(TENANT_A, 'crm')).resolves.toBe(true);
     await expect(moduloAtivo(TENANT_A, 'agendamento')).resolves.toBe(false);
+
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT_A, disabledAt: null } }),
     );
+
     expect(getAdminClient).toHaveBeenCalled();
   });
 
@@ -69,7 +73,9 @@ describe('moduloAtivo', () => {
 describe('exigirModuloAtivo', () => {
   it('lança 403 MODULE_NOT_ENABLED quando o tenant não contratou', async () => {
     findMany.mockResolvedValue([]);
+
     const hook = exigirModuloAtivo('crm');
+
     await expect(hook({ tenantContext: { tenantId: TENANT_A } })).rejects.toMatchObject({
       code: 'MODULE_NOT_ENABLED',
     });
@@ -77,6 +83,7 @@ describe('exigirModuloAtivo', () => {
 
   it('deixa passar quando o módulo está ativo', async () => {
     findMany.mockResolvedValue(contratados(['crm']));
+
     await expect(
       exigirModuloAtivo('crm')({ tenantContext: { tenantId: TENANT_A } }),
     ).resolves.toBeUndefined();
@@ -87,6 +94,7 @@ describe('listarModulosAtivos', () => {
   it('devolve só as chaves dos módulos não desligados', async () => {
     findMany.mockResolvedValue(contratados(['crm', 'kanban_universal']));
     await expect(listarModulosAtivos(TENANT_A)).resolves.toEqual(['crm', 'kanban_universal']);
+
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT_A, disabledAt: null } }),
     );

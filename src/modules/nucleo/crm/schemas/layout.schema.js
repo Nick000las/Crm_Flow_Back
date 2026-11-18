@@ -1,5 +1,11 @@
+/**
+ * @file Valida a estrutura de entrada de layout, na área de CRM, antes da execução dos casos de
+ * uso.
+ */
 import { z } from 'zod';
+
 import { TEXT_LIMITS } from '#shared/constants/index.js';
+
 import { LIMITES_LAYOUT } from '../constants.js';
 
 // Forma do layout (M4). Se cada referência é um campo ativo e permitido é

@@ -1,4 +1,8 @@
 /**
+ * @file Códigos públicos e estáveis do contrato HTTP. Mensagens podem evoluir; integrações e
+ * interfaces devem tomar decisões apenas com base nestes códigos e no status HTTP.
+ */
+/**
  * Códigos públicos e estáveis do contrato HTTP.
  *
  * Mensagens podem evoluir; integrações e interfaces devem tomar decisões
@@ -14,6 +18,7 @@ export const ERROR_CODES = Object.freeze({
   AUTH_INVITE_NOT_FOUND: 'AUTH_INVITE_NOT_FOUND',
   AUTH_CODE_RATE_LIMITED: 'AUTH_CODE_RATE_LIMITED',
   AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  AUTH_INVALID_RECOVERY_CODE: 'AUTH_INVALID_RECOVERY_CODE',
   AUTH_INVALID_ACTIVATION_CODE: 'AUTH_INVALID_ACTIVATION_CODE',
   AUTH_INVALID_ACTIVATION_TOKEN: 'AUTH_INVALID_ACTIVATION_TOKEN',
   AUTH_INVALID_MFA_CODE: 'AUTH_INVALID_MFA_CODE',

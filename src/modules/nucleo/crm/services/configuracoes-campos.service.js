@@ -1,4 +1,10 @@
-import { erroDeValidacao, erroNaoEncontrado, erroDeConflito } from '#core/errors/app-error.js';
+/**
+ * @file SERVICE: área Configurações → Campos (docs/produto/crm-pessoas-e-campos.md, M2), sobre
+ * `crm_field`. Toda regra de capacidade (`canHide`/`canMakeOptional`/`canRename`) é validada
+ * aqui; a tela só reflete.
+ */
+import { erroDeConflito, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   atualizarCampoConfigurado,
   buscarCamposDoTenant,
@@ -44,6 +50,7 @@ const CONTRATO_POR_CHAVE = new Map(CAMPOS_SISTEMA.map((campo) => [campo.systemKe
 export async function listarConfiguracaoCampos(tenantId) {
   const linhas = await garantirCamposSistema(tenantId);
   const { listas } = await obterSchemaCampos(tenantId);
+
   return linhas
     .filter(
       (linha) =>
@@ -127,7 +134,10 @@ function opcoesAtivas(listas, kind) {
 export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
   const campos = await listarConfiguracaoCampos(tenantId);
   const campo = campos.find((item) => item.id === fieldId);
-  if (!campo) throw campoNaoEncontrado();
+
+  if (!campo) {
+    throw campoNaoEncontrado();
+  }
 
   const label = resolverLabel(campo, mudancas.label, campos);
 
@@ -140,6 +150,7 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
   }
 
   const visibilidade = { ...campo.visibilidade, ...mudancas.visibilidade };
+
   if (!campo.capacidades.canHide && Object.values(visibilidade).some((visivel) => !visivel)) {
     throw erroDeValidacao('visibilidade', `"${campo.label}" não pode ser ocultado`);
   }
@@ -149,6 +160,7 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
   }
 
   const obrigatorio = mudancas.obrigatorio ?? campo.obrigatorio;
+
   if (obrigatorio && !visibilidade[CONTEXTOS_VISIBILIDADE.CRIACAO]) {
     throw erroDeValidacao(
       'visibilidade',
@@ -162,9 +174,11 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
     isSensitive: mudancas.sensivel,
     visibilidade: mudancas.visibilidade,
   });
+
   await invalidarSchemaCampos(tenantId);
 
   const atualizado = (await listarConfiguracaoCampos(tenantId)).find((item) => item.id === fieldId);
+
   return /** @type {CampoConfigurado} */ (atualizado);
 }
 
@@ -175,13 +189,19 @@ export async function atualizarConfiguracaoCampo(tenantId, fieldId, mudancas) {
  * @returns {string | undefined} o label a gravar (`undefined` = não muda)
  */
 function resolverLabel(campo, label, campos) {
-  if (label === undefined) return undefined;
+  if (label === undefined) {
+    return undefined;
+  }
 
   if (!campo.capacidades.canRename) {
     throw erroDeValidacao('label', `"${campo.label}" não pode ser renomeado`);
   }
+
   if (label === null) {
-    if (campo.labelPadrao === null) throw erroDeValidacao('label', 'Informe o nome do campo');
+    if (campo.labelPadrao === null) {
+      throw erroDeValidacao('label', 'Informe o nome do campo');
+    }
+
     return campo.labelPadrao;
   }
 
@@ -199,14 +219,19 @@ function resolverLabel(campo, label, campos) {
  */
 export function garantirLabelDisponivel(campos, label, ignorarId = null) {
   const novo = label.trim();
-  if (!novo) throw erroDeValidacao('label', 'Informe o nome do campo');
+
+  if (!novo) {
+    throw erroDeValidacao('label', 'Informe o nome do campo');
+  }
 
   const repetido = campos.some(
     (outro) => outro.id !== ignorarId && outro.label.trim().toLowerCase() === novo.toLowerCase(),
   );
+
   if (repetido) {
     throw erroDeConflito('label', 'Já existe um campo com esse nome');
   }
+
   return novo;
 }
 
@@ -226,12 +251,14 @@ export async function reordenarCampos(tenantId, ids) {
 
   const desconhecido = ids.find((id) => !esperados.has(id));
   const faltando = campos.find((campo) => !recebidos.has(campo.id));
+
   if (desconhecido || faltando || recebidos.size !== ids.length) {
     throw erroDeValidacao('ids', 'Envie todos os campos, cada um uma única vez, na ordem desejada');
   }
 
   await reordenarCamposRepository(tenantId, ids);
   await invalidarSchemaCampos(tenantId);
+
   return listarConfiguracaoCampos(tenantId);
 }
 
@@ -264,7 +291,9 @@ export async function restaurarOrdemPadrao(tenantId) {
     tenantId,
     [...sistema, ...personalizados].map((linha) => linha.id),
   );
+
   await invalidarSchemaCampos(tenantId);
+
   return listarConfiguracaoCampos(tenantId);
 }
 

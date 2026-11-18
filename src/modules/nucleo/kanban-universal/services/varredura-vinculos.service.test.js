@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { registrarModulos } from '#core/registry/modules.js';
 import { listarTenantsDoModulo } from '#core/tenant/module-access.js';
+
 import { aplicarVarredura, listarEntidadesVinculadas } from '../adapters/vinculos.repository.js';
 import { VINCULO } from '../constants.js';
 import { criarModuloFalso } from '../testing/provedor-falso.js';
 import { classificar, varrerVinculos } from './varredura-vinculos.service.js';
 
 vi.mock('#core/tenant/module-access.js', () => ({ listarTenantsDoModulo: vi.fn() }));
-vi.mock('../adapters/manutencao-queue.repository.js', () => ({ agendarVarreduraDiaria: vi.fn() }));
+vi.mock('../adapters/manutencao-queue.adapter.js', () => ({ agendarVarreduraDiaria: vi.fn() }));
+
 vi.mock('../adapters/vinculos.repository.js', () => ({
   aplicarVarredura: vi.fn(),
   listarEntidadesVinculadas: vi.fn(),
@@ -50,6 +53,7 @@ describe('varrerVinculos', () => {
       repontados: 1,
       falhas: [],
     });
+
     expect(aplicarVarredura).toHaveBeenCalledWith('t1', TIPO, {
       orfaos: ['a'],
       trocas: [{ de: 'c', para: 'd' }],
@@ -65,6 +69,7 @@ describe('varrerVinculos', () => {
 
   it('percorre os lotes até acabar', async () => {
     const lote = Array.from({ length: VINCULO.LOTE_VARREDURA }, (_, indice) => `id-${indice}`);
+
     vi.mocked(listarEntidadesVinculadas).mockResolvedValueOnce(lote).mockResolvedValueOnce(['z']);
     resolverCom({});
 
@@ -76,9 +81,11 @@ describe('varrerVinculos', () => {
 
   it('falha em um tenant não para os outros', async () => {
     vi.mocked(listarTenantsDoModulo).mockResolvedValue(['t1', 't2']);
+
     vi.mocked(listarEntidadesVinculadas)
       .mockRejectedValueOnce(new Error('caiu'))
       .mockResolvedValueOnce(['a']);
+
     resolverCom({ a: null });
 
     const relatorio = await varrerVinculos();

@@ -1,5 +1,10 @@
+/**
+ * @file ADAPTER: `crm_lead_event` (M6) — append-only (trigger no banco).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import {
   CAMPO_PERSONALIZADO_NO_DIFF,
   CAMPO_RESPONSAVEL_NO_DIFF,
@@ -26,11 +31,17 @@ import {
  */
 export function inserirEvento(tx, tenantId, leadId, evento) {
   return tx.$executeRaw`
-    INSERT INTO modulo_crm.crm_lead_event (tenant_id, lead_id, tipo, autor_id, diff, detalhes)
-    VALUES (
-      ${tenantId}::uuid, ${leadId}::uuid, ${evento.tipo}, ${evento.autorId ?? null}::uuid,
-      ${JSON.stringify(evento.diff ?? [])}::jsonb, ${JSON.stringify(evento.detalhes ?? {})}::jsonb
-    )
+    INSERT INTO
+      modulo_crm.crm_lead_event (tenant_id, lead_id, tipo, autor_id, diff, detalhes)
+    VALUES
+      (
+        ${tenantId}::uuid,
+        ${leadId}::uuid,
+        ${evento.tipo},
+        ${evento.autorId ?? null}::uuid,
+        ${JSON.stringify(evento.diff ?? [])}::jsonb,
+        ${JSON.stringify(evento.detalhes ?? {})}::jsonb
+      )
   `;
 }
 
@@ -69,6 +80,7 @@ export function listarEventosDoLead(
   { limite, offset, categorias = [], visiveis, ocultos = [] },
 ) {
   const condicoes = [Prisma.sql`e.tenant_id = ${tenantId}::uuid AND e.lead_id = ${leadId}::uuid`];
+
   if (visiveis) {
     condicoes.push(Prisma.sql`(
       e.tipo <> ALL(${[...TIPOS_SO_DIFF]}::text[])
@@ -79,31 +91,55 @@ export function listarEventosDoLead(
       )
     )`);
   }
+
   if (ocultos.length > 0) {
     condicoes.push(
       Prisma.sql`COALESCE(NOT (e.detalhes->>'pipelineId' = ANY(${ocultos}::text[])), true)`,
     );
   }
+
   const predicados = categorias
     .map((categoria) => PREDICADO_DA_CATEGORIA[categoria])
     .filter(Boolean);
-  if (predicados.length > 0) condicoes.push(Prisma.sql`(${Prisma.join(predicados, ' OR ')})`);
+
+  if (predicados.length > 0) {
+    condicoes.push(Prisma.sql`(${Prisma.join(predicados, ' OR ')})`);
+  }
+
   const where = Prisma.join(condicoes, ' AND ');
 
   return getTenantClient(tenantId, async (tx) => {
     const [contagem] = await tx.$queryRaw`
-      SELECT count(*)::int AS total
-      FROM modulo_crm.crm_lead_event e
-      WHERE ${where}
+      SELECT
+        count(*)::int AS total
+      FROM
+        modulo_crm.crm_lead_event e
+      WHERE
+        ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT e.id, e.tipo, e.autor_id, u.nome AS autor_nome, e.diff, e.detalhes, e.created_at
-      FROM modulo_crm.crm_lead_event e
-      LEFT JOIN usuarios u ON u.id = e.autor_id
-      WHERE ${where}
-      ORDER BY e.created_at DESC, e.id DESC
-      LIMIT ${limite} OFFSET ${offset}
+      SELECT
+        e.id,
+        e.tipo,
+        e.autor_id,
+        u.nome AS autor_nome,
+        e.diff,
+        e.detalhes,
+        e.created_at
+      FROM
+        modulo_crm.crm_lead_event e
+        LEFT JOIN usuarios u ON u.id = e.autor_id
+      WHERE
+        ${where}
+      ORDER BY
+        e.created_at DESC,
+        e.id DESC
+      LIMIT
+        ${limite}
+      OFFSET
+        ${offset}
     `;
+
     return { itens, total: contagem.total };
   });
 }

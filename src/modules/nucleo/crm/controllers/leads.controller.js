@@ -1,37 +1,43 @@
+/**
+ * @file CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`. O papel do token vai pros
+ * services (`{ papel: role }`): com a flag `crm.permissoes` (M13), o OPERADOR não lê campo
+ * oculto nem escreve campo "só ver"/oculto. DONO e MASTER ignoram.
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { sendSuccess } from '#shared/http/response.js';
+
+import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
+import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
 import {
-  buscarLeadFormatado,
-  registrarNovoLead,
-  atualizarLeadExistente,
-  checarDuplicados,
-  listarCamposDoTenant,
-  pesquisarLeads,
-} from '../services/leads.service.js';
-import {
-  criarLeadBodySchema,
   atualizarLeadBodySchema,
   checarDuplicadosBodySchema,
+  criarLeadBodySchema,
   leadIdParamSchema,
   mesclarLeadsBodySchema,
 } from '../schemas/leads.schema.js';
+import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
 import {
-  pesquisarLeadsBodySchema,
   listarLeadsQuerySchema,
+  pesquisarLeadsBodySchema,
 } from '../schemas/leads-search.schema.js';
-import { contextoCamposQuerySchema } from '../schemas/configuracoes.schema.js';
 import {
   arquivarLead,
   desarquivarLead,
   excluirLead,
   restaurarLead,
 } from '../services/arquivo.service.js';
-import { mesclarLeads } from '../services/mesclagem.service.js';
+import {
+  atualizarLeadExistente,
+  buscarLeadFormatado,
+  checarDuplicados,
+  listarCamposDoTenant,
+  pesquisarLeads,
+  registrarNovoLead,
+} from '../services/leads.service.js';
 import { editarLeadsEmMassa } from '../services/leads-bulk.service.js';
-import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
-import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
+import { mesclarLeads } from '../services/mesclagem.service.js';
 
 /**
  * CONTROLLER: HTTP fino. NUNCA importa nada de `adapters/`.
@@ -46,6 +52,7 @@ export function registrarRotasLeads(app) {
     const { tenantId, role } = req.tenantContext;
     // Mesma implementação do /search (sem filtro), paginada.
     const paginacao = listarLeadsQuerySchema.parse(req.query);
+
     return sendSuccess(
       reply,
       await pesquisarLeads(tenantId, { filtros: [], paginacao }, { papel: role }),
@@ -56,6 +63,7 @@ export function registrarRotasLeads(app) {
     const { tenantId, userId, role } = req.tenantContext;
     const body = criarLeadBodySchema.parse(req.body);
     const lead = await registrarNovoLead(tenantId, body, userId, { papel: role });
+
     return sendSuccess(reply, lead, HTTP_STATUS.CREATED);
   });
 
@@ -68,6 +76,7 @@ export function registrarRotasLeads(app) {
   app.get('/crm/leads/fields', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const { contexto } = contextoCamposQuerySchema.parse(req.query);
+
     return sendSuccess(reply, await listarCamposDoTenant(tenantId, contexto, { papel: role }));
   });
 
@@ -76,6 +85,7 @@ export function registrarRotasLeads(app) {
   app.post('/crm/leads/search', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const body = pesquisarLeadsBodySchema.parse(req.body ?? {});
+
     return sendSuccess(reply, await pesquisarLeads(tenantId, body, { papel: role }));
   });
 
@@ -84,6 +94,7 @@ export function registrarRotasLeads(app) {
   app.post('/crm/leads/duplicados', async (req, reply) => {
     const { tenantId } = req.tenantContext;
     const body = checarDuplicadosBodySchema.parse(req.body ?? {});
+
     return sendSuccess(reply, await checarDuplicados(tenantId, body));
   });
 
@@ -95,6 +106,7 @@ export function registrarRotasLeads(app) {
     async (req, reply) => {
       const { tenantId, userId } = req.tenantContext;
       const body = mesclarLeadsBodySchema.parse(req.body);
+
       return sendSuccess(reply, await mesclarLeads(tenantId, body, userId));
     },
   );
@@ -107,6 +119,7 @@ export function registrarRotasLeads(app) {
     async (req, reply) => {
       const { tenantId, userId, role } = req.tenantContext;
       const body = editarEmMassaBodySchema.parse(req.body);
+
       return sendSuccess(reply, await editarLeadsEmMassa(tenantId, body, userId, { papel: role }));
     },
   );
@@ -114,6 +127,7 @@ export function registrarRotasLeads(app) {
   app.get('/crm/leads/:id', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await buscarLeadFormatado(tenantId, leadId, { papel: role }));
   });
 
@@ -121,6 +135,7 @@ export function registrarRotasLeads(app) {
     const { tenantId, userId, role } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
     const body = atualizarLeadBodySchema.parse(req.body);
+
     return sendSuccess(
       reply,
       await atualizarLeadExistente(tenantId, leadId, body, userId, { papel: role }),
@@ -132,6 +147,7 @@ export function registrarRotasLeads(app) {
   app.delete('/crm/leads/:id', async (req, reply) => {
     const { tenantId, userId } = req.tenantContext;
     const { id: leadId } = leadIdParamSchema.parse(req.params);
+
     return sendSuccess(reply, await excluirLead(tenantId, leadId, userId));
   });
 
@@ -142,10 +158,12 @@ export function registrarRotasLeads(app) {
     ['desarquivar', desarquivarLead],
     ['restaurar', restaurarLead],
   ];
+
   for (const [acao, executar] of acoes) {
     app.post(`/crm/leads/:id/${acao}`, comArquivo, async (req, reply) => {
       const { tenantId, userId, role } = req.tenantContext;
       const { id: leadId } = leadIdParamSchema.parse(req.params);
+
       return sendSuccess(reply, await executar(tenantId, leadId, userId, { papel: role }));
     });
   }

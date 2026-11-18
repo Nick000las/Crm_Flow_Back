@@ -1,7 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
 import js from '@eslint/js';
+import prettier from 'eslint-config-prettier';
 import boundaries from 'eslint-plugin-boundaries';
+
+import shared from './eslint.rules.js';
+import project from './tooling/eslint/index.js';
 
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 
@@ -218,6 +223,18 @@ export default [
       ecmaVersion: 2023,
       sourceType: 'module',
       globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
+    },
+  },
+  prettier,
+  shared,
+  {
+    files: ['src/**/*.js'],
+    ignores: ['**/*.test.js'],
+    plugins: { project },
+    rules: {
+      'project/file-purpose': 'error',
+      'project/layers': 'error',
+      'project/sql-format': 'error',
     },
   },
 ];

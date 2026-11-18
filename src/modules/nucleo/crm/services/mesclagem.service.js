@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: mesclagem de dois leads (M7).
+ */
 import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import { mesclarLeads as mesclarLeadsRepository } from '../adapters/leads.repository.js';
 import { CAMPOS_COMERCIAIS, CAMPOS_SISTEMA, PROPRIEDADES_NO_HISTORICO } from '../constants.js';
 import { obterSchemaCampos } from './field-schema.service.js';
@@ -29,8 +33,10 @@ const CHAVES_AUTOMATICAS = new Set(['tags', 'ultimaInteracaoEm', ...CAMPOS_COMER
 
 /** NUMERIC vem como Decimal do driver; o UPDATE recebe número. */
 function paraEscrita(valor) {
-  if (valor && typeof valor === 'object' && typeof valor.toNumber === 'function')
+  if (valor && typeof valor === 'object' && typeof valor.toNumber === 'function') {
     return valor.toNumber();
+  }
+
   return valor ?? null;
 }
 
@@ -40,8 +46,14 @@ function paraEscrita(valor) {
  * @param {Lado | undefined} escolha
  */
 function escolher(doPrincipal, doSecundario, escolha) {
-  if (escolha === 'secundario') return doSecundario;
-  if (escolha === 'principal') return doPrincipal;
+  if (escolha === 'secundario') {
+    return doSecundario;
+  }
+
+  if (escolha === 'principal') {
+    return doPrincipal;
+  }
+
   return valorAusente(doPrincipal) ? doSecundario : doPrincipal;
 }
 
@@ -58,25 +70,35 @@ export function montarMesclagem(principal, secundario, escolhas = {}) {
   const dados = {};
 
   for (const campo of CAMPOS_SISTEMA) {
-    if (CHAVES_AUTOMATICAS.has(campo.systemKey)) continue;
+    if (CHAVES_AUTOMATICAS.has(campo.systemKey)) {
+      continue;
+    }
+
     dados[campo.systemKey] = paraEscrita(
       escolher(principal[campo.coluna], secundario[campo.coluna], escolhas[campo.systemKey]),
     );
   }
+
   for (const { campo, coluna } of PROPRIEDADES_NO_HISTORICO) {
-    if (CHAVES_AUTOMATICAS.has(campo)) continue;
+    if (CHAVES_AUTOMATICAS.has(campo)) {
+      continue;
+    }
+
     dados[campo] = paraEscrita(escolher(principal[coluna], secundario[coluna], escolhas[campo]));
   }
 
   dados.tags = [...new Set([...(principal.tags ?? []), ...(secundario.tags ?? [])])];
+
   const interacoes = [principal.ultima_interacao_em, secundario.ultima_interacao_em].filter(
     Boolean,
   );
+
   dados.ultimaInteracaoEm =
     interacoes.length > 0 ? new Date(Math.max(...interacoes.map(Number))) : null;
 
   const customPrincipal = principal.custom_fields ?? {};
   const customSecundario = secundario.custom_fields ?? {};
+
   dados.customFields = Object.fromEntries(
     [...new Set([...Object.keys(customPrincipal), ...Object.keys(customSecundario)])].map(
       (campoId) => [
@@ -85,6 +107,7 @@ export function montarMesclagem(principal, secundario, escolhas = {}) {
       ],
     ),
   );
+
   return dados;
 }
 
@@ -118,15 +141,22 @@ export async function mesclarLeads(
       autorId: usuarioId ?? null,
       montar: (principal, secundario) => {
         // M15: lead anonimizado não recebe nem doa dados (a transação desfaz).
-        if (principal.anonimizado_em || secundario.anonimizado_em)
+        if (principal.anonimizado_em || secundario.anonimizado_em) {
           throw leadAnonimizadoNaoEditavel();
+        }
+
         return montarMesclagem(principal, secundario, escolhasArmazenadas);
       },
       montarDiff: (antes, depois) => diffDoLead(antes, depois),
     },
   );
-  if (!mesclado) throw erroNaoEncontrado('Lead não encontrado');
+
+  if (!mesclado) {
+    throw erroNaoEncontrado('Lead não encontrado');
+  }
+
   // Pontuação (M14): o principal agora tem os dados escolhidos dos dois.
   await recalcularScoreDosLeads(tenantId, [principalId]);
+
   return buscarLeadFormatado(tenantId, principalId);
 }

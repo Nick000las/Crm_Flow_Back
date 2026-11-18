@@ -1,22 +1,26 @@
-import Fastify from 'fastify';
+/**
+ * @file Liga o serializador de requisição que não grava segredo da URL.
+ */
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import Fastify from 'fastify';
 import { Redis } from 'ioredis';
+
+import { MODULES } from '#api/modules.js';
+import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { registerAuthRoutes } from '#api/routes/auth.routes.js';
 import { registerHealthRoutes } from '#api/routes/health.routes.js';
-import { registerAdminTenantRoutes } from '#api/routes/admin-tenants.routes.js';
 import { registerNotificacoesRoutes } from '#api/routes/notificacoes.routes.js';
-import { MODULES } from '#api/modules.js';
-import { registerRealtime } from '#core/realtime/socket-server.js';
 import { registerJwt } from '#core/auth/plugin.js';
-import { encerrarCache } from '#core/cache/cache.js';
 import { authenticateHook } from '#core/auth/rbac.js';
+import { encerrarCache } from '#core/cache/cache.js';
 import { loadEnv, parseCorsOrigins } from '#core/config/env.js';
 import { disconnectDatabase } from '#core/db/tenantClient.js';
 import { AppError } from '#core/errors/app-error.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
 import { assertProvedoresValidos } from '#core/quadros/registro.js';
+import { registerRealtime } from '#core/realtime/socket-server.js';
 import { registrarModulos } from '#core/registry/modules.js';
 import { exigirModuloAtivo } from '#core/tenant/module-access.js';
 import { assertModule } from '#core/types/module.js';
@@ -28,6 +32,7 @@ export const PREFIXO_PUBLICO = '/public';
 
 /** Limite por IP em todo `/public`; cada rota pode somar o seu (ex.: por link). */
 const MAX_PUBLICO_POR_IP = 120;
+
 export const LIMITE_PUBLICO = Object.freeze({ POR_IP: MAX_PUBLICO_POR_IP, JANELA: '1 minute' });
 
 const REDIS_TIMEOUT_MS = 2000;
@@ -52,6 +57,7 @@ export async function buildApp(options = {}) {
   app.decorateRequest('tenantContext', null);
 
   app.register(cookie);
+
   app.register(cors, {
     origin: parseCorsOrigins(config.CORS_ORIGIN),
     credentials: true,
@@ -60,11 +66,13 @@ export async function buildApp(options = {}) {
     // /auth/mfa, /admin/tenants/:id) é barrado no preflight pelo navegador.
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
+
   registerJwt(app, config);
   registerErrorHandlers(app);
   await registerRealtime(app);
 
   const modules = MODULES.map(assertModule);
+
   assertUniqueModuleKeys(modules);
   assertProvedoresValidos(modules);
   // O core (provisionamento, flags, reconcile) lê a lista daqui — não
@@ -84,6 +92,7 @@ export async function buildApp(options = {}) {
 
   for (const module of modules) {
     app.log.info?.({ module: module.key }, `Registrando módulo: ${module.name}`);
+
     app.register(
       async (moduleScope) => {
         // Autenticação + módulo contratado valem pra TODA rota de módulo,
@@ -101,7 +110,9 @@ export async function buildApp(options = {}) {
     await encerrarCache();
     await disconnectDatabase();
   });
+
   await app.ready();
+
   return app;
 }
 
@@ -118,7 +129,10 @@ export async function buildApp(options = {}) {
  */
 async function registrarRotasPublicas(app, modules, config) {
   const comRotas = modules.filter((module) => module.registerPublicRoutes);
-  if (comRotas.length === 0) return;
+
+  if (comRotas.length === 0) {
+    return;
+  }
 
   await app.register(
     async (publico) => {
@@ -129,9 +143,13 @@ async function registrarRotasPublicas(app, modules, config) {
             maxRetriesPerRequest: 1,
           })
         : null;
+
       // Sem listener, erro de conexão do ioredis derruba o processo.
       redis?.on('error', (erro) => publico.log.warn({ err: erro }, 'Limite público sem Redis'));
-      if (redis) publico.addHook('onClose', async () => redis.disconnect());
+
+      if (redis) {
+        publico.addHook('onClose', async () => redis.disconnect());
+      }
 
       await publico.register(rateLimit, {
         global: true,
@@ -174,8 +192,13 @@ async function registrarRotasPublicas(app, modules, config) {
  */
 export function urlParaLog(url) {
   const [caminho] = url.split('?');
-  if (!caminho.startsWith(`${PREFIXO_PUBLICO}/`)) return url;
+
+  if (!caminho.startsWith(`${PREFIXO_PUBLICO}/`)) {
+    return url;
+  }
+
   const [, , recurso, ...resto] = caminho.split('/');
+
   return resto.length > 0 ? `${PREFIXO_PUBLICO}/${recurso}/[oculto]` : caminho;
 }
 
@@ -186,8 +209,12 @@ export function urlParaLog(url) {
  * @returns {boolean | object}
  */
 function comUrlSegura(logger) {
-  if (!logger) return logger;
+  if (!logger) {
+    return logger;
+  }
+
   const base = logger === true ? {} : /** @type {object} */ (logger);
+
   return {
     ...base,
     serializers: {
@@ -205,10 +232,12 @@ function comUrlSegura(logger) {
 /** @param {import('#core/types/module.js').Module[]} modules */
 function assertUniqueModuleKeys(modules) {
   const keys = new Set();
+
   for (const module of modules) {
     if (keys.has(module.key)) {
       throw new Error(`Módulo duplicado: "${module.key}".`);
     }
+
     keys.add(module.key);
   }
 }

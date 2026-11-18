@@ -1,20 +1,24 @@
-import {
-  moverFormulariosNaMesclagem,
-  revogarLinksAtivosDasPessoas,
-} from './crm-form-ciclo.repository.js';
+/**
+ * @file ADAPTER: único lugar deste módulo que chama getTenantClient.
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import {
   CAMADA_1_CAMPOS,
   CAMADA_2_CAMPOS,
   CAMPOS_COMERCIAIS,
-  TIPOS_EVENTO_LEAD,
   EVENTOS_PESSOA,
+  TIPOS_EVENTO_LEAD,
 } from '../constants.js';
+import {
+  moverFormulariosNaMesclagem,
+  revogarLinksAtivosDasPessoas,
+} from './crm-form-ciclo.repository.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
 import { colunasDoCiclo } from './crm-lead-ciclo.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
-import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 import { condicaoPessoaVisivel, fonteLeadsVisivel } from './crm-lead-read-model.js';
 import {
   criarOportunidadeDoLead,
@@ -23,6 +27,7 @@ import {
   moverOportunidades,
   restaurarOportunidadesDoLead,
 } from './crm-oportunidades.repository.js';
+import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 
 const FIRST_RESULT_INDEX = 0;
 const DOIS_LEADS = 2;
@@ -87,10 +92,15 @@ const COLUNAS_UUID = new Set(['usuarioResponsavelId']);
  */
 async function lerLead(tx, tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   const [lead] = await tx.$queryRaw`
-    SELECT ${colunasLeitura(inatividade, ocultos)}
-    FROM ${fonteLeadsVisivel(ocultos)} l
-    WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid
+    SELECT
+      ${colunasLeitura(inatividade, ocultos)}
+    FROM
+      ${fonteLeadsVisivel(ocultos)} l
+    WHERE
+      l.id = ${leadId}::uuid
+      AND l.tenant_id = ${tenantId}::uuid
   `;
+
   return lead;
 }
 
@@ -116,9 +126,14 @@ async function lerLead(tx, tenantId, leadId, { inatividade = null, ocultos = [] 
 export function buscarLeadPorId(tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   return getTenantClient(tenantId, async (tx) =>
     tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade, ocultos)}
-      FROM ${fonteLeadsVisivel(ocultos)} l
-      WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
+      SELECT
+        ${colunasLeitura(inatividade, ocultos)}
+      FROM
+        ${fonteLeadsVisivel(ocultos)} l
+      WHERE
+        l.id = ${leadId}::uuid
+        AND l.tenant_id = ${tenantId}::uuid
+        AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -147,17 +162,29 @@ export function buscarLeadsComFiltro(
 
   return getTenantClient(tenantId, async (tx) => {
     const [contagem] = await tx.$queryRaw`
-      SELECT COUNT(*)::int AS total
-      FROM ${fonte} l
-      WHERE ${where}
+      SELECT
+        COUNT(*)::int AS total
+      FROM
+        ${fonte} l
+      WHERE
+        ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade, ocultos)}
-      FROM ${fonte} l
-      WHERE ${where}
-      ORDER BY l.created_at DESC, l.id
-      LIMIT ${limite} OFFSET ${offset}
+      SELECT
+        ${colunasLeitura(inatividade, ocultos)}
+      FROM
+        ${fonte} l
+      WHERE
+        ${where}
+      ORDER BY
+        l.created_at DESC,
+        l.id
+      LIMIT
+        ${limite}
+      OFFSET
+        ${offset}
     `;
+
     return { itens, total: contagem.total };
   });
 }
@@ -172,11 +199,17 @@ export async function buscarPessoasVisiveis(tenantId, ids, ocultos) {
   const linhas = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT l.id::text FROM modulo_crm.leads l
-      WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ANY(${ids}::uuid[])
+      SELECT
+        l.id::text
+      FROM
+        modulo_crm.leads l
+      WHERE
+        l.tenant_id = ${tenantId}::uuid
+        AND l.id = ANY (${ids}::UUID[])
         AND ${condicaoPessoaVisivel(ocultos)}
     `,
   );
+
   return linhas.map((linha) => linha.id);
 }
 
@@ -198,24 +231,71 @@ export async function buscarPessoasVisiveis(tenantId, ids, ocultos) {
  */
 export function criarLead(tenantId, dados, historico, novaOportunidade, pipelineId) {
   const customFieldsJson = JSON.stringify(dados.customFields ?? {});
+
   return getTenantClient(tenantId, async (tx) => {
     const criado = await tx.$queryRaw`
-      INSERT INTO modulo_crm.leads (
-        tenant_id, nome, primeiro_nome, telefone, custom_fields, usuario_responsavel_id, assigned_by_rule_id,
-        email, fonte_lead, tags, ultima_interacao_em,
-        empresa, cargo, cpf, cnpj, cidade, uf, cep, endereco,
-        campanha_utm, lead_score, proximo_followup,
-        legal_basis, legal_basis_at, origem_registro, marketing_opt_out_at
-      )
-      VALUES (
-        ${tenantId}::uuid, ${dados.nome}, ${dados.primeiroNome ?? null}, ${dados.telefone ?? null}, ${customFieldsJson}::jsonb, ${dados.usuarioResponsavelId ?? null}::uuid, ${dados.atribuidoPorRegraId ?? null}::uuid,
-        ${dados.email ?? null}, ${dados.fonteLead ?? null}, ${dados.tags ?? null}, ${dados.ultimaInteracaoEm ?? null},
-        ${dados.empresa ?? null}, ${dados.cargo ?? null}, ${dados.cpf ?? null}, ${dados.cnpj ?? null}, ${dados.cidade ?? null}, ${dados.uf ?? null}, ${dados.cep ?? null}, ${dados.endereco ?? null},
-        ${dados.campanhaUtm ?? null}, ${dados.leadScore ?? null}, ${dados.proximoFollowup ?? null},
-        ${dados.baseLegal ?? null}, ${dados.baseLegalEm ?? null}, ${dados.origemRegistro ?? null}, ${dados.optOutMarketingEm ?? null}
-      )
-      RETURNING id
+      INSERT INTO
+        modulo_crm.leads (
+          tenant_id,
+          nome,
+          primeiro_nome,
+          telefone,
+          custom_fields,
+          usuario_responsavel_id,
+          assigned_by_rule_id,
+          email,
+          fonte_lead,
+          tags,
+          ultima_interacao_em,
+          empresa,
+          cargo,
+          cpf,
+          cnpj,
+          cidade,
+          uf,
+          cep,
+          endereco,
+          campanha_utm,
+          lead_score,
+          proximo_followup,
+          legal_basis,
+          legal_basis_at,
+          origem_registro,
+          marketing_opt_out_at
+        )
+      VALUES
+        (
+          ${tenantId}::uuid,
+          ${dados.nome},
+          ${dados.primeiroNome ?? null},
+          ${dados.telefone ?? null},
+          ${customFieldsJson}::jsonb,
+          ${dados.usuarioResponsavelId ?? null}::uuid,
+          ${dados.atribuidoPorRegraId ?? null}::uuid,
+          ${dados.email ?? null},
+          ${dados.fonteLead ?? null},
+          ${dados.tags ?? null},
+          ${dados.ultimaInteracaoEm ?? null},
+          ${dados.empresa ?? null},
+          ${dados.cargo ?? null},
+          ${dados.cpf ?? null},
+          ${dados.cnpj ?? null},
+          ${dados.cidade ?? null},
+          ${dados.uf ?? null},
+          ${dados.cep ?? null},
+          ${dados.endereco ?? null},
+          ${dados.campanhaUtm ?? null},
+          ${dados.leadScore ?? null},
+          ${dados.proximoFollowup ?? null},
+          ${dados.baseLegal ?? null},
+          ${dados.baseLegalEm ?? null},
+          ${dados.origemRegistro ?? null},
+          ${dados.optOutMarketingEm ?? null}
+        )
+      RETURNING
+        id
     `.then((rows) => rows[FIRST_RESULT_INDEX]);
+
     if (historico) {
       await inserirEvento(tx, tenantId, criado.id, {
         tipo: TIPOS_EVENTO_LEAD.CRIADO,
@@ -223,6 +303,7 @@ export function criarLead(tenantId, dados, historico, novaOportunidade, pipeline
         detalhes: historico.detalhes,
       });
     }
+
     await criarOportunidadeDoLead(
       tx,
       tenantId,
@@ -231,6 +312,7 @@ export function criarLead(tenantId, dados, historico, novaOportunidade, pipeline
       historico?.autorId ?? null,
       pipelineId,
     );
+
     return criado;
   });
 }
@@ -277,24 +359,43 @@ export function atualizarLead(
   { inatividade = null, oportunidade, ocultos = [], conferir, depoisDeGravar } = {},
 ) {
   const atribuicoes = montarAtribuicoes(dados);
+
   return getTenantClient(tenantId, async (tx) => {
     const [travado] = await tx.$queryRaw`
-      SELECT id::text, principal_deal_id::text, updated_at FROM modulo_crm.leads
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+      SELECT
+        id::text,
+        principal_deal_id::text,
+        updated_at
+      FROM
+        modulo_crm.leads
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NULL
         AND anonimizado_em IS NULL
       FOR UPDATE
     `;
-    if (!travado) return undefined;
+
+    if (!travado) {
+      return undefined;
+    }
+
     await conferir?.(travado, tx);
+
     const antes = historico ? await lerLead(tx, tenantId, leadId) : undefined;
 
     const [{ usuario_responsavel_id: responsavel }] = await tx.$queryRaw`
       UPDATE modulo_crm.leads
-      SET ${Prisma.join(atribuicoes, ', ')}
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
-      RETURNING usuario_responsavel_id::text
+      SET
+        ${Prisma.join(atribuicoes, ', ')}
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+      RETURNING
+        usuario_responsavel_id::text
     `;
     let pipelineId = null;
+
     if (oportunidade) {
       pipelineId = await gravarComercialDoLead(
         tx,
@@ -307,11 +408,14 @@ export function atualizarLead(
         },
       );
     }
+
     const depois = await lerLead(tx, tenantId, leadId, { inatividade, ocultos });
+
     await publicarEventoDaPessoa(tx, tenantId, leadId, EVENTOS_PESSOA.ATUALIZADA);
 
     if (historico) {
       const diff = historico.montarDiff(antes, depois);
+
       if (diff.length > 0) {
         await inserirEvento(tx, tenantId, leadId, {
           tipo: historico.tipo ?? TIPOS_EVENTO_LEAD.ATUALIZADO,
@@ -322,7 +426,9 @@ export function atualizarLead(
         });
       }
     }
+
     await depoisDeGravar?.(tx, depois);
+
     return depois;
   });
 }
@@ -338,7 +444,11 @@ export function montarAtribuicoes(dados) {
 
   for (const [chave, coluna] of Object.entries(COLUNAS_EDITAVEIS)) {
     const valor = dados[chave];
-    if (valor === undefined) continue;
+
+    if (valor === undefined) {
+      continue;
+    }
+
     atribuicoes.push(
       COLUNAS_UUID.has(chave)
         ? Prisma.sql`${Prisma.raw(coluna)} = ${valor}::uuid`
@@ -350,6 +460,7 @@ export function montarAtribuicoes(dados) {
     const entradas = Object.entries(dados.customFields);
     const definidos = Object.fromEntries(entradas.filter(([, valor]) => valor !== null));
     const removidos = entradas.filter(([, valor]) => valor === null).map(([chave]) => chave);
+
     atribuicoes.push(
       Prisma.sql`custom_fields = (custom_fields || ${JSON.stringify(definidos)}::jsonb) - ${removidos}::text[]`,
     );
@@ -362,6 +473,7 @@ export function montarAtribuicoes(dados) {
       Prisma.sql`legal_basis_at = CASE WHEN ${dados.baseLegal}::varchar IS NULL THEN NULL WHEN legal_basis IS DISTINCT FROM ${dados.baseLegal} THEN now() ELSE legal_basis_at END`,
     );
   }
+
   // Opt-out (M15): sim/não no payload; ligar de novo mantém a data da primeira vez.
   if (dados.optOutMarketing !== undefined && dados.optOutMarketingEm === undefined) {
     atribuicoes.push(
@@ -370,6 +482,7 @@ export function montarAtribuicoes(dados) {
   }
 
   atribuicoes.push(Prisma.sql`updated_at = now()`);
+
   return atribuicoes;
 }
 
@@ -385,21 +498,30 @@ export function moverParaLixeira(tenantId, leadId, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const [excluido] = await tx.$queryRaw`
       UPDATE modulo_crm.leads
-      SET deleted_at = now()
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
-      RETURNING id, deleted_at
+      SET
+        deleted_at = now()
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NULL
+      RETURNING
+        id,
+        deleted_at
     `;
+
     if (excluido) {
       await excluirOportunidadesDoLead(tx, tenantId, leadId, historico?.autorId ?? null);
       // FM6: pessoa na lixeira não responde formulário.
       await revogarLinksAtivosDasPessoas(tx, tenantId, [leadId]);
     }
+
     if (excluido && historico) {
       await inserirEvento(tx, tenantId, leadId, {
         tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
         autorId: historico.autorId,
       });
     }
+
     return excluido;
   });
 }
@@ -418,31 +540,56 @@ export function moverParaLixeira(tenantId, leadId, historico) {
 export function definirArquivamento(tenantId, leadId, arquivar, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const [atual] = await tx.$queryRaw`
-      SELECT id, archived_at FROM modulo_crm.leads
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+      SELECT
+        id,
+        archived_at
+      FROM
+        modulo_crm.leads
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NULL
       FOR UPDATE
     `;
-    if (!atual) return undefined;
-    if ((atual.archived_at !== null) === arquivar) return { id: atual.id };
+
+    if (!atual) {
+      return undefined;
+    }
+
+    if ((atual.archived_at !== null) === arquivar) {
+      return { id: atual.id };
+    }
 
     const valor = arquivar ? Prisma.sql`now()` : Prisma.sql`NULL`;
+
     await tx.$executeRaw`
       UPDATE modulo_crm.leads
-      SET archived_at = ${valor}, updated_at = now()
-      WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
+      SET
+        archived_at = ${valor},
+        updated_at = now()
+      WHERE
+        id = ${leadId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     // FM6: arquivar revoga os links ativos; desarquivar não os traz de volta.
-    if (arquivar) await revogarLinksAtivosDasPessoas(tx, tenantId, [leadId]);
+    if (arquivar) {
+      await revogarLinksAtivosDasPessoas(tx, tenantId, [leadId]);
+    }
+
     await publicarEventoDaPessoa(
       tx,
       tenantId,
       leadId,
       arquivar ? EVENTOS_PESSOA.ARQUIVADA : EVENTOS_PESSOA.DESARQUIVADA,
     );
+
     if (historico) {
       const tipo = arquivar ? TIPOS_EVENTO_LEAD.ARQUIVADO : TIPOS_EVENTO_LEAD.DESARQUIVADO;
+
       await inserirEvento(tx, tenantId, leadId, { tipo, autorId: historico.autorId });
     }
+
     return { id: atual.id };
   });
 }
@@ -460,27 +607,50 @@ export function definirArquivamento(tenantId, leadId, arquivar, historico) {
 export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
   return getTenantClient(tenantId, async (tx) => {
     const [restaurado] = await tx.$queryRaw`
-      WITH alvo AS (
-        SELECT id, deleted_at FROM modulo_crm.leads
-        WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
-          AND deleted_at IS NOT NULL AND deleted_at >= ${excluidoDesde}
-          AND mesclado_em_id IS NULL
-        FOR UPDATE
-      )
+      WITH
+        alvo AS (
+          SELECT
+            id,
+            deleted_at
+          FROM
+            modulo_crm.leads
+          WHERE
+            id = ${leadId}::uuid
+            AND tenant_id = ${tenantId}::uuid
+            AND deleted_at IS NOT NULL
+            AND deleted_at >= ${excluidoDesde}
+            AND mesclado_em_id IS NULL
+          FOR UPDATE
+        )
       UPDATE modulo_crm.leads l
-      SET deleted_at = NULL
-      FROM alvo WHERE l.id = alvo.id
-      RETURNING l.id, alvo.deleted_at::text AS excluido_em
+      SET
+        deleted_at = NULL
+      FROM
+        alvo
+      WHERE
+        l.id = alvo.id
+      RETURNING
+        l.id,
+        alvo.deleted_at::text AS excluido_em
     `;
+
     if (!restaurado) {
       // Descartado numa mesclagem (M7): os dados e o histórico já estão no outro lead.
       const [mesclado] = await tx.$queryRaw`
-        SELECT mesclado_em_id FROM modulo_crm.leads
-        WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
-          AND deleted_at >= ${excluidoDesde} AND mesclado_em_id IS NOT NULL
+        SELECT
+          mesclado_em_id
+        FROM
+          modulo_crm.leads
+        WHERE
+          id = ${leadId}::uuid
+          AND tenant_id = ${tenantId}::uuid
+          AND deleted_at >= ${excluidoDesde}
+          AND mesclado_em_id IS NOT NULL
       `;
+
       return mesclado ? { mescladoEmId: mesclado.mesclado_em_id } : undefined;
     }
+
     await restaurarOportunidadesDoLead(
       tx,
       tenantId,
@@ -488,12 +658,14 @@ export function restaurarDaLixeira(tenantId, leadId, excluidoDesde, historico) {
       restaurado.excluido_em,
       historico?.autorId ?? null,
     );
+
     if (historico) {
       await inserirEvento(tx, tenantId, leadId, {
         tipo: TIPOS_EVENTO_LEAD.RESTAURADO,
         autorId: historico.autorId,
       });
     }
+
     return { id: restaurado.id };
   });
 }
@@ -528,37 +700,63 @@ export function mesclarLeads(
 ) {
   return getTenantClient(tenantId, async (tx) => {
     const travados = await tx.$queryRaw`
-      SELECT id FROM modulo_crm.leads
-      WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+      SELECT
+        id
+      FROM
+        modulo_crm.leads
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NULL
         AND id IN (${principalId}::uuid, ${secundarioId}::uuid)
-      ORDER BY id
+      ORDER BY
+        id
       FOR UPDATE
     `;
-    if (travados.length !== DOIS_LEADS) return undefined;
+
+    if (travados.length !== DOIS_LEADS) {
+      return undefined;
+    }
+
     const principal = await lerLead(tx, tenantId, principalId);
     const secundario = await lerLead(tx, tenantId, secundarioId);
 
     const dados = montar(principal, secundario);
 
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_activity SET lead_id = ${principalId}::uuid
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${secundarioId}::uuid
+      UPDATE modulo_crm.crm_activity
+      SET
+        lead_id = ${principalId}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ${secundarioId}::uuid
     `;
+
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_lead_event SET lead_id = ${principalId}::uuid
-      WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${secundarioId}::uuid
+      UPDATE modulo_crm.crm_lead_event
+      SET
+        lead_id = ${principalId}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lead_id = ${secundarioId}::uuid
     `;
 
     await tx.$executeRaw`
       UPDATE modulo_crm.leads
-      SET ${Prisma.join(montarAtribuicoes(dados), ', ')}
-      WHERE id = ${principalId}::uuid AND tenant_id = ${tenantId}::uuid
+      SET
+        ${Prisma.join(montarAtribuicoes(dados), ', ')}
+      WHERE
+        id = ${principalId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     await moverOportunidades(tx, tenantId, { principalId, secundarioId }, autorId);
     // FM6: links, respostas e alertas vão junto; dois ativos do mesmo formulário → fica o mais novo.
     await moverFormulariosNaMesclagem(tx, tenantId, { principalId, secundarioId });
+
     const depois = await lerLead(tx, tenantId, principalId);
+
     await publicarEventoDaPessoa(tx, tenantId, principalId, EVENTOS_PESSOA.MESCLADA);
+
     await inserirEvento(tx, tenantId, principalId, {
       tipo: TIPOS_EVENTO_LEAD.MESCLADO,
       autorId,
@@ -568,14 +766,20 @@ export function mesclarLeads(
 
     await tx.$executeRaw`
       UPDATE modulo_crm.leads
-      SET deleted_at = now(), mesclado_em_id = ${principalId}::uuid
-      WHERE id = ${secundarioId}::uuid AND tenant_id = ${tenantId}::uuid
+      SET
+        deleted_at = now(),
+        mesclado_em_id = ${principalId}::uuid
+      WHERE
+        id = ${secundarioId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     await inserirEvento(tx, tenantId, secundarioId, {
       tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
       autorId,
       detalhes: { mescladoEmId: principalId },
     });
+
     return depois;
   });
 }
@@ -594,7 +798,10 @@ export function purgarLixeira(tenantId, excluidoAntesDe) {
     tenantId,
     (tx) => tx.$executeRaw`
       DELETE FROM modulo_crm.leads
-      WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NOT NULL AND deleted_at < ${excluidoAntesDe}
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NOT NULL
+        AND deleted_at < ${excluidoAntesDe}
     `,
   );
 }

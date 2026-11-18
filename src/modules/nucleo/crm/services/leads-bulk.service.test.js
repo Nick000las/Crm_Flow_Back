@@ -1,15 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { erroDeValidacao } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
+import { buscarLeadPorId } from '../adapters/leads.repository.js';
+import { EDICAO_EM_MASSA } from '../constants.js';
+import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
+import { atualizarLeadExistente } from './leads.service.js';
 import { alteracoesDoLead, editarLeadsEmMassa } from './leads-bulk.service.js';
 import { buscadorDeTags } from './listas.service.js';
-import { atualizarLeadExistente } from './leads.service.js';
-import { buscarLeadPorId } from '../adapters/leads.repository.js';
-import { editarEmMassaBodySchema } from '../schemas/leads-bulk.schema.js';
-import { EDICAO_EM_MASSA } from '../constants.js';
 
 vi.mock('../adapters/leads.repository.js', () => ({ buscarLeadPorId: vi.fn() }));
 vi.mock('./leads.service.js', () => ({ atualizarLeadExistente: vi.fn() }));
+
 vi.mock('./field-schema.service.js', () => ({
   obterSchemaCampos: vi.fn().mockResolvedValue({
     listas: {
@@ -59,9 +62,12 @@ const LEADS = {
 beforeEach(() => {
   vi.clearAllMocks();
   buscarLeadPorId.mockImplementation(async (_tenant, id) => LEADS[id]);
+
   atualizarLeadExistente.mockImplementation(async (_tenant, id) => {
-    if (id === LEAD_REGRA)
+    if (id === LEAD_REGRA) {
       throw erroDeValidacao('motivoPerda', '"Motivo da perda" é obrigatório neste status');
+    }
+
     return { id };
   });
 });
@@ -80,6 +86,7 @@ describe('editarLeadsEmMassa', () => {
       inalterados: 1,
       falhas: FALHAS_NO_LOTE,
     });
+
     expect(relatorio.resultados).toEqual([
       { id: LEAD_OK, ok: true },
       {
@@ -97,6 +104,7 @@ describe('editarLeadsEmMassa', () => {
       },
       { id: LEAD_IGUAL, ok: true, inalterado: true },
     ]);
+
     // Mesmo caminho do PUT, com quem editou de autor; o lead sem mudança nem chega lá.
     expect(atualizarLeadExistente).toHaveBeenCalledWith(
       TENANT,
@@ -105,6 +113,7 @@ describe('editarLeadsEmMassa', () => {
       USUARIO,
       {},
     );
+
     expect(atualizarLeadExistente).not.toHaveBeenCalledWith(
       TENANT,
       LEAD_IGUAL,
@@ -116,6 +125,7 @@ describe('editarLeadsEmMassa', () => {
 
   it('erro que não é de negócio sai genérico e não para os outros', async () => {
     atualizarLeadExistente.mockRejectedValueOnce(new Error('connection reset'));
+
     const relatorio = await editarLeadsEmMassa(
       TENANT,
       { ids: [LEAD_OK, LEAD_REGRA], alteracoes: { status: 'ganho' } },
@@ -125,6 +135,7 @@ describe('editarLeadsEmMassa', () => {
     expect(relatorio.resultados[0].erro).toEqual(
       expect.objectContaining({ code: 'INTERNAL_ERROR' }),
     );
+
     expect(relatorio.resultados[0].erro.message).not.toContain('connection');
     expect(atualizarLeadExistente).toHaveBeenCalledTimes(LEADS_COM_MUDANCA);
   });
@@ -142,6 +153,7 @@ describe('alteracoesDoLead (tags)', () => {
       { tags: { adicionar: ['b2b', 'Evento SP'], remover: ['VIP'] } },
       encontrarTag,
     );
+
     expect(input).toEqual({ tags: ['b2b', 'Evento SP'] });
   });
 
@@ -165,6 +177,7 @@ describe('alteracoesDoLead (tags)', () => {
     ).toEqual({
       usuarioResponsavelId: null,
     });
+
     expect(
       alteracoesDoLead(
         { usuario_responsavel_id: USUARIO },
@@ -181,14 +194,17 @@ describe('editarEmMassaBodySchema', () => {
       editarEmMassaBodySchema.safeParse({ ids: [LEAD_OK, LEAD_OK], alteracoes: { status: 'novo' } })
         .success,
     ).toBe(false);
+
     expect(
       editarEmMassaBodySchema.safeParse({ ids: [LEAD_OK], alteracoes: { tags: { adicionar: [] } } })
         .success,
     ).toBe(false);
+
     const demais = Array.from(
       { length: EDICAO_EM_MASSA.MAX_LEADS + 1 },
       (_, indice) => `00000000-0000-0000-0000-${String(indice).padStart(DIGITOS_SUFIXO_UUID, '0')}`,
     );
+
     expect(
       editarEmMassaBodySchema.safeParse({ ids: demais, alteracoes: { status: 'novo' } }).success,
     ).toBe(false);

@@ -1,3 +1,8 @@
+/**
+ * @file Regras que olham todos os módulos juntos, conferidas ao subir: tipo repetido deixaria
+ * um provedor inalcançável, e quadro sem provedor da sua entidade só falharia na primeira
+ * requisição.
+ */
 import { modulosRegistrados } from '#core/registry/modules.js';
 
 /**
@@ -64,16 +69,20 @@ export function assertProvedoresValidos(modulos) {
   const entidades = modulos.flatMap((modulo) => modulo.entidades ?? []);
 
   const boardTypeRepetido = primeiroRepetido(quadros.map((quadro) => quadro.boardType));
+
   if (boardTypeRepetido) {
     throw new Error(`Provedor de quadro duplicado: "${boardTypeRepetido}".`);
   }
+
   const tipoRepetido = primeiroRepetido(entidades.map((entidade) => entidade.tipo));
+
   if (tipoRepetido) {
     throw new Error(`Provedor de entidade duplicado: "${tipoRepetido}".`);
   }
 
   const tipos = new Set(entidades.map((entidade) => entidade.tipo));
   const semEntidade = quadros.find((quadro) => !tipos.has(quadro.entidadeTipo));
+
   if (semEntidade) {
     throw new Error(
       `Quadro "${semEntidade.boardType}" usa a entidade "${semEntidade.entidadeTipo}", sem provedor registrado.`,

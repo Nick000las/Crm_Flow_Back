@@ -1,3 +1,7 @@
+/**
+ * @file Página pública (FM3). O token é base64url de 32 bytes: 43 caracteres. Qualquer outra
+ * forma é recusada antes de ir ao banco.
+ */
 import { TIPOS_CAMPO } from './campos.js';
 
 /**

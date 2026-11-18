@@ -1,5 +1,11 @@
+/**
+ * @file Filtro de leads sem paginação — mesmo formato salvo em `crm_filter_views.filtros` e
+ * aceito por POST /crm/export.
+ */
 import { z } from 'zod';
+
 import { PAGINATION, TEXT_LIMITS } from '#shared/constants/index.js';
+
 import {
   BUSCA_LEADS,
   FILTRO_OPERADORES,
@@ -32,8 +38,12 @@ const PADRAO_DIA = /^\d{4}-\d{2}-\d{2}$/;
  * formato, quem responde é a regex (uma mensagem só).
  */
 const diaExiste = (texto) => {
-  if (!PADRAO_DIA.test(texto)) return true;
+  if (!PADRAO_DIA.test(texto)) {
+    return true;
+  }
+
   const data = new Date(`${texto}T00:00:00Z`);
+
   return !Number.isNaN(data.getTime()) && data.toISOString().startsWith(texto);
 };
 

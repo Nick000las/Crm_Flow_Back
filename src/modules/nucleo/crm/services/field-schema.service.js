@@ -1,16 +1,22 @@
+/**
+ * @file Regras do tenant, semeando antes as do sistema que faltarem (ex.: Perdido exige
+ * Motivo). Regra do sistema não pode ser excluída, só desligada — então "faltar" só acontece em
+ * tenant que ainda não foi semeado.
+ */
 import { cacheDel, lerComCache } from '#core/cache/cache.js';
-import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
+
 import { listarPermissoes } from '../adapters/crm-field-permissions.repository.js';
 import {
   buscarRegrasDoTenant,
   semearRegrasDoSistema,
 } from '../adapters/crm-field-rules.repository.js';
+import { buscarCamposDoTenant } from '../adapters/crm-fields.repository.js';
 import { buscarOpcoesDoTenant } from '../adapters/crm-options.repository.js';
 import {
   CAMADA,
   CAMADA_1_CAMPOS,
-  CAMADA_2_COLUNAS,
   CAMADA_2_COLUNA_PARA_CAMPO,
+  CAMADA_2_COLUNAS,
   CAMADA_2_METADADOS,
   CAMPOS_CAMADA_1,
   CAMPOS_SISTEMA,
@@ -86,6 +92,7 @@ export async function obterSchemaCampos(tenantId) {
     permissoes = [],
   } = await lerComCache(chaveCache(tenantId), TTL_CACHE_SEGUNDOS, () => carregarSchema(tenantId));
   const campos = montarCampos(visibilidade, definicoes, sobreposicoes, listas);
+
   return {
     visibilidade,
     definicoes,
@@ -120,6 +127,7 @@ async function carregarSchema(tenantId) {
     garantirRegras(tenantId),
     listarPermissoes(tenantId),
   ]);
+
   return { ...montarBaseDoModeloNovo(linhas), listas: agruparPorLista(opcoes), regras, permissoes };
 }
 
@@ -145,9 +153,13 @@ export async function garantirRegras(tenantId) {
   const regras = await buscarRegrasDoTenant(tenantId);
   const semeadas = new Set(regras.map((regra) => regra.system_key).filter(Boolean));
   const faltando = REGRAS_DO_SISTEMA.filter((regra) => !semeadas.has(regra.systemKey));
-  if (faltando.length === 0) return regras;
+
+  if (faltando.length === 0) {
+    return regras;
+  }
 
   const criadas = await semearRegrasDoSistema(tenantId, faltando);
+
   return criadas > 0 ? buscarRegrasDoTenant(tenantId) : regras;
 }
 
@@ -161,9 +173,13 @@ export async function garantirRegras(tenantId) {
 export async function garantirListas(tenantId) {
   const opcoes = await buscarOpcoesDoTenant(tenantId);
   const kinds = new Set(opcoes.map((opcao) => opcao.kind));
-  if (LISTAS_SEMEADAS.every((kind) => kinds.has(kind))) return opcoes;
+
+  if (LISTAS_SEMEADAS.every((kind) => kinds.has(kind))) {
+    return opcoes;
+  }
 
   await reconciliarListas(tenantId);
+
   return buscarOpcoesDoTenant(tenantId);
 }
 
@@ -174,7 +190,11 @@ export async function garantirListas(tenantId) {
 export function agruparPorLista(opcoes) {
   /** @type {Listas} */
   const listas = {};
-  for (const opcao of opcoes) (listas[opcao.kind] ??= []).push(opcao);
+
+  for (const opcao of opcoes) {
+    (listas[opcao.kind] ??= []).push(opcao);
+  }
+
   return listas;
 }
 
@@ -190,8 +210,12 @@ export function agruparPorLista(opcoes) {
  * @param {Listas} listas
  */
 function comOpcoesDaLista(campo, listas) {
-  if (!campo.lista) return campo;
+  if (!campo.lista) {
+    return campo;
+  }
+
   const opcoes = listas[campo.lista] ?? [];
+
   return {
     ...campo,
     opcoes:
@@ -218,10 +242,13 @@ function comOpcoesDaLista(campo, listas) {
  */
 export async function garantirCamposSistema(tenantId) {
   const linhas = await buscarCamposDoTenant(tenantId);
-  if (linhas.filter((linha) => linha.system_key !== null).length >= CAMPOS_SISTEMA.length)
+
+  if (linhas.filter((linha) => linha.system_key !== null).length >= CAMPOS_SISTEMA.length) {
     return linhas;
+  }
 
   await reconciliarCampos(tenantId);
+
   return buscarCamposDoTenant(tenantId);
 }
 
@@ -237,6 +264,7 @@ export function visibilidadeDaLinha(linha) {
     linha.system_key === null
       ? true
       : (CONTRATO_POR_CHAVE.get(linha.system_key)?.visivelPadrao ?? false);
+
   return Object.fromEntries(
     LISTA_CONTEXTOS_VISIBILIDADE.map((contexto) => [
       contexto,
@@ -261,6 +289,7 @@ export function montarBaseDoModeloNovo(linhas) {
 
   const visibilidade = CAMADA_2_COLUNAS.map((coluna) => {
     const linha = sistemaPorChave.get(CAMADA_2_COLUNA_PARA_CAMPO[coluna]);
+
     return {
       coluna,
       // `visivel` = "aparece em algum contexto" (o dado continua vindo na
@@ -273,11 +302,19 @@ export function montarBaseDoModeloNovo(linhas) {
 
   /** @type {Record<string, Sobreposicao>} */
   const sobreposicoes = {};
+
   for (const linha of linhas) {
-    if (!linha.is_active) continue;
+    if (!linha.is_active) {
+      continue;
+    }
+
     const contrato =
       linha.system_key === null ? undefined : CONTRATO_POR_CHAVE.get(linha.system_key);
-    if (linha.system_key !== null && !contrato) continue; // system_key fora do contrato atual
+
+    if (linha.system_key !== null && !contrato) {
+      continue;
+    } // system_key fora do contrato atual
+
     sobreposicoes[linha.system_key ?? linha.chave] = {
       id: linha.id,
       label: contrato && !contrato.canRename ? contrato.label : linha.label,
@@ -327,6 +364,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
   // Camada 3 não tem `coluna` — o valor fica em `custom_fields`.
   const camposCamada1 = CAMPOS_CAMADA_1.map((campo) => {
     const sobre = sobreposicoes[campo.chave];
+
     return {
       ...comOpcoesDaLista(campo, listas),
       // `id` em crm_field (referência do layout, M4); sem linha, `null`.
@@ -347,6 +385,7 @@ export function montarCampos(visibilidade, definicoes, sobreposicoes = {}, lista
     .map((item) => {
       const chave = CAMADA_2_COLUNA_PARA_CAMPO[item.coluna];
       const sobre = sobreposicoes[chave];
+
       return {
         chave,
         id: sobre?.id ?? null,
@@ -424,15 +463,22 @@ export function camposParaFiltro(schema) {
  * @returns {Record<string, unknown> | undefined}
  */
 export function customFieldsParaArmazenamento(definicoes, customFields) {
-  if (customFields === undefined) return undefined;
+  if (customFields === undefined) {
+    return undefined;
+  }
 
   const idPorChave = new Map(definicoes.map((definicao) => [definicao.chave, definicao.id]));
   /** @type {Record<string, unknown>} */
   const armazenado = {};
+
   for (const [chave, valor] of Object.entries(customFields)) {
     const id = idPorChave.get(chave);
-    if (id) armazenado[id] = valor;
+
+    if (id) {
+      armazenado[id] = valor;
+    }
   }
+
   return armazenado;
 }
 
@@ -449,8 +495,12 @@ export function customFieldsParaApi(definicoes, armazenado) {
   const valores = armazenado ?? {};
   /** @type {Record<string, unknown>} */
   const resposta = {};
+
   for (const definicao of definicoes) {
-    if (Object.hasOwn(valores, definicao.id)) resposta[definicao.chave] = valores[definicao.id];
+    if (Object.hasOwn(valores, definicao.id)) {
+      resposta[definicao.chave] = valores[definicao.id];
+    }
   }
+
   return resposta;
 }

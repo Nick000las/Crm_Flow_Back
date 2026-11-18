@@ -1,3 +1,6 @@
+/**
+ * @file Escopado por `id` — não precisa de `proposito` no filtro.
+ */
 import { getAdminClient } from '#core/db/tenantClient.js';
 
 /** @typedef {import('@prisma/client').Prisma.TransactionClient} TransactionClient */

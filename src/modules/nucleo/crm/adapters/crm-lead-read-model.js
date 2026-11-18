@@ -1,3 +1,7 @@
+/**
+ * @file A pessoa aparece se tiver ao menos uma oportunidade visível, ou nenhuma (D4). Na
+ * lixeira, olha as que foram junto com ela.
+ */
 import { Prisma } from '@prisma/client';
 
 /**
@@ -45,7 +49,10 @@ export const FONTE_LEADS = leituraDoLead();
  * @returns {Prisma.Sql}
  */
 export function fonteLeadsVisivel(ocultos = []) {
-  if (ocultos.length === 0) return FONTE_LEADS;
+  if (ocultos.length === 0) {
+    return FONTE_LEADS;
+  }
+
   return leituraDoLead(Prisma.sql`AND negocio.pipeline_id <> ALL(${ocultos}::uuid[])`);
 }
 
@@ -61,6 +68,7 @@ export function condicaoPessoaVisivel(ocultos) {
     d.tenant_id = l.tenant_id AND d.lead_id = l.id
     AND (d.deleted_at IS NULL OR l.deleted_at IS NOT NULL)
   `;
+
   return Prisma.sql`(
     EXISTS (
       SELECT 1 FROM modulo_crm.crm_deal d

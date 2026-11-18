@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { provedoresDeQuadro } from '#core/quadros/registro.js';
+
 import { DESPACHO_DE_QUADROS } from '../constants.js';
 import { agruparPorQuadro, despacharEventos } from './quadro-eventos.service.js';
 
@@ -55,6 +57,7 @@ describe('despacharEventos', () => {
 
   it('emite e só então confirma', async () => {
     const ordem = [];
+
     provedor.drenarEventos.mockResolvedValue(lote(1));
     provedor.confirmarEventos.mockImplementation(async () => ordem.push('confirmou'));
 

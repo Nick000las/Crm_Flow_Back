@@ -1,27 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { featureAtiva } from '#core/tenant/feature-flags.js';
+
 import {
-  converterLinha,
-  previsualizarImportacao,
-  validarImportacao,
-  confirmarImportacao,
-  processarImportacao,
-} from './import.service.js';
-import { gerarPlanilha } from './planilha.service.js';
-import { listarCamposDoTenant } from './leads.service.js';
-import {
-  criarImportJob,
   buscarImportJob,
   buscarImportJobComPayload,
+  criarImportJob,
   definirAcoesDuplicata,
-  transicionarStatus,
-  registrarProgresso,
   marcarFalha,
+  registrarProgresso,
+  transicionarStatus,
 } from '../adapters/import-jobs.repository.js';
-import { enfileirarImportacao } from '../adapters/import-queue.repository.js';
-import { criarLead, atualizarLead } from '../adapters/leads.repository.js';
-import { duplicadosDasLinhas, encontrarDuplicados } from './duplicidade.service.js';
-import { regrasAplicaveis } from './leads.service.js';
-import { buscarLeadPorId } from '../adapters/leads.repository.js';
+import { enfileirarImportacao } from '../adapters/import-queue.adapter.js';
+import { atualizarLead, buscarLeadPorId, criarLead } from '../adapters/leads.repository.js';
 import { CAMADA } from '../constants.js';
 import { agendarEnriquecimento } from './cnpj.service.js';
 import {
@@ -29,7 +20,16 @@ import {
   distribuir,
   notificarAtribuicoesDoImport,
 } from './distribuicao.service.js';
-import { featureAtiva } from '#core/tenant/feature-flags.js';
+import { duplicadosDasLinhas, encontrarDuplicados } from './duplicidade.service.js';
+import {
+  confirmarImportacao,
+  converterLinha,
+  previsualizarImportacao,
+  processarImportacao,
+  validarImportacao,
+} from './import.service.js';
+import { listarCamposDoTenant, regrasAplicaveis } from './leads.service.js';
+import { gerarPlanilha } from './planilha.service.js';
 import { garantirScoreNaoEditado } from './score.service.js';
 
 // Flags desligadas por padrão (M14: o Lead score é mapeável); o bloco do M14 liga.
@@ -45,7 +45,9 @@ vi.mock('./score.service.js', async (importOriginal) => ({
   recalcularScoreDosLeads: vi.fn().mockResolvedValue(null),
   garantirScoreNaoEditado: vi.fn(),
 }));
+
 vi.mock('./cnpj.service.js', () => ({ agendarEnriquecimento: vi.fn().mockResolvedValue(0) }));
+
 // M12: distribuição desligada por padrão; o bloco do M12 liga.
 vi.mock('./distribuicao.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -56,6 +58,7 @@ vi.mock('./distribuicao.service.js', async (importOriginal) => ({
 
 vi.mock('./leads.service.js', async (importOriginal) => {
   const real = await importOriginal();
+
   return {
     listarCamposDoTenant: vi.fn(),
     // Regras do M8: sem regra por padrão; os blocos do M8 trocam.
@@ -65,6 +68,7 @@ vi.mock('./leads.service.js', async (importOriginal) => {
     aplicarEdicao: real.aplicarEdicao,
   };
 });
+
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   obterSchemaCampos: vi.fn().mockResolvedValue({
@@ -80,10 +84,12 @@ vi.mock('./field-schema.service.js', async (importOriginal) => ({
     },
   }),
 }));
+
 // A coluna Responsável (M12) é do tipo usuário: a validação lista os usuários ativos pelo nome.
 vi.mock('../adapters/usuarios.repository.js', () => ({
   listarUsuariosAtivosDoTenant: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('../adapters/import-jobs.repository.js', () => ({
   criarImportJob: vi.fn(),
   buscarImportJob: vi.fn(),
@@ -93,15 +99,18 @@ vi.mock('../adapters/import-jobs.repository.js', () => ({
   registrarProgresso: vi.fn(),
   marcarFalha: vi.fn(),
 }));
-vi.mock('../adapters/import-queue.repository.js', () => ({
+
+vi.mock('../adapters/import-queue.adapter.js', () => ({
   enfileirarImportacao: vi.fn(),
   encerrarFilaImportacao: vi.fn(),
 }));
+
 vi.mock('../adapters/leads.repository.js', () => ({
   buscarLeadPorId: vi.fn(),
   criarLead: vi.fn(),
   atualizarLead: vi.fn(),
 }));
+
 // Duplicidade (M7): regras e busca têm teste próprio; aqui só o que o import faz com o resultado.
 vi.mock('./duplicidade.service.js', () => ({
   regrasDoImport: vi.fn().mockResolvedValue([]),
@@ -200,6 +209,7 @@ describe('previsualizarImportacao', () => {
   it('campos mapeáveis incluem os personalizados', async () => {
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const { campos } = await previsualizarImportacao(TENANT, buffer);
+
     expect(campos).toContainEqual(
       expect.objectContaining({ chave: 'segmento', camada: CAMADA.CAMADA_3 }),
     );
@@ -217,6 +227,7 @@ describe('previsualizarImportacao', () => {
         obrigatorio: false,
       },
     ]);
+
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const chaves = async () =>
       (await previsualizarImportacao(TENANT, buffer)).campos.map((campo) => campo.chave);
@@ -247,6 +258,7 @@ describe('previsualizarImportacao', () => {
         somenteLeitura: true,
       },
     ]);
+
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
     const opcoes = { mapeamento: MAPEAMENTO, estrategiaDuplicata: 'pular' };
 
@@ -263,14 +275,18 @@ describe('previsualizarImportacao', () => {
       ...opcoes,
       baseLegalLote: 'consentimento',
     });
+
     expect(comLote.erros).toEqual([]);
     expect(criarImportJob.mock.calls.at(-1)[1].payload[0].dados.baseLegal).toBe('consentimento');
   });
 
   it('mapear o Lead score com a pontuação ligada → erro do score (não "campo desconhecido")', async () => {
     featureAtiva.mockResolvedValue(true);
+
     const erroDoScore = new Error('O Lead score é calculado');
+
     garantirScoreNaoEditado.mockRejectedValueOnce(erroDoScore);
+
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
 
     await expect(
@@ -279,6 +295,7 @@ describe('previsualizarImportacao', () => {
         estrategiaDuplicata: 'pular',
       }),
     ).rejects.toBe(erroDoScore);
+
     expect(criarImportJob).not.toHaveBeenCalled();
   });
 });
@@ -301,7 +318,9 @@ describe('validarImportacao', () => {
       erros: [],
       duplicados: [],
     });
+
     const { payload } = criarImportJob.mock.calls[0][1];
+
     expect(payload[0].dados).toEqual({
       nome: 'Ana',
       email: 'ana@x.com',
@@ -325,9 +344,11 @@ describe('validarImportacao', () => {
     });
 
     expect(resultado.linhasValidas).toBe(1);
+
     const motivosLinha3 = resultado.erros
       .filter((erro) => erro.linha === LINHA_BIA)
       .map((erro) => erro.motivo);
+
     expect(motivosLinha3).toEqual(
       expect.arrayContaining([
         'E-mail inválido em "E-mail": "email-ruim"',
@@ -336,9 +357,11 @@ describe('validarImportacao', () => {
         'Estágio "Inexistente" não é um status ativo',
       ]),
     );
+
     const motivosLinha4 = resultado.erros
       .filter((erro) => erro.linha === LINHA_VAZIA)
       .map((erro) => erro.motivo);
+
     expect(motivosLinha4).toEqual(
       expect.arrayContaining([
         '"Nome" é obrigatório',
@@ -346,6 +369,7 @@ describe('validarImportacao', () => {
         'Informe e-mail ou telefone',
       ]),
     );
+
     expect(criarImportJob.mock.calls[0][1].payload).toHaveLength(1);
   });
 
@@ -355,12 +379,14 @@ describe('validarImportacao', () => {
       mapeamento: MAPEAMENTO,
       estrategiaDuplicata: 'criar',
     });
+
     expect(resultado.jobId).toBeNull();
     expect(criarImportJob).not.toHaveBeenCalled();
   });
 
   it('rejeita mapeamento com coluna inexistente, campo inativo ou obrigatório faltando', async () => {
     const buffer = await planilha([['Ana', 'ana@x.com', null, null, null, 'Varejo', null]]);
+
     await expect(
       validarImportacao(TENANT, USUARIO, buffer, {
         mapeamento: { Nome: 'nome', Email: 'email', Fantasma: 'cpf' },
@@ -386,6 +412,7 @@ describe('confirmarImportacao', () => {
     await expect(confirmarImportacao(TENANT, JOB)).resolves.toMatchObject({
       status: 'processando',
     });
+
     expect(enfileirarImportacao).toHaveBeenCalledWith(TENANT, JOB);
   });
 
@@ -396,6 +423,7 @@ describe('confirmarImportacao', () => {
     await expect(confirmarImportacao(TENANT, JOB)).rejects.toThrow(
       'Esta importação já foi confirmada',
     );
+
     expect(enfileirarImportacao).not.toHaveBeenCalled();
   });
 
@@ -406,6 +434,7 @@ describe('confirmarImportacao', () => {
     await expect(confirmarImportacao(TENANT, JOB)).rejects.toMatchObject({
       code: 'QUEUE_UNAVAILABLE',
     });
+
     expect(transicionarStatus).toHaveBeenLastCalledWith(TENANT, JOB, 'processando', 'pendente');
   });
 });
@@ -449,6 +478,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
   it('atualizar: lead existente é atualizado sem mover de estágio, com histórico do importador', async () => {
     jobCom('atualizar');
     encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
+
     // Primeiro nome editado à mão: o nome da planilha não o sobrescreve (M10).
     buscarLeadPorId.mockResolvedValueOnce({
       id: 'lead-1',
@@ -459,14 +489,17 @@ describe('processarImportacao — estratégias de duplicata', () => {
     await processarImportacao(TENANT, JOB);
 
     const dados = atualizarLead.mock.calls[0][2];
+
     expect(atualizarLead.mock.calls[0][1]).toBe('lead-1');
     expect(dados.funilEstagioId).toBeUndefined();
     expect(dados.ultimaInteracaoEm).toBeInstanceOf(Date);
     expect(dados.primeiroNome).toBeUndefined();
+
     expect(atualizarLead.mock.calls[0][3]).toMatchObject({
       autorId: USUARIO,
       montarDiff: expect.any(Function),
     });
+
     expect(progressoFinal()).toMatchObject({ linhasAtualizadas: 1 });
   });
 
@@ -490,6 +523,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
     await processarImportacao(TENANT, JOB);
 
     expect(criarLead).not.toHaveBeenCalled();
+
     expect(progressoFinal()).toMatchObject({
       linhasIgnoradas: 1,
       relatorioErro: [
@@ -507,6 +541,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
       acoes: { [String(LINHA_ANA)]: 'atualizar' },
       payload: [LINHA],
     });
+
     encontrarDuplicados.mockResolvedValue([DUPLICADO_AVISO]);
 
     await processarImportacao(TENANT, JOB);
@@ -526,6 +561,7 @@ describe('processarImportacao — estratégias de duplicata', () => {
       relatorioErro: [{ linha: LINHA_ANA, motivo: 'Não foi possível gravar esta linha' }],
       statusFinal: 'concluido',
     });
+
     expect(marcarFalha).not.toHaveBeenCalled();
   });
 
@@ -575,7 +611,9 @@ describe('converterLinha — tipos MVP do M2', () => {
       porChave,
       new Map(),
     );
+
     expect(erros).toEqual([]);
+
     expect(dados.customFields).toEqual({
       contrato: VALOR_CONTRATO,
       celular: '11999990000',
@@ -594,6 +632,7 @@ describe('converterLinha — tipos MVP do M2', () => {
       porChave,
       new Map(),
     );
+
     expect(erros.map((erro) => erro.coluna)).toEqual(['Contrato', 'Celular', 'Site']);
     expect(erros.every((erro) => erro.linha === LINHA_BIA)).toBe(true);
   });
@@ -616,10 +655,12 @@ describe('Revisar: duplicados no validate e ações no confirm (M7)', () => {
     await confirmarImportacao(TENANT, JOB, {
       acoes: { [String(LINHA_ANA)]: 'criar', [String(LINHA_BIA)]: 'atualizar' },
     });
+
     expect(definirAcoesDuplicata).toHaveBeenCalledWith(TENANT, JOB, {
       [String(LINHA_ANA)]: 'criar',
       [String(LINHA_BIA)]: 'atualizar',
     });
+
     expect(enfileirarImportacao).toHaveBeenCalled();
   });
 
@@ -627,9 +668,11 @@ describe('Revisar: duplicados no validate e ações no confirm (M7)', () => {
     await expect(
       confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_BIA)]: 'criar' } }),
     ).rejects.toThrow('não deixa criar outro');
+
     await expect(
       confirmarImportacao(TENANT, JOB, { acoes: { [String(LINHA_VAZIA)]: 'pular' } }),
     ).rejects.toThrow('não foi apontada como duplicada');
+
     expect(transicionarStatus).not.toHaveBeenCalled();
   });
 
@@ -660,21 +703,26 @@ describe('regras de obrigatoriedade no import (M8)', () => {
 
   it('validate: a linha que viola uma regra vai pros erros com o motivo, e não pro job', async () => {
     regrasAplicaveis.mockResolvedValueOnce([REGRA]);
+
     const buffer = await planilha([['Ana', 'ana@x.com', null, 'novo', null, 'Varejo', 'Novo']]);
 
     const resultado = await validarImportacao(TENANT, USUARIO, buffer, {
       mapeamento: MAPEAMENTO,
       estrategiaDuplicata: 'criar',
     });
+
     expect(resultado.jobId).toBeNull();
+
     expect(resultado.erros).toEqual([
       { linha: LINHA_ANA, motivo: '"Cargo" é obrigatório por causa do valor de "Nome"' },
     ]);
+
     expect(criarImportJob).not.toHaveBeenCalled();
   });
 
   it('worker: atualizar que deixaria o lead violando a regra → linha com erro, nada gravado', async () => {
     regrasAplicaveis.mockResolvedValueOnce([REGRA]);
+
     buscarImportJobComPayload.mockResolvedValue({
       id: JOB,
       status: 'processando',
@@ -683,9 +731,11 @@ describe('regras de obrigatoriedade no import (M8)', () => {
       acoes: {},
       payload: [{ linha: LINHA_ANA, dados: { nome: 'Ana' } }],
     });
+
     encontrarDuplicados.mockResolvedValue([
       { id: 'lead-1', nome: 'Ana', campos: [], acao: 'warn' },
     ]);
+
     buscarLeadPorId.mockResolvedValue({
       id: 'lead-1',
       nome: 'Ana',
@@ -696,6 +746,7 @@ describe('regras de obrigatoriedade no import (M8)', () => {
     await processarImportacao(TENANT, JOB);
 
     expect(atualizarLead).not.toHaveBeenCalled();
+
     expect(registrarProgresso.mock.calls.at(-1)[2]).toMatchObject({
       linhasComErro: 1,
       relatorioErro: [
@@ -720,12 +771,14 @@ describe('enriquecimento por CNPJ no fim do lote (M11b)', () => {
         { linha: LINHA_BIA, dados: { nome: 'Bia', email: 'bia@x.com', customFields: {} } },
       ],
     });
+
     encontrarDuplicados.mockResolvedValue([]);
     criarLead.mockResolvedValueOnce({ id: 'lead-ana' }).mockResolvedValueOnce({ id: 'lead-bia' });
 
     await processarImportacao(TENANT, JOB);
 
     expect(agendarEnriquecimento).toHaveBeenCalledTimes(1);
+
     expect(agendarEnriquecimento).toHaveBeenCalledWith(TENANT, [
       { leadId: 'lead-ana', cnpj: '11222333000181' },
     ]);
@@ -747,12 +800,17 @@ describe('distribuição automática no import (M12)', () => {
 
   beforeEach(() => {
     carregarContextoDistribuicao.mockResolvedValue(CONTEXTO);
+
     let vez = 0;
+
     distribuir.mockImplementation(async () => {
       const usuarioId = VENDEDORES[vez % VENDEDORES.length];
+
       vez += 1;
+
       return { usuarioId, regraId: 'regra-1', regraNome: 'Todos', origem: 'regra' };
     });
+
     encontrarDuplicados.mockResolvedValue([]);
     criarLead.mockImplementation(async () => ({ id: 'lead' }));
   });
@@ -778,14 +836,18 @@ describe('distribuição automática no import (M12)', () => {
     await processarImportacao(TENANT, JOB);
 
     const responsaveis = criarLead.mock.calls.map(([, dados]) => dados.usuarioResponsavelId);
+
     for (const vendedor of VENDEDORES) {
       expect(responsaveis.filter((id) => id === vendedor)).toHaveLength(POR_VENDEDOR);
     }
+
     expect(criarLead.mock.calls[0][1].atribuidoPorRegraId).toBe('regra-1');
+
     expect(criarLead.mock.calls[0][2]).toEqual({
       autorId: USUARIO,
       detalhes: { distribuicao: { origem: 'regra', regraId: 'regra-1', regraNome: 'Todos' } },
     });
+
     expect(notificarAtribuicoesDoImport).toHaveBeenCalledWith(TENANT, {
       importJobId: JOB,
       totais: new Map(VENDEDORES.map((vendedor) => [vendedor, POR_VENDEDOR])),
@@ -809,6 +871,7 @@ describe('distribuição automática no import (M12)', () => {
     await processarImportacao(TENANT, JOB);
 
     expect(distribuir).not.toHaveBeenCalled();
+
     expect(criarLead.mock.calls[0][1]).toMatchObject({
       usuarioResponsavelId: 'gerente',
       atribuidoPorRegraId: null,
@@ -817,6 +880,7 @@ describe('distribuição automática no import (M12)', () => {
 
   it('desligada: quem importou continua sendo o responsável', async () => {
     carregarContextoDistribuicao.mockResolvedValue(null);
+
     jobComLinhas([
       { linha: LINHA_ANA, dados: { nome: 'Ana', email: 'ana@x.com', customFields: {} } },
     ]);

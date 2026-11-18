@@ -1,3 +1,7 @@
+/**
+ * @file Roda `Module.aoLigarFeatures(tenantId, chaves)` de cada módulo dono das flags que
+ * **acabaram** de ligar no tenant.
+ */
 import { modulosRegistrados } from '#core/registry/modules.js';
 
 /**
@@ -21,11 +25,16 @@ export async function reconciliarModulos(tenantId, moduleKeys) {
 
   return resultados.map((resultado, indice) => {
     const moduleKey = alvos[indice].key;
-    if (resultado.status === 'fulfilled') return { moduleKey, ok: true };
+
+    if (resultado.status === 'fulfilled') {
+      return { moduleKey, ok: true };
+    }
 
     const erro =
       resultado.reason instanceof Error ? resultado.reason.message : String(resultado.reason);
+
     console.warn(`[reconcile] ${moduleKey} falhou no tenant ${tenantId}: ${erro}`);
+
     return { moduleKey, ok: false, erro };
   });
 }
@@ -43,7 +52,10 @@ export async function reconciliarModulos(tenantId, moduleKeys) {
  * @returns {Promise<{ moduleKey: string, ok: boolean, erro?: string }[]>}
  */
 export async function avisarFeaturesLigadas(tenantId, ligadas) {
-  if (ligadas.length === 0) return [];
+  if (ligadas.length === 0) {
+    return [];
+  }
+
   const alvos = modulosRegistrados()
     .filter((modulo) => typeof modulo.aoLigarFeatures === 'function')
     .map((modulo) => ({
@@ -57,11 +69,16 @@ export async function avisarFeaturesLigadas(tenantId, ligadas) {
 
   return resultados.map((resultado, indice) => {
     const moduleKey = alvos[indice].modulo.key;
-    if (resultado.status === 'fulfilled') return { moduleKey, ok: true };
+
+    if (resultado.status === 'fulfilled') {
+      return { moduleKey, ok: true };
+    }
 
     const erro =
       resultado.reason instanceof Error ? resultado.reason.message : String(resultado.reason);
+
     console.warn(`[features] ${moduleKey} falhou ao ligar flags no tenant ${tenantId}: ${erro}`);
+
     return { moduleKey, ok: false, erro };
   });
 }

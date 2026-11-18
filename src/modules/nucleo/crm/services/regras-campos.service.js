@@ -1,3 +1,6 @@
+/**
+ * @file SERVICE (puro): regras de obrigatoriedade por status e condicionais (M8).
+ */
 import { CAMADA, CATEGORIA_NA_FRASE, TIPOS_CAMPO, TIPOS_REGRA } from '../constants.js';
 import {
   chaveDocumento,
@@ -85,11 +88,21 @@ function comparavel(tipo, valor) {
  */
 export function avaliarCondicao(tipo, operador, valorRegra, valorLead) {
   const ausente = valorAusente(valorLead);
-  if (operador === 'vazio') return ausente;
-  if (operador === 'nao_vazio') return !ausente;
-  if (ausente) return false;
+
+  if (operador === 'vazio') {
+    return ausente;
+  }
+
+  if (operador === 'nao_vazio') {
+    return !ausente;
+  }
+
+  if (ausente) {
+    return false;
+  }
 
   const lista = Array.isArray(valorLead) ? valorLead : null;
+
   switch (operador) {
     case 'igual':
       return comparavel(tipo, valorLead) === comparavel(tipo, valorRegra);
@@ -103,12 +116,15 @@ export function avaliarCondicao(tipo, operador, valorRegra, valorLead) {
       const opcoes = (Array.isArray(valorRegra) ? valorRegra : []).map((item) =>
         comparavel(tipo, item),
       );
+
       return lista
         ? lista.some((item) => opcoes.includes(item))
         : opcoes.includes(comparavel(tipo, valorLead));
     }
+
     case 'entre': {
       const { de, ate } = /** @type {{ de?: unknown, ate?: unknown }} */ (valorRegra ?? {});
+
       if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
         // Sobreposição, como o filtro: começa até o fim da regra e termina depois do início dela.
         const periodo = /** @type {{ de?: unknown, ate?: unknown }} */ (valorLead);
@@ -116,13 +132,17 @@ export function avaliarCondicao(tipo, operador, valorRegra, valorLead) {
           ate === undefined || ate === null || diaDe(periodo.de) <= diaDe(ate);
         const terminaDepoisDoInicio =
           de === undefined || de === null || diaDe(periodo.ate) >= diaDe(de);
+
         return comecaAntesDoFim && terminaDepoisDoInicio;
       }
+
       const atual = comparavel(tipo, valorLead);
       const depoisDoInicio = de === undefined || de === null || atual >= comparavel(tipo, de);
       const antesDoFim = ate === undefined || ate === null || atual <= comparavel(tipo, ate);
+
       return depoisDoInicio && antesDoFim;
     }
+
     default:
       return false;
   }
@@ -145,13 +165,18 @@ function regraCasa(regra, lead, { categoriaDoStatus = null }) {
   if (regra.kind === TIPOS_REGRA.POR_STATUS) {
     const { status = [], categorias = [] } =
       /** @type {{ status?: string[], categorias?: string[] }} */ (regra.condicao);
+
     return (
-      (lead.status != null && status.includes(lead.status)) ||
-      (categoriaDoStatus != null && categorias.includes(categoriaDoStatus))
+      (lead.status !== null && lead.status !== undefined && status.includes(lead.status)) ||
+      (categoriaDoStatus !== null &&
+        categoriaDoStatus !== undefined &&
+        categorias.includes(categoriaDoStatus))
     );
   }
+
   const { campo, operador, valor } =
     /** @type {{ campo: CampoDaRegra, operador: string, valor?: unknown }} */ (regra.condicao);
+
   return avaliarCondicao(campo.tipo, operador, valor, valorDoCampo(lead, campo));
 }
 
@@ -176,16 +201,28 @@ export function avaliarRegras(regras, lead, contexto = {}) {
   const visibilidade = new Map();
 
   for (const regra of regras) {
-    if (!regra.ativo) continue;
+    if (!regra.ativo) {
+      continue;
+    }
+
     const casa = regraCasa(regra, lead, contexto);
     const { chave } = regra.alvo;
-    if (regra.efeito.visivel) visibilidade.set(chave, (visibilidade.get(chave) ?? false) || casa);
-    if (regra.efeito.obrigatorio && casa && !obrigatorios.has(chave))
+
+    if (regra.efeito.visivel) {
+      visibilidade.set(chave, (visibilidade.get(chave) ?? false) || casa);
+    }
+
+    if (regra.efeito.obrigatorio && casa && !obrigatorios.has(chave)) {
       obrigatorios.set(chave, regra);
+    }
   }
 
   const ocultos = [...visibilidade].filter(([, visivel]) => !visivel).map(([chave]) => chave);
-  for (const chave of ocultos) obrigatorios.delete(chave);
+
+  for (const chave of ocultos) {
+    obrigatorios.delete(chave);
+  }
+
   return {
     obrigatorios: [...obrigatorios.keys()].sort(),
     ocultos: ocultos.sort(),
@@ -207,9 +244,12 @@ export function motivoDaRegra(regra, labelDoStatus = {}) {
       ...status.map((key) => labelDoStatus[key] ?? key),
       ...categorias.map((categoria) => CATEGORIA_NA_FRASE[categoria] ?? categoria),
     ];
+
     return `quando o status é ${partes.join(' ou ')}`;
   }
+
   const { campo } = /** @type {{ campo: CampoDaRegra }} */ (regra.condicao);
+
   return `por causa do valor de "${campo.label}"`;
 }
 
@@ -224,6 +264,7 @@ export function motivoDaRegra(regra, labelDoStatus = {}) {
  */
 export function validarRegras(regras, lead, contexto = {}) {
   const { motivos } = avaliarRegras(regras, lead, contexto);
+
   return Object.values(motivos)
     .filter((regra) => valorAusente(valorDoCampo(lead, regra.alvo)))
     .map((regra) => ({
@@ -247,17 +288,27 @@ export function resolverRegras(linhas, campos) {
 
   return linhas.flatMap((linha) => {
     const alvo = porId.get(linha.field_id);
-    if (!alvo) return [];
+
+    if (!alvo) {
+      return [];
+    }
+
     let condicao = linha.condition;
+
     if (linha.kind === TIPOS_REGRA.CONDICIONAL) {
       const campo = porId.get(linha.condition.campoId);
-      if (!campo) return [];
+
+      if (!campo) {
+        return [];
+      }
+
       condicao = {
         campo: resumo(campo),
         operador: linha.condition.operador,
         valor: linha.condition.valor,
       };
     }
+
     return [
       {
         id: linha.id,

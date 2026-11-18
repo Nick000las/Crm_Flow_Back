@@ -1,21 +1,29 @@
+/**
+ * @file Dados de conta pra tela de configurações — não é `getUserContext` (aquele monta o
+ * `TenantContext` que vai dentro do JWT); este devolve o que a UI precisa renderizar e nunca o
+ * `senhaHash`.
+ */
 import { randomInt } from 'node:crypto';
+
 import bcrypt from 'bcryptjs';
+
 import { LOGIN_MFA, PASSWORD_ACTIVATION, PASSWORD_POLICY } from '#core/auth/constants.js';
+import { sendLoginMfaCode, sendPasswordActivationCode } from '#core/email/smtp.js';
 import { AppError } from '#core/errors/app-error.js';
 import { listarFeaturesAtivas } from '#core/tenant/feature-flags.js';
 import { listarModulosAtivos } from '#core/tenant/module-access.js';
 import { ROLES_VALIDOS } from '#core/types/module.js';
-import { sendLoginMfaCode, sendPasswordActivationCode } from '#core/email/smtp.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
-  getUserEmailAndPassword,
-  runInTransaction,
   getLatestCodigoVerificacao,
-  invalidateCodigoVerificacao,
-  incrementCodigoVerificacaoAttempts,
-  setMfaAtivo,
   getUserById,
+  getUserEmailAndPassword,
+  incrementCodigoVerificacaoAttempts,
+  invalidateCodigoVerificacao,
+  runInTransaction,
+  setMfaAtivo,
 } from '../repositories/login.repository.js';
 
 /**
@@ -75,6 +83,7 @@ export async function identifyEmail({ email, emailConfig }) {
           'Falha no envio do e-mail e na invalidação do código',
         ),
       );
+
       return;
     }
 
@@ -143,6 +152,7 @@ async function requestLoginMfaCode(usuario, emailConfig) {
 /** @param {{ email: string, verificationCode: string }} input */
 export async function verifyActivationCode({ email, verificationCode }) {
   const usuario = await getUserEmailAndPassword({ email });
+
   if (!usuario || usuario.senhaHash) {
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_ACTIVATION_CODE,
@@ -172,6 +182,7 @@ export async function verifyActivationCode({ email, verificationCode }) {
       maxAttempts: PASSWORD_ACTIVATION.MAX_ATTEMPTS,
       incrementBy: PASSWORD_ACTIVATION.ATTEMPT_INCREMENT,
     });
+
     throw unauthorizedError(
       ERROR_CODES.AUTH_INVALID_ACTIVATION_CODE,
       'Código inválido ou expirado',
@@ -205,10 +216,12 @@ export async function verifyLoginMfaCode({ userId, mfaCodeId, verificationCode }
       maxAttempts: LOGIN_MFA.MAX_ATTEMPTS,
       incrementBy: LOGIN_MFA.ATTEMPT_INCREMENT,
     });
+
     throw unauthorizedError(ERROR_CODES.AUTH_INVALID_MFA_CODE, 'Código inválido ou expirado');
   }
 
   const usuario = await getUserById({ userId });
+
   if (!usuario || !usuario.ativo || !ROLES_VALIDOS.includes(usuario.role)) {
     throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
   }
@@ -245,9 +258,11 @@ export async function activatePassword({ userId, activationCodeId, senha }) {
     }
 
     const usuarioAtual = await repository.getUserById({ userId });
+
     if (!usuarioAtual.ativo || !ROLES_VALIDOS.includes(usuarioAtual.role)) {
       throw unauthorizedError(ERROR_CODES.AUTH_USER_INACTIVE, 'Usuário inativo');
     }
+
     return usuarioAtual;
   });
 
@@ -289,6 +304,7 @@ export async function getSessionUser(tenantContext) {
     listarModulosAtivos(tenantContext.tenantId),
     listarFeaturesAtivas(tenantContext.tenantId),
   ]);
+
   return { ...tenantContext, modulosAtivos, featuresAtivas };
 }
 

@@ -1,5 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -19,8 +20,12 @@ describe('constants do CRM', () => {
 
     for (const arquivo of arquivos) {
       const modulo = await import(`./${arquivo}`);
+
       for (const nome of Object.keys(modulo)) {
-        if (donos.has(nome)) repetidos.push(`${nome}: ${donos.get(nome)} e ${arquivo}`);
+        if (donos.has(nome)) {
+          repetidos.push(`${nome}: ${donos.get(nome)} e ${arquivo}`);
+        }
+
         donos.set(nome, arquivo);
       }
     }

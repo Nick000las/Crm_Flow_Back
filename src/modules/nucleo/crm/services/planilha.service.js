@@ -1,8 +1,15 @@
+/**
+ * @file SERVICE: leitura/escrita de .xlsx, sem regra de negócio de lead — só converte planilha
+ * ↔ linhas. Recebe/devolve `Buffer`, não conhece HTTP.
+ */
 import { Buffer } from 'node:buffer';
+
 import ExcelJS from 'exceljs';
+
 import { AppError } from '#core/errors/app-error.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import { EXPORTACAO, IMPORTACAO } from '../constants.js';
 
 /**
@@ -26,6 +33,7 @@ const LINHA_CABECALHO = 1;
  */
 export async function lerPlanilha(buffer) {
   const workbook = new ExcelJS.Workbook();
+
   try {
     await workbook.xlsx.load(buffer);
   } catch {
@@ -33,11 +41,13 @@ export async function lerPlanilha(buffer) {
   }
 
   const aba = workbook.worksheets[0];
+
   if (!aba || aba.actualRowCount <= LINHA_CABECALHO) {
     throw erroDePlanilha(
       'A planilha está vazia — a primeira linha deve ter os nomes das colunas e as seguintes, os dados',
     );
   }
+
   if (aba.actualRowCount - LINHA_CABECALHO > IMPORTACAO.MAX_LINHAS) {
     throw erroDePlanilha(
       `A planilha tem mais de ${IMPORTACAO.MAX_LINHAS} linhas — divida em arquivos menores`,
@@ -46,34 +56,51 @@ export async function lerPlanilha(buffer) {
 
   /** @type {{ indice: number, nome: string }[]} */
   const colunas = [];
+
   aba.getRow(LINHA_CABECALHO).eachCell((celula, indice) => {
     const nome = valorDaCelula(celula.value);
-    if (nome !== null) colunas.push({ indice, nome: String(nome) });
+
+    if (nome !== null) {
+      colunas.push({ indice, nome: String(nome) });
+    }
   });
 
   if (colunas.length === 0) {
     throw erroDePlanilha('A primeira linha da planilha deve ter os nomes das colunas');
   }
+
   const nomes = colunas.map((coluna) => coluna.nome);
   const repetida = nomes.find((nome, i) => nomes.indexOf(nome) !== i);
+
   if (repetida) {
     throw erroDePlanilha(`A coluna "${repetida}" aparece mais de uma vez no cabeçalho`);
   }
 
   /** @type {LinhaPlanilha[]} */
   const linhas = [];
+
   aba.eachRow((linha, numero) => {
-    if (numero <= LINHA_CABECALHO) return;
+    if (numero <= LINHA_CABECALHO) {
+      return;
+    }
 
     /** @type {Record<string, ValorCelula>} */
     const valores = {};
     let vazia = true;
+
     for (const { indice, nome } of colunas) {
       const valor = valorDaCelula(linha.getCell(indice).value);
+
       valores[nome] = valor;
-      if (valor !== null) vazia = false;
+
+      if (valor !== null) {
+        vazia = false;
+      }
     }
-    if (!vazia) linhas.push({ numero, valores });
+
+    if (!vazia) {
+      linhas.push({ numero, valores });
+    }
   });
 
   return { colunas: nomes, linhas };
@@ -89,6 +116,7 @@ export async function gerarPlanilha(cabecalho, linhas) {
   const aba = workbook.addWorksheet('Leads');
 
   aba.addRow(cabecalho).font = { bold: true };
+
   for (const linha of linhas) {
     aba.addRow(linha);
   }
@@ -109,6 +137,7 @@ export function gerarCsv(cabecalho, linhas) {
   const texto = [cabecalho, ...linhas]
     .map((linha) => linha.map(celulaCsv).join(EXPORTACAO.CSV_SEPARADOR))
     .join(EXPORTACAO.CSV_QUEBRA_LINHA);
+
   return Buffer.from(`${EXPORTACAO.CSV_BOM}${texto}${EXPORTACAO.CSV_QUEBRA_LINHA}`, 'utf8');
 }
 
@@ -118,8 +147,12 @@ const PRECISA_DE_ASPAS = /[";\r\n]/;
 
 /** @param {unknown} valor */
 function celulaCsv(valor) {
-  if (valor === null || valor === undefined) return '';
+  if (valor === null || valor === undefined) {
+    return '';
+  }
+
   let texto;
+
   if (valor instanceof Date) {
     // UTC, como o .xlsx grava a data.
     texto = Number.isNaN(valor.getTime())
@@ -129,8 +162,12 @@ function celulaCsv(valor) {
     texto = String(valor).replace('.', ',');
   } else {
     texto = String(valor);
-    if (INICIO_DE_FORMULA.test(texto)) texto = `'${texto}`;
+
+    if (INICIO_DE_FORMULA.test(texto)) {
+      texto = `'${texto}`;
+    }
   }
+
   return PRECISA_DE_ASPAS.test(texto) ? `"${texto.replaceAll('"', '""')}"` : texto;
 }
 
@@ -142,19 +179,36 @@ function celulaCsv(valor) {
  * @returns {ValorCelula}
  */
 export function valorDaCelula(valor) {
-  if (valor === null || valor === undefined) return null;
-  if (valor instanceof Date) return valor;
+  if (valor === null || valor === undefined) {
+    return null;
+  }
+
+  if (valor instanceof Date) {
+    return valor;
+  }
+
   if (typeof valor === 'string') {
     const texto = valor.trim();
+
     return texto.length > 0 ? texto : null;
   }
-  if (typeof valor === 'number' || typeof valor === 'boolean') return valor;
+
+  if (typeof valor === 'number' || typeof valor === 'boolean') {
+    return valor;
+  }
 
   if (typeof valor === 'object') {
-    if ('richText' in valor)
+    if ('richText' in valor) {
       return valorDaCelula(valor.richText.map((parte) => parte.text).join(''));
-    if ('formula' in valor || 'sharedFormula' in valor) return valorDaCelula(valor.result ?? null);
-    if ('text' in valor) return valorDaCelula(valor.text);
+    }
+
+    if ('formula' in valor || 'sharedFormula' in valor) {
+      return valorDaCelula(valor.result ?? null);
+    }
+
+    if ('text' in valor) {
+      return valorDaCelula(valor.text);
+    }
   }
 
   // Erro de fórmula (#N/A etc.) ou formato desconhecido — trata como vazio.

@@ -1,4 +1,8 @@
-import { moverCard, buscarCardsPorBoard } from '../adapters/cards.repository.js';
+/**
+ * @file Resolução de conflito concorrente (last-write-wins + aviso via socket, Bloco 4.2)
+ * acontece na camada de evento/socket que consome este service.
+ */
+import { buscarCardsPorBoard, moverCard } from './legacy-cards.service.js';
 
 /** @typedef {import('../types/index.js').Card} Card */
 

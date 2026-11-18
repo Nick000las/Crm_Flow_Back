@@ -1,4 +1,8 @@
+/**
+ * @file ADAPTER: provedor de dados de CNPJ — BrasilAPI (gratuito, sem chave).
+ */
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { ENRIQUECIMENTO_CNPJ, STATUS_CNPJ } from '../constants.js';
 
 /**
@@ -69,6 +73,7 @@ export function converterRespostaBrasilApi(resposta) {
     email: texto(resposta.email)?.toLowerCase(),
     dataAbertura: texto(resposta.data_inicio_atividade),
   };
+
   return Object.fromEntries(Object.entries(dados).filter(([, valor]) => valor !== undefined));
 }
 
@@ -80,9 +85,12 @@ export const provedorBrasilApi = Object.freeze({
    * @returns {Promise<ResultadoProvedor>}
    */
   async consultar(cnpj) {
-    if (!SO_DIGITOS.test(cnpj)) return { status: STATUS_CNPJ.NAO_SUPORTADO, dados: {} };
+    if (!SO_DIGITOS.test(cnpj)) {
+      return { status: STATUS_CNPJ.NAO_SUPORTADO, dados: {} };
+    }
 
     let resposta;
+
     try {
       // `globalThis` na hora da chamada (fetch nativo do Node ≥ 18; o teste troca por um falso).
       resposta = await globalThis.fetch(`${URL_BASE}/${cnpj}`, {
@@ -93,15 +101,20 @@ export const provedorBrasilApi = Object.freeze({
       throw erroTransitorio('BrasilAPI indisponível', erro);
     }
 
-    if (resposta.status === HTTP_STATUS.NOT_FOUND)
+    if (resposta.status === HTTP_STATUS.NOT_FOUND) {
       return { status: STATUS_CNPJ.NAO_ENCONTRADO, dados: {} };
+    }
+
     if (
       resposta.status === HTTP_STATUS.TOO_MANY_REQUESTS ||
       resposta.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR
     ) {
       throw erroTransitorio(`BrasilAPI respondeu ${resposta.status}`);
     }
-    if (!resposta.ok) throw new Error(`BrasilAPI recusou a consulta (${resposta.status})`);
+
+    if (!resposta.ok) {
+      throw new Error(`BrasilAPI recusou a consulta (${resposta.status})`);
+    }
 
     return { status: STATUS_CNPJ.OK, dados: converterRespostaBrasilApi(await resposta.json()) };
   },

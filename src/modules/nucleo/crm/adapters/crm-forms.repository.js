@@ -1,4 +1,9 @@
+/**
+ * @file ADAPTER: formulários e versões (`modulo_crm.crm_form` e `crm_form_version`, migration
+ * 0043). A versão publicada é imutável (trigger no banco); aqui só se insere.
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
 
 /**
@@ -39,9 +44,15 @@ export function buscarFormularios(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_FORMULARIO_SQL} FROM modulo_crm.crm_form
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY lower(name), id
+      SELECT
+        ${RETORNO_FORMULARIO_SQL}
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
+      ORDER BY
+        lower(name),
+        id
     `,
   );
 }
@@ -55,10 +66,16 @@ export async function buscarFormulario(tenantId, id) {
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_FORMULARIO_SQL} FROM modulo_crm.crm_form
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
+      SELECT
+        ${RETORNO_FORMULARIO_SQL}
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${id}::uuid
     `,
   );
+
   return linha;
 }
 
@@ -74,11 +91,20 @@ export async function nomeEmUso(tenantId, nome, ignorarId) {
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT 1 FROM modulo_crm.crm_form
-      WHERE tenant_id = ${tenantId}::uuid AND lower(name) = lower(${nome})
-        AND (${ignorarId}::uuid IS NULL OR id <> ${ignorarId}::uuid)
+      SELECT
+        1
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND lower(name) = lower(${nome})
+        AND (
+          ${ignorarId}::uuid IS NULL
+          OR id <> ${ignorarId}::uuid
+        )
     `,
   );
+
   return Boolean(linha);
 }
 
@@ -90,9 +116,15 @@ export async function contarFormularios(tenantId) {
   const [{ total }] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT count(*)::int AS total FROM modulo_crm.crm_form WHERE tenant_id = ${tenantId}::uuid
+      SELECT
+        count(*)::int AS total
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
     `,
   );
+
   return total;
 }
 
@@ -105,11 +137,15 @@ export async function inserirFormulario(tenantId, { nome, descricao, validadeDia
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_form (tenant_id, name, description, link_ttl_days)
-      VALUES (${tenantId}::uuid, ${nome}, ${descricao}, ${validadeDias}::smallint)
-      RETURNING ${RETORNO_FORMULARIO_SQL}
+      INSERT INTO
+        modulo_crm.crm_form (tenant_id, name, description, link_ttl_days)
+      VALUES
+        (${tenantId}::uuid, ${nome}, ${descricao}, ${validadeDias}::smallint)
+      RETURNING
+        ${RETORNO_FORMULARIO_SQL}
     `,
   );
+
   return linha;
 }
 
@@ -126,16 +162,24 @@ export async function atualizarFormulario(tenantId, id, mudancas) {
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      UPDATE modulo_crm.crm_form SET
+      UPDATE modulo_crm.crm_form
+      SET
         name = COALESCE(${nome ?? null}, name),
-        description = CASE WHEN ${descricao !== undefined} THEN ${descricao ?? null} ELSE description END,
+        description = CASE
+          WHEN ${descricao !== undefined} THEN ${descricao ?? null}
+          ELSE description
+        END,
         link_ttl_days = COALESCE(${validadeDias ?? null}::smallint, link_ttl_days),
         is_active = COALESCE(${ativo ?? null}::boolean, is_active),
         draft = COALESCE(${rascunho === undefined ? null : JSON.stringify(rascunho)}::jsonb, draft)
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
-      RETURNING ${RETORNO_FORMULARIO_SQL}
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${id}::uuid
+      RETURNING
+        ${RETORNO_FORMULARIO_SQL}
     `,
   );
+
   return linha;
 }
 
@@ -156,27 +200,61 @@ export function inserirVersao(
 ) {
   return getTenantClient(tenantId, async (tx) => {
     const [formulario] = await tx.$queryRaw`
-      SELECT id FROM modulo_crm.crm_form
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${formId}::uuid
+      SELECT
+        id
+      FROM
+        modulo_crm.crm_form
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${formId}::uuid
       FOR UPDATE
     `;
-    if (!formulario) return undefined;
+
+    if (!formulario) {
+      return undefined;
+    }
 
     const [versao] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_form_version
-        (tenant_id, form_id, version, sections, fields_snapshot, intro_text, consent_text,
-         alert_rules, published_by)
-      SELECT ${tenantId}::uuid, ${formId}::uuid, COALESCE(max(version), 0) + 1,
-        ${JSON.stringify(secoes)}::jsonb, ${JSON.stringify(campos)}::jsonb,
-        ${introducao}, ${termo}, ${JSON.stringify(alertas ?? [])}::jsonb, ${usuarioId}::uuid
-      FROM modulo_crm.crm_form_version
-      WHERE tenant_id = ${tenantId}::uuid AND form_id = ${formId}::uuid
-      RETURNING ${RETORNO_VERSAO_SQL}
+      INSERT INTO
+        modulo_crm.crm_form_version (
+          tenant_id,
+          form_id,
+          version,
+          sections,
+          fields_snapshot,
+          intro_text,
+          consent_text,
+          alert_rules,
+          published_by
+        )
+      SELECT
+        ${tenantId}::uuid,
+        ${formId}::uuid,
+        COALESCE(max(version), 0) + 1,
+        ${JSON.stringify(secoes)}::jsonb,
+        ${JSON.stringify(campos)}::jsonb,
+        ${introducao},
+        ${termo},
+        ${JSON.stringify(alertas ?? [])}::jsonb,
+        ${usuarioId}::uuid
+      FROM
+        modulo_crm.crm_form_version
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND form_id = ${formId}::uuid
+      RETURNING
+        ${RETORNO_VERSAO_SQL}
     `;
+
     await tx.$executeRaw`
-      UPDATE modulo_crm.crm_form SET current_version_id = ${versao.id}::uuid
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${formId}::uuid
+      UPDATE modulo_crm.crm_form
+      SET
+        current_version_id = ${versao.id}::uuid
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ${formId}::uuid
     `;
+
     return versao;
   });
 }
@@ -190,10 +268,18 @@ export function buscarVersoes(tenantId, formId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id::text, version AS versao, published_at AS publicada_em, published_by::text AS publicada_por
-      FROM modulo_crm.crm_form_version
-      WHERE tenant_id = ${tenantId}::uuid AND form_id = ${formId}::uuid
-      ORDER BY version DESC
+      SELECT
+        id::text,
+        version AS versao,
+        published_at AS publicada_em,
+        published_by::text AS publicada_por
+      FROM
+        modulo_crm.crm_form_version
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND form_id = ${formId}::uuid
+      ORDER BY
+        version DESC
     `,
   );
 }
@@ -208,9 +294,16 @@ export async function buscarVersao(tenantId, formId, versaoId) {
   const [linha] = await getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_VERSAO_SQL} FROM modulo_crm.crm_form_version
-      WHERE tenant_id = ${tenantId}::uuid AND form_id = ${formId}::uuid AND id = ${versaoId}::uuid
+      SELECT
+        ${RETORNO_VERSAO_SQL}
+      FROM
+        modulo_crm.crm_form_version
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND form_id = ${formId}::uuid
+        AND id = ${versaoId}::uuid
     `,
   );
+
   return linha;
 }

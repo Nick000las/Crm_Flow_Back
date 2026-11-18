@@ -1,10 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { atualizarConfiguracaoCampo } from '../services/configuracoes-campos.service.js';
 import { criarNovaDefinicao } from '../services/field-definitions.service.js';
@@ -48,6 +51,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
   let ipDaVez = 0;
   const novoIp = () => {
     ipDaVez += 1;
+
     return `10.4.0.${ipDaVez}`;
   };
 
@@ -61,13 +65,18 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
+
   async function publica(method, caminho, payload) {
     const resposta = await app.inject({
       method,
@@ -76,11 +85,13 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       remoteAddress: novoIp(),
       headers: { 'user-agent': 'Navegador de teste' },
     });
+
     return {
       status: resposta.statusCode,
       corpo: resposta.body ? JSON.parse(resposta.body) : null,
     };
   }
+
   const enviar = (token, respostas, extra = {}) =>
     publica('POST', `${PUBLICO}/${token}/respostas`, {
       respostas,
@@ -96,7 +107,9 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       obrigatorio: false,
       ordem: ORDEM,
     });
+
     await invalidarSchemaCampos(tenantId);
+
     return campo;
   }
 
@@ -116,6 +129,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       HTTP_STATUS.CREATED,
     );
     const [, token] = link.url.match(TOKEN_NA_URL);
+
     return { leadId: lead.id, linkId: link.link.id, token, email };
   }
 
@@ -124,6 +138,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
 
   beforeAll(async () => {
     process.env.FORMS_TOKEN_KEY ??= randomBytes(BYTES_DA_CHAVE).toString('base64');
+
     await prisma.tenant.create({
       data: {
         id: tenantId,
@@ -131,6 +146,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         subdomain: `smoke-resp-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -144,7 +160,9 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         role,
       })),
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.FORMULARIOS, CRM_FEATURES.REGRAS].map((featureKey) => ({
         tenantId,
@@ -152,6 +170,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
     campos.alergias = await novoCampo('Alergias');
@@ -181,10 +200,13 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
 
     const elegiveis = await ok(chamar('GET', `${CONFIG}/campos-elegiveis`));
     const idDe = (chave) => elegiveis.find((campo) => campo.chave === chave).id;
+
     campos.nome = idDe('nome');
     campos.email = idDe('email');
     campos.telefone = idDe('telefone');
+
     const criado = await ok(chamar('POST', CONFIG, { nome: 'Anamnese' }), HTTP_STATUS.CREATED);
+
     await ok(
       chamar('PUT', `${CONFIG}/${criado.id}`, {
         rascunho: {
@@ -208,9 +230,13 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         },
       }),
     );
+
     const versao = await ok(chamar('POST', `${CONFIG}/${criado.id}/publicar`), HTTP_STATUS.CREATED);
+
     formulario = criado;
+
     const itens = versao.secoes[0].itens;
+
     perguntas = { fuma: itens[5].pergunta.id, observacoes: itens[6].pergunta.id };
   });
 
@@ -232,45 +258,56 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       [perguntas.fuma]: true,
       [perguntas.observacoes]: '  Dor no dente  ',
     });
+
     expect(enviado.status, JSON.stringify(enviado.corpo)).toBe(HTTP_STATUS.CREATED);
     expect(enviado.corpo.data).toEqual({ enviado: true });
 
     const pessoa = await lerPessoa(leadId);
+
     expect(pessoa.email).toBe(email);
     expect(pessoa.telefone.replace(/\D/g, '')).toBe(TELEFONE);
     expect(pessoa.custom_fields[campos.alergias.chave]).toBe('Dipirona e AAS');
 
     const [resumo] = await respostasDa(leadId);
+
     expect(resumo).toMatchObject({
       formulario: { id: formulario.id, nome: 'Anamnese' },
       linkId,
       preenchidoPor: 'titular',
       escrita: ESCRITA_ESPERADA,
     });
+
     const detalhe = await ok(
       chamar('GET', `/crm/leads/${leadId}/formularios/respostas/${resumo.id}`),
     );
     const porCampo = Object.fromEntries(
       detalhe.secoes[0].itens.filter((item) => item.campoId).map((item) => [item.campoId, item]),
     );
+
     expect(porCampo[campos.nome].escrita).toEqual({ resultado: 'ignorado', motivo: 'igual' });
+
     expect(porCampo[campos.email]).toMatchObject({
       valor: 'outro@smoke.test',
       escrita: { resultado: 'revisao', motivo: 'valor_diferente' },
     });
+
     expect(porCampo[campos.telefone].escrita).toEqual({ resultado: 'gravado', motivo: null });
     expect(porCampo[campos.alergias.id].escrita.resultado).toBe('gravado');
+
     expect(porCampo[campos.convenio.id].escrita).toEqual({
       resultado: 'ignorado',
       motivo: 'sem_resposta',
     });
+
     const [fuma, observacoes] = detalhe.secoes[0].itens.filter((item) => item.pergunta);
+
     expect(fuma.valor).toBe(true);
     expect(observacoes.valor).toBe('Dor no dente');
     expect(detalhe.termo).toBe(TERMO);
     expect(detalhe.origem.navegador).toBe('Navegador de teste');
 
     const links = await ok(chamar('GET', `/crm/leads/${leadId}/formularios`));
+
     expect(links[0]).toMatchObject({ id: linkId, status: 'submitted' });
     expect(links[0].respondidoEm).not.toBeNull();
     expect((await publica('GET', `${PUBLICO}/${token}`)).status).toBe(HTTP_STATUS.NOT_FOUND);
@@ -280,8 +317,11 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       WHERE lead_id = ${leadId}::uuid ORDER BY created_at
     `;
     const tipos = eventos.map((evento) => evento.tipo);
+
     expect(tipos).toContain('formulario_respondido');
+
     const edicao = eventos.find((evento) => evento.detalhes?.origem === 'formulario');
+
     expect(edicao).toMatchObject({ tipo: 'atualizado', autor_id: null });
     expect(edicao.detalhes.respostaId).toBe(resumo.id);
 
@@ -289,6 +329,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       SELECT payload FROM modulo_crm.crm_event
       WHERE tenant_id = ${tenantId}::uuid AND tipo = 'form.submitted' AND entidade_id = ${resumo.id}::uuid
     `;
+
     expect(outbox.payload).toEqual({ formularioId: formulario.id, leadId });
   });
 
@@ -301,27 +342,32 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       enviar(token, { ...respostas, [campos.alergias.id]: 'Látex' }),
     ]);
     const codigos = envios.map((envio) => envio.status).sort();
+
     expect(codigos).toEqual([HTTP_STATUS.CREATED, HTTP_STATUS.NOT_FOUND, HTTP_STATUS.NOT_FOUND]);
     expect(await respostasDa(leadId)).toHaveLength(1);
   });
 
   it('editar o campo na ficha não muda "Ver respostas"', async () => {
     const { token, leadId } = await novaPessoa();
+
     await enviar(token, {
       [campos.nome]: 'Maria Souza',
       [campos.alergias.id]: 'Pólen',
       [perguntas.fuma]: false,
     });
+
     await ok(
       chamar('PUT', `/crm/leads/${leadId}`, {
         customFields: { [campos.alergias.chave]: 'Nenhuma' },
       }),
     );
+
     const [resumo] = await respostasDa(leadId);
     const detalhe = await ok(
       chamar('GET', `/crm/leads/${leadId}/formularios/respostas/${resumo.id}`),
     );
     const alergias = detalhe.secoes[0].itens.find((item) => item.campoId === campos.alergias.id);
+
     expect(alergias.valor).toBe('Pólen');
     expect((await lerPessoa(leadId)).custom_fields[campos.alergias.chave]).toBe('Nenhuma');
   });
@@ -329,19 +375,24 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
   it('contato que já é de outra pessoa vai para revisão e não é gravado', async () => {
     const outra = await novaPessoa({ telefone: '11912345678' });
     const { token, leadId } = await novaPessoa();
+
     await ok(chamar('PUT', `/crm/leads/${leadId}`, { email: null, telefone: '11955554444' }));
+
     const enviado = await enviar(token, {
       [campos.nome]: 'Maria Souza',
       [campos.email]: outra.email,
       [perguntas.fuma]: false,
     });
+
     expect(enviado.status).toBe(HTTP_STATUS.CREATED);
     expect((await lerPessoa(leadId)).email).toBeNull();
+
     const [resumo] = await respostasDa(leadId);
     const detalhe = await ok(
       chamar('GET', `/crm/leads/${leadId}/formularios/respostas/${resumo.id}`),
     );
     const email = detalhe.secoes[0].itens.find((item) => item.campoId === campos.email);
+
     expect(email.escrita).toEqual({ resultado: 'revisao', motivo: 'contato_de_outra_pessoa' });
   });
 
@@ -353,11 +404,16 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       [campos.alergias.id]: 'Iodo',
       [perguntas.fuma]: true,
     });
+
     expect(enviado.status, JSON.stringify(enviado.corpo)).toBe(HTTP_STATUS.CREATED);
+
     const pessoa = await lerPessoa(leadId);
+
     expect(pessoa.custom_fields[campos.convenio.chave] ?? null).toBeNull();
     expect(pessoa.custom_fields[campos.alergias.chave]).toBe('Dipirona');
+
     const [resumo] = await respostasDa(leadId);
+
     expect(resumo.escrita).toMatchObject({ gravados: 0, revisao: REVISAO_PELA_REGRA });
   });
 
@@ -365,7 +421,9 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
     it('obrigatório, tipo, pergunta de fora, termo e responsável: 400, e o link continua ativo', async () => {
       const { token, linkId } = await novaPessoa();
       const semObrigatorio = await enviar(token, { [campos.telefone]: 'abc' });
+
       expect(semObrigatorio.status).toBe(HTTP_STATUS.BAD_REQUEST);
+
       expect(Object.keys(semObrigatorio.corpo.error.fields).sort()).toEqual(
         [
           `respostas.${campos.nome}`,
@@ -379,6 +437,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         [perguntas.fuma]: true,
         [randomUUID()]: 'x',
       });
+
       expect(deFora.status).toBe(HTTP_STATUS.BAD_REQUEST);
 
       const semAceite = await enviar(
@@ -386,6 +445,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         { [campos.nome]: 'Maria', [perguntas.fuma]: true },
         { aceite: false },
       );
+
       expect(semAceite.corpo.error.fields).toHaveProperty(['aceite']);
 
       const semNome = await enviar(
@@ -393,11 +453,13 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         { [campos.nome]: 'Maria', [perguntas.fuma]: true },
         { preenchidoPor: 'responsavel' },
       );
+
       expect(semNome.corpo.error.fields).toHaveProperty(['nomeResponsavel']);
 
       const [linha] = await prisma.$queryRaw`
         SELECT status FROM modulo_crm.crm_form_link WHERE id = ${linkId}::uuid
       `;
+
       expect(linha.status).toBe('active');
 
       const peloResponsavel = await enviar(
@@ -405,6 +467,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         { [campos.nome]: 'Maria Souza', [perguntas.fuma]: true },
         { preenchidoPor: 'responsavel', nomeResponsavel: 'Joana Souza' },
       );
+
       expect(peloResponsavel.status).toBe(HTTP_STATUS.CREATED);
     });
   });
@@ -412,15 +475,20 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
   describe('prazo', () => {
     it('quem abriu antes de vencer ainda envia dentro da folga; quem não abriu, não', async () => {
       const aberto = await novaPessoa();
+
       await publica('POST', `${PUBLICO}/${aberto.token}/aberto`);
+
       const naoAberto = await novaPessoa();
+
       await prisma.$executeRaw`
         UPDATE modulo_crm.crm_form_link
         SET opened_at = CASE WHEN opened_at IS NULL THEN NULL ELSE CURRENT_TIMESTAMP - interval '2 hours' END,
             expires_at = CURRENT_TIMESTAMP - interval '1 hour'
         WHERE id IN (${aberto.linkId}::uuid, ${naoAberto.linkId}::uuid)
       `;
+
       const respostas = { [campos.nome]: 'Maria Souza', [perguntas.fuma]: false };
+
       expect((await publica('GET', `${PUBLICO}/${aberto.token}`)).status).toBe(HTTP_STATUS.OK);
       expect((await enviar(aberto.token, respostas)).status).toBe(HTTP_STATUS.CREATED);
       expect((await enviar(naoAberto.token, respostas)).status).toBe(HTTP_STATUS.NOT_FOUND);
@@ -428,9 +496,11 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
 
     it('pessoa anonimizada não responde', async () => {
       const { token, leadId } = await novaPessoa();
+
       await prisma.$executeRaw`
         UPDATE modulo_crm.leads SET anonimizado_em = CURRENT_TIMESTAMP WHERE id = ${leadId}::uuid
       `;
+
       expect(
         (await enviar(token, { [campos.nome]: 'Maria Souza', [perguntas.fuma]: false })).status,
       ).toBe(HTTP_STATUS.NOT_FOUND);
@@ -439,8 +509,11 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
 
   it('o banco recusa alterar uma resposta', async () => {
     const { token, leadId } = await novaPessoa();
+
     await enviar(token, { [campos.nome]: 'Maria Souza', [perguntas.fuma]: false });
+
     const [resumo] = await respostasDa(leadId);
+
     await expect(
       prisma.$executeRaw`
         UPDATE modulo_crm.crm_form_submission SET filled_by = 'titular' WHERE id = ${resumo.id}::uuid
@@ -450,13 +523,16 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
 
   it('OPERADOR: campo e pergunta sensíveis saem ocultos, sem IP nem navegador', async () => {
     const { token, leadId } = await novaPessoa();
+
     await enviar(token, {
       [campos.nome]: 'Maria Souza',
       [campos.alergias.id]: 'Iodo',
       [perguntas.fuma]: true,
     });
+
     await atualizarConfiguracaoCampo(tenantId, campos.alergias.id, { sensivel: true });
     await invalidarSchemaCampos(tenantId);
+
     try {
       const [resumo] = await ok(
         chamar('GET', `/crm/leads/${leadId}/formularios/respostas`, undefined, 'OPERADOR'),
@@ -467,6 +543,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
         (item) => item.campoId === campos.alergias.id,
       );
       const fuma = doOperador.secoes[0].itens.find((item) => item.pergunta?.id === perguntas.fuma);
+
       expect(alergias).toMatchObject({ oculto: true });
       expect(alergias).not.toHaveProperty('valor');
       expect(fuma).toMatchObject({ oculto: true });
@@ -478,6 +555,7 @@ rodar('resposta do formulário (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =>
       const alergiasDono = doDono.secoes[0].itens.find(
         (item) => item.campoId === campos.alergias.id,
       );
+
       expect(alergiasDono.valor).toBe('Iodo');
     } finally {
       await atualizarConfiguracaoCampo(tenantId, campos.alergias.id, { sensivel: false });

@@ -1,6 +1,10 @@
+/**
+ * @file CONTROLLER: enriquecimento por CNPJ (M11b).
+ */
 import { requireRole } from '#core/auth/rbac.js';
 import { exigirFeature } from '#core/tenant/feature-flags.js';
 import { sendSuccess } from '#shared/http/response.js';
+
 import { CRM_FEATURES, PAPEIS_GESTAO } from '../constants.js';
 import { cnpjParamSchema, salvarConfigCnpjBodySchema } from '../schemas/cnpj.schema.js';
 import {
@@ -24,16 +28,19 @@ import {
  */
 export function registrarRotasCnpj(app) {
   const comFlag = exigirFeature(CRM_FEATURES.CNPJ);
+
   app.addHook('onClose', async () => encerrarEnriquecimento());
 
   app.get('/crm/cnpj/:cnpj', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const { cnpj } = cnpjParamSchema.parse(req.params);
+
     return sendSuccess(reply, await consultarParaLupa(tenantId, cnpj, { papel: role }));
   });
 
   app.get('/crm/configuracoes/cnpj', { preHandler: [comFlag] }, async (req, reply) => {
     const { tenantId } = req.tenantContext;
+
     return sendSuccess(reply, await listarConfigCnpj(tenantId));
   });
 
@@ -43,6 +50,7 @@ export function registrarRotasCnpj(app) {
     async (req, reply) => {
       const { tenantId } = req.tenantContext;
       const body = salvarConfigCnpjBodySchema.parse(req.body);
+
       return sendSuccess(reply, await salvarConfigCnpj(tenantId, body));
     },
   );

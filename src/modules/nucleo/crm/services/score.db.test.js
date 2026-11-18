@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { buscarLeadPorId } from '../adapters/leads.repository.js';
 import { CRM_FEATURES, FAIXAS_SCORE_PADRAO, MODULO_CRM } from '../constants.js';
 import { criarNovaDefinicao, removerDefinicao } from './field-definitions.service.js';
@@ -56,6 +59,7 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
         subdomain: `smoke-score-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -66,12 +70,16 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
         ativo: true,
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.create({
       data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.SCORE },
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     await criarNovaDefinicao(tenantId, {
       label: 'Segmento',
       tipo: 'texto',
@@ -85,6 +93,7 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
       { nome: 'Ana', email: 'ana@vip.test', telefone: '11988887777' },
       donoId,
     ));
+
     ({ id: bia } = await registrarNovoLead(
       tenantId,
       { nome: 'Bia', email: 'bia@comum.test', customFields: { segmento: 'varejo' } },
@@ -100,6 +109,7 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
 
   it('salvar as regras recalcula todos (com progresso), e recalcular de novo dá o mesmo', async () => {
     expect(await scoreDe(ana)).toBe(0);
+
     const { campos } = await obterSchemaCampos(tenantId);
     const id = (chave) =>
       /** @type {{ id: string }} */ (campos.find((campo) => campo.chave === chave)).id;
@@ -128,17 +138,20 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
       ],
       faixas: FAIXAS_SCORE_PADRAO.map((faixa) => ({ ...faixa })),
     });
+
     expect(config.recalculo).toMatchObject({
       total: LEADS,
       processados: LEADS,
       emAndamento: false,
     });
+
     expect(await scoreDe(ana)).toBe(SCORE_ANA);
     expect(await scoreDe(bia)).toBe(PONTOS_SEGMENTO);
 
     await recalcularTodos(tenantId);
     expect(await scoreDe(ana)).toBe(SCORE_ANA);
     expect(await scoreDe(bia)).toBe(PONTOS_SEGMENTO);
+
     expect((await obterConfigScore(tenantId)).recalculo).toMatchObject({
       processados: LEADS,
       emAndamento: false,
@@ -152,7 +165,9 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
       { telefone: '11977776666' },
       donoId,
     );
+
     expect(Number(editada.lead_score)).toBe(PONTOS_SEGMENTO + PONTOS_TELEFONE);
+
     await expect(
       atualizarLeadExistente(tenantId, bia, { leadScore: SCORE_ANA }, donoId),
     ).rejects.toMatchObject({
@@ -165,9 +180,11 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
       (await pesquisarLeads(tenantId, { faixaScore, filtros: [], paginacao: PAGINA })).itens.map(
         (lead) => lead.id,
       );
+
     expect(await naFaixa('quente')).toEqual([ana]);
     expect(await naFaixa('morno')).toEqual([bia]);
     expect(await naFaixa('frio')).toEqual([]);
+
     await expect(naFaixa('fervendo')).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
@@ -178,6 +195,7 @@ rodar('pontuação de leads no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS },
     const segmento = /** @type {{ id: string }} */ (
       definicoes.find((definicao) => definicao.chave === 'segmento')
     );
+
     await removerDefinicao(tenantId, segmento.id);
     await recalcularTodos(tenantId);
     expect(await scoreDe(bia)).toBe(PONTOS_TELEFONE);

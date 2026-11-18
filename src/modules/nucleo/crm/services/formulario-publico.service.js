@@ -1,6 +1,10 @@
+/**
+ * @file SERVICE: página pública do formulário (FM3), sem login.
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { moduloAtivo } from '#core/tenant/module-access.js';
+
 import {
   buscarLinkPublico,
   marcarLinkAberto,
@@ -39,8 +43,12 @@ export const indisponivel = () => erroNaoEncontrado('Este link não está mais d
  * @returns {boolean}
  */
 function podeAbrir(link) {
-  if (!link) return false;
+  if (!link) {
+    return false;
+  }
+
   const pessoa = link.pessoa;
+
   return (
     link.status === STATUS_LINK.ATIVO &&
     link.no_prazo &&
@@ -58,17 +66,32 @@ function podeAbrir(link) {
  * @returns {Promise<{ tenantId: string, link: LinkPublico }>}
  */
 export async function resolverLink(token) {
-  if (typeof token !== 'string' || !FORMATO_TOKEN_LINK.test(token)) throw indisponivel();
+  if (typeof token !== 'string' || !FORMATO_TOKEN_LINK.test(token)) {
+    throw indisponivel();
+  }
+
   const hash = hashDoToken(token);
   const tenantId = await tenantDoToken(hash);
-  if (!tenantId) throw indisponivel();
+
+  if (!tenantId) {
+    throw indisponivel();
+  }
+
   const [contratado, ligado] = await Promise.all([
     moduloAtivo(tenantId, MODULO_CRM),
     featureAtiva(tenantId, CRM_FEATURES.FORMULARIOS),
   ]);
-  if (!contratado || !ligado) throw indisponivel();
+
+  if (!contratado || !ligado) {
+    throw indisponivel();
+  }
+
   const link = await buscarLinkPublico(tenantId, hash);
-  if (!podeAbrir(link)) throw indisponivel();
+
+  if (!podeAbrir(link)) {
+    throw indisponivel();
+  }
+
   return { tenantId, link: /** @type {LinkPublico} */ (link) };
 }
 
@@ -85,6 +108,7 @@ export function valorDaPessoa(pessoa, campo) {
     campo.camada === CAMADA.CAMADA_3
       ? pessoa.custom_fields?.[campo.id]
       : pessoa[CAMADA_2_CAMPOS[campo.chave] ?? campo.chave];
+
   return valor === undefined || valor === '' ? null : valor;
 }
 
@@ -97,6 +121,7 @@ export function valorDaPessoa(pessoa, campo) {
  */
 export function versaoPublica(link, elegiveisAgora) {
   const pessoa = /** @type {Record<string, any>} */ (link.pessoa);
+
   return {
     introducao: link.introducao,
     termo: link.termo,
@@ -105,15 +130,18 @@ export function versaoPublica(link, elegiveisAgora) {
       itens: secao.itens.map((item) => {
         if (ehPergunta(item)) {
           const { id, rotulo, ajuda, tipo, opcoes } = /** @type {any} */ (item).pergunta;
+
           return {
             pergunta: { id, rotulo, ajuda, tipo, opcoes },
             obrigatorio: item.obrigatorio,
           };
         }
+
         const { campoId, obrigatorio, preencher } = /** @type {any} */ (item);
         const retrato = /** @type {any} */ (link.campos[campoId] ?? {});
         const atual = elegiveisAgora.get(campoId);
         const valor = preencher && atual?.podePreencher ? valorDaPessoa(pessoa, atual) : null;
+
         return {
           campoId,
           obrigatorio,
@@ -139,6 +167,7 @@ export async function abrirFormularioPublico(token) {
   const { tenantId, link } = await resolverLink(token);
   const { campos } = await obterSchemaCampos(tenantId);
   const elegiveisAgora = new Map(camposElegiveis(campos).map((campo) => [campo.id, campo]));
+
   return {
     linkId: link.id,
     resposta: {
@@ -159,6 +188,10 @@ export async function abrirFormularioPublico(token) {
  */
 export async function marcarFormularioAberto(token) {
   const { tenantId, link } = await resolverLink(token);
-  if (!(await marcarLinkAberto(tenantId, link.id))) throw indisponivel();
+
+  if (!(await marcarLinkAberto(tenantId, link.id))) {
+    throw indisponivel();
+  }
+
   return link.id;
 }

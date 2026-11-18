@@ -1,3 +1,7 @@
+/**
+ * @file SERVICE: usuários do tenant como o CRM os enxerga — só quem pode ser responsável por um
+ * lead (ativo, deste tenant).
+ */
 import { listarUsuariosAtivosDoTenant } from '../adapters/usuarios.repository.js';
 
 /**

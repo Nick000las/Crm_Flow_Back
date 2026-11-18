@@ -1,3 +1,6 @@
+/**
+ * @file ADAPTER: enriquecimento por CNPJ (M11b, migration 0025).
+ */
 import { getTenantClient } from '#core/db/tenantClient.js';
 
 /**
@@ -23,8 +26,17 @@ import { getTenantClient } from '#core/db/tenantClient.js';
 export function buscarCacheCnpj(tenantId, cnpj, validoDesde) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT cnpj, status, dados, provedor, consultado_em FROM modulo_crm.crm_cnpj_cache
-      WHERE cnpj = ${cnpj} AND consultado_em >= ${validoDesde}
+      SELECT
+        cnpj,
+        status,
+        dados,
+        provedor,
+        consultado_em
+      FROM
+        modulo_crm.crm_cnpj_cache
+      WHERE
+        cnpj = ${cnpj}
+        AND consultado_em >= ${validoDesde}
     `.then((linhas) => linhas[0]),
   );
 }
@@ -39,10 +51,16 @@ export function gravarCacheCnpj(tenantId, { cnpj, status, dados, provedor }) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_cnpj_cache (cnpj, status, dados, provedor, consultado_em)
-      VALUES (${cnpj}, ${status}, ${JSON.stringify(dados)}::jsonb, ${provedor}, now())
-      ON CONFLICT (cnpj)
-      DO UPDATE SET status = EXCLUDED.status, dados = EXCLUDED.dados, provedor = EXCLUDED.provedor, consultado_em = now()
+      INSERT INTO
+        modulo_crm.crm_cnpj_cache (cnpj, status, dados, provedor, consultado_em)
+      VALUES
+        (${cnpj}, ${status}, ${JSON.stringify(dados)}::jsonb, ${provedor}, now())
+      ON CONFLICT (cnpj) DO UPDATE
+      SET
+        status = EXCLUDED.status,
+        dados = EXCLUDED.dados,
+        provedor = EXCLUDED.provedor,
+        consultado_em = now()
     `,
   );
 }
@@ -54,8 +72,15 @@ export function gravarCacheCnpj(tenantId, { cnpj, status, dados, provedor }) {
 export function buscarConfigCnpj(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT ativo, modo, sobrescrever, mapeamento FROM modulo_crm.crm_cnpj_config
-      WHERE tenant_id = ${tenantId}::uuid
+      SELECT
+        ativo,
+        modo,
+        sobrescrever,
+        mapeamento
+      FROM
+        modulo_crm.crm_cnpj_config
+      WHERE
+        tenant_id = ${tenantId}::uuid
     `.then((linhas) => linhas[0]),
   );
 }
@@ -68,11 +93,17 @@ export function salvarConfigCnpj(tenantId, { ativo, modo, sobrescrever, mapeamen
   return getTenantClient(
     tenantId,
     (tx) => tx.$executeRaw`
-      INSERT INTO modulo_crm.crm_cnpj_config (tenant_id, ativo, modo, sobrescrever, mapeamento)
-      VALUES (${tenantId}::uuid, ${ativo}, ${modo}, ${sobrescrever}, ${JSON.stringify(mapeamento)}::jsonb)
-      ON CONFLICT (tenant_id)
-      DO UPDATE SET ativo = EXCLUDED.ativo, modo = EXCLUDED.modo, sobrescrever = EXCLUDED.sobrescrever,
-        mapeamento = EXCLUDED.mapeamento, updated_at = now()
+      INSERT INTO
+        modulo_crm.crm_cnpj_config (tenant_id, ativo, modo, sobrescrever, mapeamento)
+      VALUES
+        (${tenantId}::uuid, ${ativo}, ${modo}, ${sobrescrever}, ${JSON.stringify(mapeamento)}::jsonb)
+      ON CONFLICT (tenant_id) DO UPDATE
+      SET
+        ativo = EXCLUDED.ativo,
+        modo = EXCLUDED.modo,
+        sobrescrever = EXCLUDED.sobrescrever,
+        mapeamento = EXCLUDED.mapeamento,
+        updated_at = now()
     `,
   );
 }

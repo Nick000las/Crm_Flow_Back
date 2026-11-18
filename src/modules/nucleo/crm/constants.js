@@ -1,4 +1,8 @@
 /**
+ * @file Constantes do módulo CRM, separadas por assunto — este arquivo só reexporta, pra todo
+ * `import ...
+ */
+/**
  * Constantes do módulo CRM, separadas por assunto — este arquivo só
  * reexporta, pra todo `import ... from '../constants.js'` seguir valendo:
  *
@@ -22,22 +26,22 @@
  * - `constants/formularios.js`: campos elegíveis, política de escrita e limites;
  * - `constants/forecast.js`: o que o forecast precisa e os limites dele.
  */
-export * from './constants/arquivo.js';
-export * from './constants/pipelines.js';
-export * from './constants/oportunidades.js';
-export * from './constants/historico.js';
-export * from './constants/duplicidade.js';
-export * from './constants/regras.js';
-export * from './constants/inatividade.js';
-export * from './constants/campos.js';
-export * from './constants/layout.js';
-export * from './constants/listas.js';
-export * from './constants/planilha.js';
 export * from './constants/acesso.js';
+export * from './constants/arquivo.js';
+export * from './constants/campos.js';
 export * from './constants/cnpj.js';
 export * from './constants/distribuicao.js';
-export * from './constants/permissoes.js';
-export * from './constants/score.js';
-export * from './constants/lgpd.js';
-export * from './constants/formularios.js';
+export * from './constants/duplicidade.js';
 export * from './constants/forecast.js';
+export * from './constants/formularios.js';
+export * from './constants/historico.js';
+export * from './constants/inatividade.js';
+export * from './constants/layout.js';
+export * from './constants/lgpd.js';
+export * from './constants/listas.js';
+export * from './constants/oportunidades.js';
+export * from './constants/permissoes.js';
+export * from './constants/pipelines.js';
+export * from './constants/planilha.js';
+export * from './constants/regras.js';
+export * from './constants/score.js';

@@ -1,6 +1,10 @@
+/**
+ * @file Cria tenant + usuário admin inicial + vínculo de módulos, em uma única transação
+ * atômica (Bloco 1.1.5).
+ */
 import { getAdminClient } from '#core/db/tenantClient.js';
-import { reconciliarModulos } from '#core/tenant/reconcile.js';
 import { validarModuleKeys } from '#core/registry/modules.js';
+import { reconciliarModulos } from '#core/tenant/reconcile.js';
 
 /**
  * @typedef {object} ProvisionarTenantInput
@@ -70,5 +74,6 @@ export async function provisionarTenant(input) {
   // Fora da transação: estado inicial dos módulos (ex: campos do sistema
   // do CRM). Best-effort — ver `reconciliarModulos`.
   await reconciliarModulos(criado.tenantId, modulosContratados);
+
   return criado;
 }

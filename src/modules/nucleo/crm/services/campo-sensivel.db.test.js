@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import {
   atualizarConfiguracaoCampo,
@@ -56,6 +59,7 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         subdomain: `smoke-sens-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -66,16 +70,20 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         ativo: true,
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     await criarNovaDefinicao(tenantId, {
       label: 'Alergias',
       tipo: 'texto',
       obrigatorio: false,
       ordem: ORDEM,
     });
+
     campoId = (await campo('alergias')).id;
+
     ({ id: leadId } = await registrarNovoLead(
       tenantId,
       { nome: 'Ana Saúde', email: 'ana@smoke.test', customFields: { alergias: 'Dipirona' } },
@@ -96,12 +104,15 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       sensivel: false,
       capacidades: { canBeSensitive: true },
     });
+
     expect(await chavesDoOperador()).toContain('alergias');
   });
 
   it('nome e contato não podem ser sensíveis', async () => {
     const email = await campo('email');
+
     expect(email.capacidades.canBeSensitive).toBe(false);
+
     await expect(
       atualizarConfiguracaoCampo(tenantId, email.id, { sensivel: true }),
     ).rejects.toMatchObject({
@@ -117,7 +128,9 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
 
     it('o OPERADOR não vê o campo nem o valor', async () => {
       expect(await chavesDoOperador()).not.toContain('alergias');
+
       const lead = await buscarLeadFormatado(tenantId, leadId, OPERADOR);
+
       expect(lead.custom_fields ?? {}).not.toHaveProperty('alergias');
     });
 
@@ -135,11 +148,13 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
 
     it('o DONO segue vendo o valor', async () => {
       const lead = await buscarLeadFormatado(tenantId, leadId, DONO);
+
       expect(lead.custom_fields).toMatchObject({ alergias: 'Dipirona' });
     });
 
     it('a configuração de permissões mostra o campo oculto por padrão', async () => {
       const { campos } = await obterPermissoes(tenantId);
+
       expect(campos.find((item) => item.id === campoId)).toMatchObject({
         sensivel: true,
         acessos: { OPERADOR: 'hidden' },
@@ -152,6 +167,7 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
       await prisma.tenantModuleFeature.create({
         data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.PERMISSOES },
       });
+
       await invalidarFeatures(tenantId);
     });
 
@@ -161,12 +177,15 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
 
     it('liberar grava `edit`, e o OPERADOR passa a ver e editar', async () => {
       await salvarPermissoes(tenantId, { OPERADOR: { [campoId]: 'edit' } });
+
       const linhas = await prisma.$queryRaw`
         SELECT access FROM modulo_crm.crm_field_permission
         WHERE tenant_id = ${tenantId}::uuid AND field_id = ${campoId}::uuid
       `;
+
       expect(linhas).toEqual([{ access: 'edit' }]);
       expect(await chavesDoOperador()).toContain('alergias');
+
       await atualizarLeadExistente(
         tenantId,
         leadId,
@@ -174,7 +193,9 @@ rodar('campo sensível no banco (CRM_DB_TESTS=1)', { timeout: TIMEOUT_MS }, () =
         donoId,
         OPERADOR,
       );
+
       const lead = await buscarLeadFormatado(tenantId, leadId, OPERADOR);
+
       expect(lead.custom_fields).toMatchObject({ alergias: 'Nenhuma' });
     });
 

@@ -1,4 +1,9 @@
+/**
+ * @file Notificação in-app (sino do shell) — do core, pra servir qualquer módulo (decisão D5,
+ * docs/produto/plataforma.md).
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   inserirNotificacoes,
   listarNotificacoesDoUsuario,
@@ -37,6 +42,7 @@ export async function listarNotificacoes(tenantId, usuarioId, { pagina, tamanho 
     limite: tamanho,
     offset: (pagina - 1) * tamanho,
   });
+
   return { ...resultado, pagina, tamanho };
 }
 
@@ -48,8 +54,12 @@ export async function listarNotificacoes(tenantId, usuarioId, { pagina, tamanho 
  */
 export async function marcarComoLida(tenantId, usuarioId, notificacaoId) {
   const notificacao = await marcarNotificacaoLida(tenantId, usuarioId, notificacaoId);
+
   // De outro usuário ou inexistente: a mesma resposta, sem revelar qual.
-  if (!notificacao) throw erroNaoEncontrado('Notificação não encontrada');
+  if (!notificacao) {
+    throw erroNaoEncontrado('Notificação não encontrada');
+  }
+
   return notificacao;
 }
 

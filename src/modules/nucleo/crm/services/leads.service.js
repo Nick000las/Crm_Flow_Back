@@ -1,75 +1,17 @@
+/**
+ * @file SERVICE: lógica de negócio pura. Nunca importa Fastify.
+ */
 import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva, garantirFeature } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { formatarTelefoneBR } from '#shared/formatters/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { buscarLeadsComFiltro, buscarLeadPorId } from '../adapters/leads.repository.js';
+
+import { buscarLeadPorId, buscarLeadsComFiltro } from '../adapters/leads.repository.js';
 import {
   buscarUsuarioAtivoDoTenant,
   listarUsuariosAtivosDoTenant,
 } from '../adapters/usuarios.repository.js';
-import {
-  camposDoContexto,
-  camposParaFiltro,
-  customFieldsParaApi,
-  customFieldsParaArmazenamento,
-  exigidoNaCriacao,
-} from './field-schema.service.js';
-import {
-  CHAVES_DAS_DATAS_DO_CICLO,
-  CHAVES_DO_FILTRO_DO_CICLO,
-  dataDaPurga,
-  erroDeFiltro,
-  montarCondicoes,
-} from './lead-filter.service.js';
-import { fusoDoTenant } from './forecast.service.js';
-import {
-  camposDeDuplicidadeAlterados,
-  encontrarDuplicados,
-  garantirSemDuplicados,
-} from './duplicidade.service.js';
-import { diffDoLead } from './historico.service.js';
-import { identificadorDaBusca } from './layout.service.js';
-import {
-  atualizarLeadComOportunidade,
-  criarLeadComOportunidade,
-  garantirRegrasDaPessoaNova,
-} from './oportunidades.service.js';
-import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
-import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
-export { leadParaApi, regrasAplicaveis };
-import { agendarEnriquecimento } from './cnpj.service.js';
-import {
-  garantirScoreNaoEditado,
-  limitesDaFaixa,
-  recalcularScoreDosLeads,
-} from './score.service.js';
-import { basePadraoDoTenant, comDadosLgpdNaCriacao, erroDoLeadNaoEditado } from './lgpd.service.js';
-import {
-  carregarContextoDistribuicao,
-  detalhesDaAtribuicao,
-  distribuir,
-  notificarAtribuicao,
-} from './distribuicao.service.js';
-import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
-import {
-  comPrimeiroNomeNaCriacao,
-  comPrimeiroNomeNaEdicao,
-  precisaDoLeadAtual,
-} from './primeiro-nome.service.js';
-import { validarRegras } from './regras-campos.service.js';
-import {
-  normalizarTelefone,
-  normalizarValorDoTipo,
-  valorAusente,
-  valorValidoParaTipo,
-} from './tipos-campo.service.js';
-import {
-  contatoNaBusca,
-  garantirEscritaPermitida,
-  identificadorVisivel,
-  obterSchemaDoPapel,
-} from './permissoes.service.js';
 import {
   ACESSOS_CAMPO,
   CAMADA,
@@ -83,6 +25,69 @@ import {
   TIPOS_CAMPO,
   TIPOS_LISTA,
 } from '../constants.js';
+import { agendarEnriquecimento } from './cnpj.service.js';
+import {
+  carregarContextoDistribuicao,
+  detalhesDaAtribuicao,
+  distribuir,
+  notificarAtribuicao,
+} from './distribuicao.service.js';
+import {
+  camposDeDuplicidadeAlterados,
+  encontrarDuplicados,
+  garantirSemDuplicados,
+} from './duplicidade.service.js';
+import {
+  camposDoContexto,
+  camposParaFiltro,
+  customFieldsParaApi,
+  customFieldsParaArmazenamento,
+  exigidoNaCriacao,
+} from './field-schema.service.js';
+import { fusoDoTenant } from './forecast.service.js';
+import { diffDoLead } from './historico.service.js';
+import { identificadorDaBusca } from './layout.service.js';
+import {
+  CHAVES_DAS_DATAS_DO_CICLO,
+  CHAVES_DO_FILTRO_DO_CICLO,
+  dataDaPurga,
+  erroDeFiltro,
+  montarCondicoes,
+} from './lead-filter.service.js';
+import { basePadraoDoTenant, comDadosLgpdNaCriacao, erroDoLeadNaoEditado } from './lgpd.service.js';
+import { categoriaDoStatus, gravarTagsNovas, resolverOpcoesDoLead } from './listas.service.js';
+import {
+  atualizarLeadComOportunidade,
+  criarLeadComOportunidade,
+  garantirRegrasDaPessoaNova,
+} from './oportunidades.service.js';
+import {
+  contatoNaBusca,
+  garantirEscritaPermitida,
+  identificadorVisivel,
+  obterSchemaDoPapel,
+} from './permissoes.service.js';
+import {
+  comPrimeiroNomeNaCriacao,
+  comPrimeiroNomeNaEdicao,
+  precisaDoLeadAtual,
+} from './primeiro-nome.service.js';
+import { validarRegras } from './regras-campos.service.js';
+import { leadParaApi, regrasAplicaveis } from './regras-lead.service.js';
+import {
+  garantirScoreNaoEditado,
+  limitesDaFaixa,
+  recalcularScoreDosLeads,
+} from './score.service.js';
+import {
+  normalizarTelefone,
+  normalizarValorDoTipo,
+  valorAusente,
+  valorValidoParaTipo,
+} from './tipos-campo.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
+
+export { leadParaApi, regrasAplicaveis };
 
 /**
  * Campos com regra própria de obrigatoriedade: `nome` é checado à parte e
@@ -149,16 +154,19 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
   const { papel, oportunidade } = acesso;
   const { ignorarDuplicados, ...semFlagDeDuplicidade } = entrada;
   const schema = await obterSchemaDoPapel(tenantId, papel);
+
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
   // M14: com a pontuação ligada, o Lead score é calculado.
   await garantirScoreNaoEditado(tenantId, semFlagDeDuplicidade);
+
   // M15: base legal padrão (antes do obrigatório), origem e datas carimbadas.
   const input = comDadosLgpdNaCriacao(
     comPrimeiroNomeNaCriacao(comContatoNormalizado(semFlagDeDuplicidade)),
     ORIGENS_REGISTRO.MANUAL,
     { basePadrao: await basePadraoDoTenant(tenantId) },
   );
+
   if (input.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
@@ -166,15 +174,21 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
   validarEmailOuTelefone(input);
 
   const { definicoes } = schema;
+
   validarCustomFields(definicoes, input.customFields);
   await validarUsuariosDosCampos(tenantId, definicoes, input.customFields);
   // Criação exige todo campo obrigatório (nativo ou personalizado) do
   // formulário de criação — edição não (ver atualizarLeadExistente).
   validarObrigatoriosNaCriacao(schema.campos, { ...input, ...oportunidade });
+
   // Regras do M8 (por status e condicionais) sobre o lead que vai nascer. Pelo
   // quadro, a categoria é a da coluna: conferidas ao gravar, na opção dela.
   const regras = await regrasAplicaveis(tenantId, schema);
-  if (!oportunidade) lancarErroDasRegras(errosDasRegras(schema, regras, input));
+
+  if (!oportunidade) {
+    lancarErroDasRegras(errosDasRegras(schema, regras, input));
+  }
+
   // Status/origem/motivo só com opção ativa; tags viram keys (M3).
   const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input);
 
@@ -192,6 +206,7 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
 
   // Tag nova entra na lista só quando tudo já foi validado.
   await gravarTagsNovas(tenantId, tagsNovas);
+
   // `customFields` vai como objeto puro — é o repository quem faz o
   // `JSON.stringify` (uma vez só). Stringificar aqui também gravaria uma
   // string dupla-serializada no JSONB em vez do objeto.
@@ -220,6 +235,7 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
       conferir: (opcao, opcoes) => garantirRegrasDaPessoaNova(regras, input, opcao, opcoes),
     },
   );
+
   if (atribuicao) {
     await notificarAtribuicao(tenantId, {
       leadId: criado.id,
@@ -228,10 +244,12 @@ export async function registrarNovoLead(tenantId, entrada, usuarioId, acesso = {
       criadorId: usuarioId,
     });
   }
+
   // Enriquecimento por CNPJ (M11b, modo automático): depois de salvo, na fila; nunca falha o POST.
   await agendarEnriquecimento(tenantId, [{ leadId: criado.id, cnpj: input.cnpj }]);
   // Pontuação (M14): soma das regras sobre o lead já gravado.
   await recalcularScoreDosLeads(tenantId, [criado.id]);
+
   return criado;
 }
 
@@ -265,13 +283,17 @@ export async function atualizarLeadExistente(
 ) {
   const { ignorarDuplicados, expectedUpdatedAt, ...semFlagDeDuplicidade } = entrada;
   const schema = await obterSchemaDoPapel(tenantId, papel);
+
   // Antes do primeiro nome derivado: só o que o usuário mandou conta.
   garantirEscritaPermitida(schema, semFlagDeDuplicidade);
   await garantirScoreNaoEditado(tenantId, semFlagDeDuplicidade);
+
   const normalizado = comContatoNormalizado(semFlagDeDuplicidade);
+
   if (normalizado.nome !== undefined && normalizado.nome.trim().length === 0) {
     throw erroDeValidacao('nome', 'Nome do lead não pode ser vazio', 'Informe o nome do lead');
   }
+
   // Primeiro nome (M10): segue o nome enquanto não foi editado à mão.
   const input = comPrimeiroNomeNaEdicao(
     normalizado,
@@ -288,6 +310,7 @@ export async function atualizarLeadExistente(
   validarLimpezaDeObrigatorios(input, schema.campos, definicoes);
   await validarRegrasNaEdicao(tenantId, leadId, input, schema);
   await validarContatoRestante(tenantId, leadId, input);
+
   // Opção inativa que o lead já tinha continua aceita (só aí o lead é lido).
   const { input: comListas, tagsNovas } = await resolverOpcoesDoLead(schema.listas, input, () =>
     buscarLeadPorId(tenantId, leadId),
@@ -296,9 +319,11 @@ export async function atualizarLeadExistente(
   if (input.usuarioResponsavelId) {
     await validarResponsavel(tenantId, input.usuarioResponsavelId);
   }
+
   await validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplicados);
 
   await gravarTagsNovas(tenantId, tagsNovas);
+
   const ignorar = input.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
   const avisos = { lista: [] };
   const leadAtualizado = await atualizarLeadComOportunidade(
@@ -317,6 +342,7 @@ export async function atualizarLeadExistente(
         if (expectedUpdatedAt) {
           await garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel);
         }
+
         await transacao?.conferir(lead, tx);
       },
       depoisDeGravar: transacao?.depoisDeGravar,
@@ -331,15 +357,23 @@ export async function atualizarLeadExistente(
     // M15: lead anonimizado existe, mas está travado (409); senão, 404.
     throw await erroDoLeadNaoEditado(tenantId, leadId, leadNaoEncontrado());
   }
+
   // M11b: só quando o PUT mexe no CNPJ (o job confere se ainda é o mesmo).
-  if (input.cnpj) await agendarEnriquecimento(tenantId, [{ leadId, cnpj: leadAtualizado.cnpj }]);
+  if (input.cnpj) {
+    await agendarEnriquecimento(tenantId, [{ leadId, cnpj: leadAtualizado.cnpj }]);
+  }
+
   // Pontuação (M14): a resposta já sai com o score novo.
   const scores = await recalcularScoreDosLeads(tenantId, [leadId]);
-  if (scores?.has(leadId)) leadAtualizado.lead_score = scores.get(leadId);
+
+  if (scores?.has(leadId)) {
+    leadAtualizado.lead_score = scores.get(leadId);
+  }
 
   // FC1: a probabilidade da principal voltou ao padrão do status. O aviso traz
   // a anterior, então só vai para quem vê o campo.
   const veProbabilidade = schema.campos.some((campo) => campo.chave === 'probabilidadeFechamento');
+
   return { ...formatarLead(leadAtualizado, schema), avisos: veProbabilidade ? avisos.lista : [] };
 }
 
@@ -354,8 +388,12 @@ export async function atualizarLeadExistente(
  * @param {string | undefined} papel
  */
 async function garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, papel) {
-  if (new Date(expectedUpdatedAt).getTime() === new Date(lead.updated_at).getTime()) return;
+  if (new Date(expectedUpdatedAt).getTime() === new Date(lead.updated_at).getTime()) {
+    return;
+  }
+
   const mensagem = 'Este lead foi alterado por outra pessoa. Carregue a versão atual.';
+
   throw new AppError({
     statusCode: HTTP_STATUS.CONFLICT,
     code: ERROR_CODES.RESOURCE_CONFLICT,
@@ -374,11 +412,15 @@ async function garantirVersaoDoLead(tenantId, leadId, lead, expectedUpdatedAt, p
  * @param {Record<string, any>} lead
  */
 export function errosDasRegras(schema, regras, lead) {
-  if (regras.length === 0) return [];
+  if (regras.length === 0) {
+    return [];
+  }
+
   const listas = schema.listas ?? {};
   const labelDoStatus = Object.fromEntries(
     (listas[TIPOS_LISTA.STATUS] ?? []).map((opcao) => [opcao.key, opcao.label]),
   );
+
   return validarRegras(regras, lead, {
     categoriaDoStatus: categoriaDoStatus(listas, lead.status),
     labelDoStatus,
@@ -396,6 +438,7 @@ export function aplicarEdicao(atual, input) {
   const definidos = Object.fromEntries(
     Object.entries(input).filter(([, valor]) => valor !== undefined),
   );
+
   return {
     ...atual,
     ...definidos,
@@ -405,7 +448,9 @@ export function aplicarEdicao(atual, input) {
 
 /** @param {{ campo: string, mensagem: string }[]} erros */
 function lancarErroDasRegras(erros) {
-  if (erros.length > 0) throw erroDeValidacao(erros[0].campo, erros[0].mensagem);
+  if (erros.length > 0) {
+    throw erroDeValidacao(erros[0].campo, erros[0].mensagem);
+  }
 }
 
 /**
@@ -419,9 +464,17 @@ function lancarErroDasRegras(erros) {
  */
 async function validarRegrasNaEdicao(tenantId, leadId, input, schema) {
   const regras = await regrasAplicaveis(tenantId, schema);
-  if (regras.length === 0) return;
+
+  if (regras.length === 0) {
+    return;
+  }
+
   const atual = await buscarLeadPorId(tenantId, leadId);
-  if (!atual) throw leadNaoEncontrado();
+
+  if (!atual) {
+    throw leadNaoEncontrado();
+  }
+
   lancarErroDasRegras(
     errosDasRegras(schema, regras, aplicarEdicao(leadParaApi(atual, schema), input)),
   );
@@ -435,7 +488,10 @@ async function validarRegrasNaEdicao(tenantId, leadId, input, schema) {
  * @param {{ leadId?: string, email?: string, telefone?: string, cnpj?: string, cpf?: string }} input
  */
 export async function checarDuplicados(tenantId, { leadId, ...dados }) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return { duplicados: [] };
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) {
+    return { duplicados: [] };
+  }
+
   return { duplicados: await encontrarDuplicados(tenantId, dados, { ignorarId: leadId ?? null }) };
 }
 
@@ -452,12 +508,23 @@ async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplic
   const tocaDuplicidade = Object.values(CAMPOS_DUPLICIDADE).some(
     ({ chave }) => typeof input[chave] === 'string',
   );
-  if (!tocaDuplicidade || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) return;
+
+  if (!tocaDuplicidade || !(await featureAtiva(tenantId, CRM_FEATURES.DUPLICIDADE))) {
+    return;
+  }
 
   const atual = await buscarLeadPorId(tenantId, leadId);
-  if (!atual) throw leadNaoEncontrado();
+
+  if (!atual) {
+    throw leadNaoEncontrado();
+  }
+
   const alterados = camposDeDuplicidadeAlterados(input, atual);
-  if (Object.keys(alterados).length === 0) return;
+
+  if (Object.keys(alterados).length === 0) {
+    return;
+  }
+
   await garantirSemDuplicados(tenantId, alterados, { ignorarId: leadId, ignorarDuplicados });
 }
 
@@ -475,6 +542,7 @@ async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplic
  */
 export async function listarCamposDoTenant(tenantId, contexto, { papel } = {}) {
   const { campos } = await obterSchemaDoPapel(tenantId, papel);
+
   return contexto ? camposDoContexto(campos, contexto) : campos;
 }
 
@@ -541,16 +609,22 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
     relogioDaInatividade(tenantId),
     noQuadro ? [] : pipelinesOcultos(tenantId, papel),
   ]);
+
   // Arquivados e lixeira só existem com o arquivo ligado (M5).
   if (!comArquivo && filtro.situacao && filtro.situacao !== SITUACOES_LEAD.ATIVOS) {
     await garantirFeature(tenantId, CRM_FEATURES.ARQUIVO);
   }
+
   // "Esfriando" só existe com a inatividade ligada (M9).
   if (!inatividade && filtro.esfriando) {
     await garantirFeature(tenantId, CRM_FEATURES.INATIVIDADE);
   }
+
   // Faixa de score (M14): a chave da faixa vira os limites (exige `crm.score`).
-  if (filtro.faixaScore) await garantirFeature(tenantId, CRM_FEATURES.SCORE);
+  if (filtro.faixaScore) {
+    await garantirFeature(tenantId, CRM_FEATURES.SCORE);
+  }
+
   // M13: filtrar por faixa de valor revelaria o valor oculto para o papel.
   if (
     (filtro.valorMin !== undefined || filtro.valorMax !== undefined) &&
@@ -558,14 +632,17 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
   ) {
     throw erroDeFiltro(CHAVE_VALOR, 'Campo desconhecido');
   }
+
   // FC4 + M13: "Cliente desde" e "Última compra" são datas de conversão.
   const comDatasDoCiclo = CHAVES_DAS_DATAS_DO_CICLO.filter((chave) => filtro[chave] !== undefined);
+
   if (
     comDatasDoCiclo.length > 0 &&
     !schema.campos.some((campo) => campo.chave === CAMPO_DAS_DATAS_DO_CICLO)
   ) {
     throw erroDeFiltro(comDatasDoCiclo[0], 'Campo desconhecido');
   }
+
   const faixaDoScore = filtro.faixaScore
     ? await limitesDaFaixa(tenantId, filtro.faixaScore)
     : undefined;
@@ -578,6 +655,7 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
     ...(noQuadro ?? { pipelinesOcultos: ocultos }),
     ...(await contextoDoCiclo(tenantId, filtro, papel, { noQuadro, ocultos, comDatasDoCiclo })),
   });
+
   return { condicoes, schema, inatividade, ocultos };
 }
 
@@ -593,11 +671,15 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
  * @returns {Promise<{ fuso?: string, ocultosDoCiclo?: string[] }>}
  */
 async function contextoDoCiclo(tenantId, filtro, papel, { noQuadro, ocultos, comDatasDoCiclo }) {
-  if (!CHAVES_DO_FILTRO_DO_CICLO.some((chave) => filtro[chave] !== undefined)) return {};
+  if (!CHAVES_DO_FILTRO_DO_CICLO.some((chave) => filtro[chave] !== undefined)) {
+    return {};
+  }
+
   const [fuso, ocultosDoCiclo] = await Promise.all([
     comDatasDoCiclo.length > 0 ? fusoDoTenant(tenantId) : undefined,
     noQuadro ? pipelinesOcultos(tenantId, papel) : ocultos,
   ]);
+
   return { ...(fuso ? { fuso } : {}), ocultosDoCiclo };
 }
 
@@ -611,7 +693,10 @@ async function contextoDoCiclo(tenantId, filtro, papel, { noQuadro, ocultos, com
  * @returns {T}
  */
 function comCustomFieldsArmazenaveis(input, definicoes) {
-  if (input.customFields === undefined) return input;
+  if (input.customFields === undefined) {
+    return input;
+  }
+
   const tipoPorChave = new Map(definicoes.map((definicao) => [definicao.chave, definicao.tipo]));
   // Forma canônica por tipo (telefone só dígitos, e-mail minúsculo...) —
   // depois de validado, antes de trocar `chave` por `id`.
@@ -621,6 +706,7 @@ function comCustomFieldsArmazenaveis(input, definicoes) {
       valor === null ? null : normalizarValorDoTipo(tipoPorChave.get(chave), valor),
     ]),
   );
+
   return { ...input, customFields: customFieldsParaArmazenamento(definicoes, normalizados) };
 }
 
@@ -636,8 +722,10 @@ function comCustomFieldsArmazenaveis(input, definicoes) {
  */
 function comContatoNormalizado(input) {
   const normalizado = { ...input };
+
   if (typeof input.telefone === 'string') {
     const telefone = normalizarTelefone(input.telefone);
+
     if (!telefone) {
       throw erroDeValidacao(
         'telefone',
@@ -645,9 +733,14 @@ function comContatoNormalizado(input) {
         'Informe um telefone com DDD (10 ou 11 dígitos)',
       );
     }
+
     normalizado.telefone = telefone;
   }
-  if (typeof input.email === 'string') normalizado.email = input.email.trim().toLowerCase();
+
+  if (typeof input.email === 'string') {
+    normalizado.email = input.email.trim().toLowerCase();
+  }
+
   return comDocumentosNormalizados(normalizado);
 }
 
@@ -662,14 +755,21 @@ function comContatoNormalizado(input) {
  */
 function comDocumentosNormalizados(input) {
   const normalizado = { ...input };
+
   for (const [chave, { tipo, label }] of Object.entries(DOCUMENTOS_NATIVOS)) {
     const valor = input[chave];
-    if (typeof valor !== 'string' || valor.trim() === '') continue;
+
+    if (typeof valor !== 'string' || valor.trim() === '') {
+      continue;
+    }
+
     if (!valorValidoParaTipo(tipo, valor)) {
       throw erroDeValidacao(chave, `${label} inválido`, `Informe um ${label} válido`);
     }
+
     normalizado[chave] = normalizarValorDoTipo(tipo, valor);
   }
+
   return normalizado;
 }
 
@@ -686,7 +786,11 @@ async function validarUsuariosDosCampos(tenantId, definicoes, customFields) {
     (definicao) =>
       definicao.tipo === TIPOS_CAMPO.USUARIO && !valorAusente(customFields?.[definicao.chave]),
   );
-  if (comUsuario.length === 0) return;
+
+  if (comUsuario.length === 0) {
+    return;
+  }
+
   const ativos = new Set(
     (await listarUsuariosAtivosDoTenant(tenantId)).map((usuario) => usuario.id.toLowerCase()),
   );
@@ -698,6 +802,7 @@ async function validarUsuariosDosCampos(tenantId, definicoes, customFields) {
         ).toLowerCase(),
       ),
   );
+
   if (invalido) {
     throw erroDeValidacao(
       'customFields',
@@ -732,12 +837,18 @@ function validarEmailOuTelefone(input) {
  */
 function validarObrigatoriosNaCriacao(campos, input) {
   for (const campo of campos) {
-    if (!exigidoNaCriacao(campo) || CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) continue;
+    if (!exigidoNaCriacao(campo) || CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) {
+      continue;
+    }
+
     // M13: "só ver" pro papel — não dá pra exigir de quem não pode preencher.
-    if (campo.acesso === ACESSOS_CAMPO.VER) continue;
+    if (campo.acesso === ACESSOS_CAMPO.VER) {
+      continue;
+    }
 
     const personalizado = campo.camada === CAMADA.CAMADA_3;
     const valor = personalizado ? input.customFields?.[campo.chave] : input[campo.chave];
+
     if (valorAusente(valor)) {
       throw erroDeValidacao(
         personalizado ? 'customFields' : campo.chave,
@@ -773,16 +884,26 @@ function formatarLead(lead, { campos, definicoes }) {
 
   if ('custom_fields' in lead) {
     const definicoesLigadas = definicoes.filter((definicao) => ligados.has(definicao.chave));
+
     leadFormatado.custom_fields = customFieldsParaApi(definicoesLigadas, lead.custom_fields);
   }
+
   for (const campo of CAMPOS_SISTEMA) {
-    if (!ligados.has(campo.systemKey)) delete leadFormatado[campo.coluna];
+    if (!ligados.has(campo.systemKey)) {
+      delete leadFormatado[campo.coluna];
+    }
   }
+
   // FC4: as datas do ciclo acompanham a data de conversão (M13).
   if (!ligados.has(CAMPO_DAS_DATAS_DO_CICLO)) {
-    for (const coluna of COLUNAS_DAS_DATAS_DO_CICLO) delete leadFormatado[coluna];
+    for (const coluna of COLUNAS_DAS_DATAS_DO_CICLO) {
+      delete leadFormatado[coluna];
+    }
   }
-  if (lead.deleted_at) leadFormatado.purga_em = dataDaPurga(lead.deleted_at);
+
+  if (lead.deleted_at) {
+    leadFormatado.purga_em = dataDaPurga(lead.deleted_at);
+  }
 
   return leadFormatado;
 }
@@ -829,10 +950,14 @@ function validarValorPorTipo(definicao, valor) {
       `"${definicao.label}" espera um valor do tipo ${definicao.tipo}`,
     );
 
-  if (valorAusente(valor)) return; // obrigatoriedade é checada à parte
+  if (valorAusente(valor)) {
+    return;
+  } // obrigatoriedade é checada à parte
 
   // Regras por tipo: `tipos-campo.service.js` (as mesmas do import e do filtro).
-  if (!valorValidoParaTipo(definicao.tipo, valor, definicao.opcoes)) throw erroDeTipo();
+  if (!valorValidoParaTipo(definicao.tipo, valor, definicao.opcoes)) {
+    throw erroDeTipo();
+  }
 }
 
 /**
@@ -845,13 +970,19 @@ function validarValorPorTipo(definicao, valor) {
  * @param {AtualizarLeadInput} input
  */
 async function validarContatoRestante(tenantId, leadId, input) {
-  if (input.email !== null && input.telefone !== null) return;
+  if (input.email !== null && input.telefone !== null) {
+    return;
+  }
 
   const atual = await buscarLeadPorId(tenantId, leadId);
-  if (!atual) throw leadNaoEncontrado();
+
+  if (!atual) {
+    throw leadNaoEncontrado();
+  }
 
   const email = input.email !== undefined ? input.email : atual.email;
   const telefone = input.telefone !== undefined ? input.telefone : atual.telefone;
+
   if (!email && !telefone) {
     throw erroDeValidacao(
       input.email === null ? 'email' : 'telefone',
@@ -870,8 +1001,14 @@ async function validarContatoRestante(tenantId, leadId, input) {
  */
 function validarLimpezaDeObrigatorios(input, campos, definicoes) {
   for (const campo of campos) {
-    if (campo.camada === CAMADA.CAMADA_3 || !campo.obrigatorio) continue;
-    if (CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) continue;
+    if (campo.camada === CAMADA.CAMADA_3 || !campo.obrigatorio) {
+      continue;
+    }
+
+    if (CHAVES_OBRIGATORIEDADE_PROPRIA.has(campo.chave)) {
+      continue;
+    }
+
     if (input[campo.chave] === null) {
       throw campoObrigatorioNaoPodeSerLimpo(campo.chave, campo.label);
     }

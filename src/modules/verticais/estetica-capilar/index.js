@@ -1,3 +1,6 @@
+/**
+ * @file STUB — primeiro módulo vertical candidato (ticket alto, sem concorrente maduro).
+ */
 import { authenticateHook } from '#core/auth/rbac.js';
 
 /**

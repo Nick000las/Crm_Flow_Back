@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import { getAdminClient } from '#core/db/tenantClient.js';
 
 /** BLOQUEADOR DE MERGE (Bloco 2.1). Varre TODAS as tabelas do banco (qualquer schema). */
@@ -28,10 +29,12 @@ describeWithDatabase('Cobertura de RLS multi-tenant', () => {
 
     if (tabelasSemRLS.length > 0) {
       const lista = tabelasSemRLS.map((t) => `  - ${t.schema}.${t.tabela}`).join('\n');
+
       throw new Error(
         `Tabelas com tenant_id SEM RLS:\n${lista}\n\nVer MODULE_CONTRACT.md, seção 5.`,
       );
     }
+
     expect(tabelasSemRLS).toHaveLength(0);
   });
 
@@ -50,6 +53,7 @@ describeWithDatabase('Cobertura de RLS multi-tenant', () => {
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = ${schema} AND table_name = ${tabela} AND column_name = 'tenant_id'
     `;
+
       expect(colunas).toHaveLength(0);
     },
   );

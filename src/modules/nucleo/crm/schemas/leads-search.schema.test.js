@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { filtroLeadsSchema, pesquisarLeadsBodySchema } from './leads-search.schema.js';
 import { filtroDoQuadroSchema } from './quadro-comercial.schema.js';
 
@@ -9,6 +10,7 @@ const DATA_COMO_NUMERO = 20261031;
 /** @param {unknown} filtro */
 const errosDe = (filtro) => {
   const resultado = filtroLeadsSchema.safeParse(filtro);
+
   return resultado.success ? {} : resultado.error.flatten().fieldErrors;
 };
 
@@ -23,17 +25,21 @@ describe('filtros do ciclo de vida no filtroLeadsSchema (FC4)', () => {
       oportunidadesAbertasMin: 0,
       oportunidadesAbertasMax: DUAS,
     };
+
     expect(filtroLeadsSchema.parse(filtro)).toEqual({ ...filtro, filtros: [] });
   });
 
   it('ciclo: lista não vazia, sem repetição, só lead|oportunidade|cliente', () => {
     expect(errosDe({ cicloDeVida: [] }).cicloDeVida).toEqual(['Escolha ao menos um ciclo de vida']);
+
     expect(errosDe({ cicloDeVida: ['lead', 'lead'] }).cicloDeVida).toEqual([
       'Ciclo de vida repetido',
     ]);
+
     expect(errosDe({ cicloDeVida: ['prospect'] }).cicloDeVida).toEqual([
       'Ciclo de vida deve ser um de: lead, oportunidade, cliente',
     ]);
+
     expect(errosDe({ cicloDeVida: 'lead' }).cicloDeVida).toEqual([
       'Informe uma lista de ciclos de vida',
     ]);
@@ -43,15 +49,19 @@ describe('filtros do ciclo de vida no filtroLeadsSchema (FC4)', () => {
     expect(errosDe({ clienteDesdeDe: '31/10/2026' }).clienteDesdeDe).toEqual([
       'Informe uma data no formato AAAA-MM-DD',
     ]);
+
     expect(errosDe({ ultimaCompraAte: '2026-10-31T23:59:59Z' }).ultimaCompraAte).toEqual([
       'Informe uma data no formato AAAA-MM-DD',
     ]);
+
     expect(errosDe({ clienteDesdeAte: '2026-02-30' }).clienteDesdeAte).toEqual([
       'Informe uma data válida',
     ]);
+
     expect(errosDe({ ultimaCompraDe: DATA_COMO_NUMERO }).ultimaCompraDe).toEqual([
       'Informe uma data no formato AAAA-MM-DD',
     ]);
+
     expect(errosDe({ clienteDesdeDe: '2028-02-29' })).toEqual({});
   });
 
@@ -59,9 +69,11 @@ describe('filtros do ciclo de vida no filtroLeadsSchema (FC4)', () => {
     expect(errosDe({ oportunidadesAbertasMin: -1 }).oportunidadesAbertasMin).toEqual([
       'A quantidade não pode ser negativa',
     ]);
+
     expect(errosDe({ oportunidadesAbertasMax: MEIA }).oportunidadesAbertasMax).toEqual([
       'Informe uma quantidade inteira',
     ]);
+
     expect(errosDe({ oportunidadesAbertasMax: '2' }).oportunidadesAbertasMax).toEqual([
       'Informe uma quantidade válida',
     ]);
@@ -69,6 +81,7 @@ describe('filtros do ciclo de vida no filtroLeadsSchema (FC4)', () => {
 
   it('vale também na busca paginada e no quadro', () => {
     expect(pesquisarLeadsBodySchema.safeParse({ cicloDeVida: ['x'] }).success).toBe(false);
+
     expect(filtroDoQuadroSchema.parse({ oportunidadesAbertasMin: 1 })).toMatchObject({
       oportunidadesAbertasMin: 1,
     });

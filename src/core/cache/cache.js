@@ -1,3 +1,7 @@
+/**
+ * @file Fecha a conexão (no `onClose` do app) e esquece o store — a próxima chamada escolhe de
+ * novo conforme `REDIS_URL` (usado também em teste).
+ */
 import { criarConexaoRedis } from '#core/queue/connection.js';
 import { TIME_UNITS } from '#shared/constants/index.js';
 
@@ -32,11 +36,17 @@ export function criarStoreMemoria() {
   return {
     async get(chave) {
       const item = mapa.get(chave);
-      if (!item) return undefined;
-      if (item.expiraEm <= Date.now()) {
-        mapa.delete(chave);
+
+      if (!item) {
         return undefined;
       }
+
+      if (item.expiraEm <= Date.now()) {
+        mapa.delete(chave);
+
+        return undefined;
+      }
+
       return JSON.parse(item.valor);
     },
     async set(chave, valor, ttlSegundos) {
@@ -46,7 +56,9 @@ export function criarStoreMemoria() {
       });
     },
     async del(chaves) {
-      for (const chave of chaves) mapa.delete(chave);
+      for (const chave of chaves) {
+        mapa.delete(chave);
+      }
     },
     async encerrar() {
       mapa.clear();
@@ -60,13 +72,18 @@ export function criarStoreMemoria() {
  */
 export function criarStoreRedis(redis) {
   let avisou = false;
+
   // Sem listener, o ioredis trata erro de conexão como exceção não
   // capturada. Um aviso por queda basta — o comportamento já é de miss.
   redis.on('error', (erro) => {
-    if (avisou) return;
+    if (avisou) {
+      return;
+    }
+
     avisou = true;
     console.warn(`[cache] Redis indisponível, caindo no banco: ${erro.message}`);
   });
+
   redis.on('ready', () => {
     avisou = false;
   });
@@ -75,6 +92,7 @@ export function criarStoreRedis(redis) {
     async get(chave) {
       try {
         const bruto = await redis.get(PREFIXO + chave);
+
         return bruto === null ? undefined : JSON.parse(bruto);
       } catch {
         return undefined;
@@ -88,7 +106,10 @@ export function criarStoreRedis(redis) {
       }
     },
     async del(chaves) {
-      if (chaves.length === 0) return;
+      if (chaves.length === 0) {
+        return;
+      }
+
       try {
         await redis.del(...chaves.map((chave) => PREFIXO + chave));
       } catch {
@@ -109,6 +130,7 @@ function obterStore() {
   if (!store) {
     store = process.env.REDIS_URL ? criarStoreRedis(criarConexaoRedis()) : criarStoreMemoria();
   }
+
   return store;
 }
 
@@ -147,10 +169,15 @@ export function cacheDel(...chaves) {
  */
 export async function lerComCache(chave, ttlSegundos, carregar) {
   const emCache = await cacheGet(chave);
-  if (emCache !== undefined) return /** @type {T} */ (emCache);
+
+  if (emCache !== undefined) {
+    return /** @type {T} */ (emCache);
+  }
 
   const valor = await carregar();
+
   await cacheSet(chave, valor, ttlSegundos);
+
   return valor;
 }
 
@@ -160,6 +187,7 @@ export async function lerComCache(chave, ttlSegundos, carregar) {
  */
 export async function encerrarCache() {
   const atual = store;
+
   store = null;
   await atual?.encerrar();
 }

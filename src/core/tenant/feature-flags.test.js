@@ -1,9 +1,11 @@
 import Fastify from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { registerErrorHandlers } from '#core/errors/error-handler.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
   exigirFeature,
   featureAtiva,
@@ -32,6 +34,7 @@ describe('listarFeaturesAtivas / featureAtiva', () => {
   it('lê as flags do tenant pelo client admin, com tenant_id explícito', async () => {
     findMany.mockResolvedValue([{ featureKey: FLAG }]);
     await expect(listarFeaturesAtivas(TENANT_A)).resolves.toEqual([FLAG]);
+
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT_A } }),
     );
@@ -75,9 +78,11 @@ describe('exigirFeature numa rota', () => {
     app = Fastify();
     registerErrorHandlers(app);
     app.decorateRequest('tenantContext', null);
+
     app.addHook('onRequest', async (req) => {
       req.tenantContext = { tenantId: TENANT_A, userId: 'u-1', role: 'DONO' };
     });
+
     app.get('/protegida', { preHandler: exigirFeature(FLAG) }, async () => ({ ok: true }));
     await app.ready();
   });
@@ -86,7 +91,9 @@ describe('exigirFeature numa rota', () => {
 
   it('flag desligada → 403 FEATURE_NOT_ENABLED', async () => {
     findMany.mockResolvedValue([]);
+
     const resposta = await app.inject({ method: 'GET', url: '/protegida' });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.FORBIDDEN);
     expect(resposta.json().error.code).toBe(ERROR_CODES.FEATURE_NOT_ENABLED);
     expect(resposta.json().error.details).toEqual({ featureKey: FLAG });
@@ -94,7 +101,9 @@ describe('exigirFeature numa rota', () => {
 
   it('flag ligada → 200', async () => {
     findMany.mockResolvedValue([{ featureKey: FLAG }]);
+
     const resposta = await app.inject({ method: 'GET', url: '/protegida' });
+
     expect(resposta.statusCode).toBe(HTTP_STATUS.OK);
   });
 

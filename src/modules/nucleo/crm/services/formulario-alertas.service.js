@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: alertas do formulário (FM5).
+ */
 import { erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   buscarAlertasDaPessoa,
   marcarAlertaVisto,
@@ -28,12 +32,21 @@ import { avaliarCondicao } from './regras-campos.service.js';
  */
 export function alertasDaResposta(regras, itens, valores) {
   const porChave = new Map(itens.map((item) => [item.chave, item]));
+
   return regras.flatMap((regra) => {
     const chave = regra.alvo.campoId ?? regra.alvo.perguntaId;
     const item = chave ? porChave.get(chave) : undefined;
-    if (!item) return [];
+
+    if (!item) {
+      return [];
+    }
+
     const valor = (item.ehPergunta ? valores.perguntas : valores.campos)[item.chave];
-    if (!avaliarCondicao(item.tipo, regra.operador, regra.valor, valor)) return [];
+
+    if (!avaliarCondicao(item.tipo, regra.operador, regra.valor, valor)) {
+      return [];
+    }
+
     return [{ regraId: regra.id, nivel: regra.nivel, texto: regra.texto, sensivel: item.sensivel }];
   });
 }
@@ -51,6 +64,7 @@ export async function listarAlertasDaPessoa(tenantId, leadId, { userId, role }, 
     buscarAlertasDaPessoa(tenantId, leadId, userId, opcoes),
     regraDeVisibilidade(tenantId, role),
   ]);
+
   return linhas.map((linha) => {
     const alvo = linha.regras.find((item) => item.id === linha.regra_id)?.alvo ?? {};
     const ve = alvo.campoId
@@ -58,6 +72,7 @@ export async function listarAlertasDaPessoa(tenantId, leadId, { userId, role }, 
       : regra.vePergunta(linha.sensivel);
     // Regra sem alvo conhecido (não deveria acontecer): na dúvida, restrito.
     const podeVer = Boolean(alvo.campoId || alvo.perguntaId) && ve;
+
     return {
       id: linha.id,
       nivel: linha.nivel,
@@ -81,5 +96,6 @@ export async function marcarVisto(tenantId, leadId, alertaId, usuarioId) {
   if (!(await marcarAlertaVisto(tenantId, leadId, alertaId, usuarioId))) {
     throw erroNaoEncontrado('Alerta não encontrado');
   }
+
   return { id: alertaId, visto: true };
 }

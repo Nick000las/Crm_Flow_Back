@@ -77,12 +77,12 @@ uma camada também não (`controller` nunca chama `adapter` direto).
 - **`services/`** — lógica de negócio pura. Nunca importa `fastify`. Nunca
   chama `getTenantClient()` diretamente — isso é trabalho do `adapter`.
   Chama funções de `adapters/` do **próprio** módulo.
-- **`adapters/`** — única camada que toca dado. Nunca importa `fastify`.
+- **`adapters/`** — única camada que toca dado. Nunca importa `fastify`. Repositories ficam restritos à persistência: SQL/ORM, serialização e resultados. Autorização, regras e erros de aplicação pertencem aos services. Adapters de fila/transporte usam `.adapter.js`, não `.repository.js`. Repositories nunca importam services/controllers.
 
 O `eslint.config.js` aplica isso automaticamente: `controllers/` não pode
 importar `#core/db/tenantClient.js` nem nada de `**/adapters/*`; `services/`
 não pode importar `#core/db/tenantClient.js` nem `fastify`; `adapters/` não
-pode importar `fastify`. Rodar `npm run lint` pega qualquer violação.
+pode importar `fastify` nem regras/services. As regras locais em `tooling/eslint/` também bloqueiam erros de aplicação em repositories e execução direta de SQL/Prisma nos services. A formatação SQL é verificada pelo lint. Consulte [o padrão de código](docs/padrao-de-codigo.md) para detalhes e exemplos. Rodar `pnpm lint` verifica essas fronteiras.
 
 Exemplo real (`crm`): [`leads.controller.js`](src/modules/nucleo/crm/controllers/leads.controller.js)
 chama [`leads.service.js`](src/modules/nucleo/crm/services/leads.service.js),

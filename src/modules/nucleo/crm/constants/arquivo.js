@@ -1,4 +1,8 @@
 /**
+ * @file Fila de manutenção do CRM (jobs agendados, não disparados por usuário). A purga roda
+ * uma vez por dia, de madrugada no horário de Brasília.
+ */
+/**
  * Arquivo e lixeira do lead (M5, `docs/produto/crm-historico-arquivo-e-lgpd.md`).
  *
  * `situacao` é um filtro fixo da busca (e do export/views): sem ele, a

@@ -1,16 +1,23 @@
+/**
+ * @file SERVICE: views de filtro salvas (docs/produto/crm-busca-e-dados-em-massa.md). Aplicar
+ * uma view é o frontend reenviar `filtros` pra POST /crm/leads/search — o filtro é revalidado
+ * ali contra os campos vigentes, já que um campo pode ter sido desligado/removido depois da
+ * view salva.
+ */
 import { AppError } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
+
 import {
-  buscarViewsDoUsuario,
   buscarViewPorNome,
+  buscarViewsDoUsuario,
   criarView as criarViewRepository,
   removerView as removerViewRepository,
 } from '../adapters/filter-views.repository.js';
-import { listarCamposDoTenant } from './leads.service.js';
-import { montarCondicoes } from './lead-filter.service.js';
 import { CONTEXTOS_VISIBILIDADE, CRM_FEATURES, VIEW_ESFRIANDO } from '../constants.js';
+import { montarCondicoes } from './lead-filter.service.js';
+import { listarCamposDoTenant } from './leads.service.js';
 
 /**
  * SERVICE: views de filtro salvas (docs/produto/crm-busca-e-dados-em-massa.md).
@@ -35,6 +42,7 @@ export async function listarViews(tenantId, usuarioId) {
     buscarViewsDoUsuario(tenantId, usuarioId),
     featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE),
   ]);
+
   return comInatividade ? [VIEW_ESFRIANDO, ...views] : views;
 }
 

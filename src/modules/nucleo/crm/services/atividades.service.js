@@ -1,4 +1,8 @@
+/**
+ * @file SERVICE: atividades do lead (M6) — ligação, reunião, tarefa...
+ */
 import { erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
+
 import {
   atualizarAtividade,
   buscarAtividade,
@@ -47,7 +51,11 @@ function formatarAtividade(linha) {
 async function validarTipo(tenantId, tipo, tipoAtual) {
   const { listas } = await obterSchemaCampos(tenantId);
   const opcao = (listas[TIPOS_LISTA.TIPO_ATIVIDADE] ?? []).find((item) => item.key === tipo);
-  if (!opcao) throw erroDeValidacao('tipo', `"${tipo}" não é um tipo de atividade`);
+
+  if (!opcao) {
+    throw erroDeValidacao('tipo', `"${tipo}" não é um tipo de atividade`);
+  }
+
   if (!opcao.ativo && tipo !== tipoAtual) {
     throw erroDeValidacao('tipo', `O tipo "${opcao.label}" está desativado`);
   }
@@ -63,6 +71,7 @@ async function validarTipo(tenantId, tipo, tipoAtual) {
  */
 export async function listarTiposDeAtividade(tenantId) {
   const { listas } = await obterSchemaCampos(tenantId);
+
   return (listas[TIPOS_LISTA.TIPO_ATIVIDADE] ?? []).map(({ key, label, color, ativo }) => ({
     key,
     label,
@@ -77,7 +86,11 @@ export async function listarTiposDeAtividade(tenantId) {
  */
 export async function listarAtividades(tenantId, leadId) {
   const linhas = await listarAtividadesDoLead(tenantId, leadId);
-  if (!linhas) throw leadNaoEncontrado();
+
+  if (!linhas) {
+    throw leadNaoEncontrado();
+  }
+
   return linhas.map(formatarAtividade);
 }
 
@@ -89,6 +102,7 @@ export async function listarAtividades(tenantId, leadId) {
  */
 export async function registrarAtividade(tenantId, leadId, input, usuarioId) {
   await validarTipo(tenantId, input.tipo);
+
   const criada = await criarAtividade(tenantId, leadId, {
     tipo: input.tipo,
     titulo: input.titulo,
@@ -97,7 +111,11 @@ export async function registrarAtividade(tenantId, leadId, input, usuarioId) {
     concluidaEm: input.concluida ? new Date() : null,
     autorId: usuarioId ?? null,
   });
-  if (!criada) throw leadNaoEncontrado();
+
+  if (!criada) {
+    throw leadNaoEncontrado();
+  }
+
   return formatarAtividade(criada);
 }
 
@@ -109,18 +127,34 @@ export async function registrarAtividade(tenantId, leadId, input, usuarioId) {
  */
 export async function editarAtividade(tenantId, leadId, atividadeId, input) {
   const atual = await buscarAtividade(tenantId, leadId, atividadeId);
-  if (!atual) throw atividadeNaoEncontrada();
-  if (input.tipo !== undefined) await validarTipo(tenantId, input.tipo, atual.tipo);
+
+  if (!atual) {
+    throw atividadeNaoEncontrada();
+  }
+
+  if (input.tipo !== undefined) {
+    await validarTipo(tenantId, input.tipo, atual.tipo);
+  }
 
   const { concluida, ...campos } = input;
   /** @type {Record<string, unknown>} */
   const dados = { ...campos };
+
   // Concluir de novo o que já está concluído não muda a data.
-  if (concluida === true && !atual.concluida_em) dados.concluidaEm = new Date();
-  if (concluida === false) dados.concluidaEm = null;
+  if (concluida === true && !atual.concluida_em) {
+    dados.concluidaEm = new Date();
+  }
+
+  if (concluida === false) {
+    dados.concluidaEm = null;
+  }
 
   const editada = await atualizarAtividade(tenantId, leadId, atividadeId, dados);
-  if (!editada) throw atividadeNaoEncontrada();
+
+  if (!editada) {
+    throw atividadeNaoEncontrada();
+  }
+
   return formatarAtividade(editada);
 }
 
@@ -130,7 +164,10 @@ export async function editarAtividade(tenantId, leadId, atividadeId, input) {
  * @param {string} atividadeId
  */
 export async function removerAtividade(tenantId, leadId, atividadeId) {
-  if (!(await excluirAtividade(tenantId, leadId, atividadeId))) throw atividadeNaoEncontrada();
+  if (!(await excluirAtividade(tenantId, leadId, atividadeId))) {
+    throw atividadeNaoEncontrada();
+  }
+
   return { removido: true };
 }
 

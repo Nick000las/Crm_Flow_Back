@@ -1,7 +1,11 @@
+/**
+ * @file Regras do sistema (M8, ex.: Perdido exige Motivo) — depois dos campos, que elas
+ * referenciam. Idempotente pelo `system_key`.
+ */
 import { PASSOS_CAMPOS } from './campos-reconcile.service.js';
+import { invalidarSchemaCampos, reconciliarRegras } from './field-schema.service.js';
 import { PASSOS_LISTAS } from './listas-reconcile.service.js';
 import { PASSOS_PIPELINES } from './pipelines.service.js';
-import { invalidarSchemaCampos, reconciliarRegras } from './field-schema.service.js';
 
 /**
  * Reconciliação do CRM num tenant (`Module.reconciliar`): passos
@@ -46,6 +50,7 @@ export const PASSOS = Object.freeze([
  */
 export async function reconciliarTenant(tenantId, passos = PASSOS) {
   const relatorio = [];
+
   try {
     for (const passo of passos) {
       relatorio.push({ passo: passo.nome, resultado: await passo.executar(tenantId) });
@@ -54,5 +59,6 @@ export async function reconciliarTenant(tenantId, passos = PASSOS) {
     // Mesmo com falha no meio, o que já rodou pode ter mudado a configuração.
     await invalidarSchemaCampos(tenantId);
   }
+
   return relatorio;
 }

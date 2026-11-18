@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { TenantManagement } from '#core/tenant/management.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CATEGORIAS_STATUS, CRM_FEATURES, MODULO_CRM, TIPOS_PIPELINE } from '../constants.js';
 import { CICLOS_DE_VIDA } from '../constants/oportunidades.js';
 import {
@@ -80,12 +83,16 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const operador = { papel: 'OPERADOR', userId: operadorId };
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
 
@@ -125,10 +132,13 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       HTTP_STATUS.CREATED,
     );
     const [inicial] = await ok(chamar('GET', `/crm/leads/${lead.id}/oportunidades`));
+
     if (semOportunidade) {
       await ok(chamar('POST', `/crm/oportunidades/${inicial.id}/excluir`));
+
       return { id: lead.id };
     }
+
     return { id: lead.id, dealId: inicial.id };
   }
 
@@ -140,6 +150,7 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       }),
       HTTP_STATUS.CREATED,
     );
+
     return criada.id;
   }
 
@@ -169,6 +180,7 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       SELECT lifecycle_stage FROM modulo_crm.leads
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+
     return linha.lifecycle_stage;
   };
 
@@ -181,11 +193,13 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     const campo = (await listarConfiguracaoCampos(tenantId)).find(
       (c) => c.chave === CAMPO_DAS_DATAS,
     );
+
     await atualizarConfiguracaoCampo(tenantId, campo.id, { visibilidade: visibilidadeEm(visivel) });
   }
 
   async function permissaoDoOperador(chave, acesso) {
     const campo = (await listarConfiguracaoCampos(tenantId)).find((c) => c.chave === chave);
+
     await ok(chamar('PUT', '/crm/configuracoes/permissoes', { OPERADOR: { [campo.id]: acesso } }));
   }
 
@@ -197,6 +211,7 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         subdomain: `smoke-fc4-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         { id: donoId, role: 'DONO' },
@@ -210,7 +225,9 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         role,
       })),
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [CRM_FEATURES.PERMISSOES].map((featureKey) => ({
         tenantId,
@@ -218,9 +235,11 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         featureKey,
       })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
     await campoDasDatas(true);
+
     app = await buildApp({
       config: {
         APP_NAME: 'crm-ciclo-fc4',
@@ -230,12 +249,15 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     await TenantManagement.atualizarFeaturesTenant(tenantId, COM_ARQUIVO);
 
     const todos = await pipelines();
+
     vendas = todos.find((p) => p.tipo === TIPOS_PIPELINE.VENDAS && p.padrao);
     atendimento = todos.find((p) => p.tipo === TIPOS_PIPELINE.ATENDIMENTO);
     abertoKey = statusDe(vendas, CATEGORIAS_STATUS.ABERTO);
+
     await ok(
       chamar('PUT', `/crm/configuracoes/pipelines/${atendimento.id}`, {
         automacao: { ativa: false },
@@ -249,7 +271,9 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       }),
       HTTP_STATUS.CREATED,
     );
+
     oculto = (await pipelines()).find((p) => p.nome === 'Vendas oculto');
+
     await ok(
       chamar('PUT', `/crm/configuracoes/pipelines/${oculto.id}`, { visivelOperador: false }),
     );
@@ -272,6 +296,7 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
   it('caso 1: ganhar a primeira preenche as duas datas; a segunda mexe só na última compra; reabrir limpa', async () => {
     const { id, dealId } = await pessoa('Cliente');
     const antes = colunasDe(await lerLead(id));
+
     expect(antes).toEqual({
       ciclo: CICLOS_DE_VIDA.OPORTUNIDADE,
       desde: null,
@@ -280,7 +305,9 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     });
 
     await ganhar(dealId);
+
     const primeira = colunasDe(await lerLead(id));
+
     expect(primeira.ciclo).toBe(CICLOS_DE_VIDA.CLIENTE);
     expect(primeira.desde).not.toBeNull();
     expect(primeira.ultima).toBe(primeira.desde);
@@ -288,9 +315,13 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
     // A primeira compra passa a ser antiga; a segunda é a de agora.
     await fixarGanha(dealId, COMPRA_ANTIGA);
+
     const segundaId = await novaOportunidade(id);
+
     await ganhar(segundaId);
+
     const depois = colunasDe(await lerLead(id));
+
     expect(depois.ciclo).toBe(CICLOS_DE_VIDA.CLIENTE);
     expect(depois.desde).toBe(COMPRA_ANTIGA_ISO);
     expect(depois.ultima).not.toBe(COMPRA_ANTIGA_ISO);
@@ -298,7 +329,9 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
     // Reabrir a segunda: só a última compra volta pra primeira.
     await mudarStatus(segundaId, abertoKey);
+
     const reaberta = colunasDe(await lerLead(id));
+
     expect(reaberta).toEqual({
       ciclo: CICLOS_DE_VIDA.CLIENTE,
       desde: COMPRA_ANTIGA_ISO,
@@ -308,19 +341,24 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
     // Reabrir a única ganha limpa as duas e o ciclo volta a oportunidade.
     await mudarStatus(dealId, abertoKey);
+
     const semGanhas = colunasDe(await lerLead(id));
+
     expect(semGanhas).toEqual({
       ciclo: CICLOS_DE_VIDA.OPORTUNIDADE,
       desde: null,
       ultima: null,
       abertas: DUAS,
     });
+
     expect(await gravado(id)).toBe(CICLOS_DE_VIDA.OPORTUNIDADE);
 
     // Sem aberta (as duas arquivadas), o ciclo volta a lead.
     await arquivar(dealId);
     await arquivar(segundaId);
+
     const lead = colunasDe(await lerLead(id));
+
     expect(lead).toEqual({ ciclo: CICLOS_DE_VIDA.LEAD, desde: null, ultima: null, abertas: 0 });
     expect(await gravado(id)).toBe(CICLOS_DE_VIDA.LEAD);
   });
@@ -329,14 +367,23 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     const semOportunidade = await pessoa('Sem oportunidade', { semOportunidade: true });
     const aberta = await pessoa('Aberta');
     const arquivada = await pessoa('Aberta arquivada');
+
     await arquivar(arquivada.dealId);
+
     const ganha = await pessoa('Ganha');
+
     await ganhar(ganha.dealId);
+
     const perdida = await pessoa('Perdida');
+
     await mudarStatus(perdida.dealId, 'perdido', { motivoPerda: 'Sem orçamento' });
+
     const ganhaEPerdida = await pessoa('Ganha e perdida');
+
     await ganhar(ganhaEPerdida.dealId);
+
     const outraPerdida = await novaOportunidade(ganhaEPerdida.id);
+
     await mudarStatus(outraPerdida, 'perdido', { motivoPerda: 'Sem orçamento' });
 
     const esperado = [
@@ -354,8 +401,10 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         colunasDe(lead),
       ]),
     );
+
     for (const [{ id }, ciclo, abertas] of esperado) {
       const doGet = colunasDe(await lerLead(id));
+
       expect(doGet.ciclo, id).toBe(ciclo);
       expect(doGet.ciclo, `gravado ${id}`).toBe(await gravado(id));
       expect(doGet.abertas, id).toBe(abertas);
@@ -370,21 +419,28 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     const comPerdidaVisivel = async (nome) => {
       const nova = await pessoa(nome, { semOportunidade: true });
       const perdida = await novaOportunidade(nova.id);
+
       await mudarStatus(perdida, 'perdido', { motivoPerda: 'Sem orçamento' });
+
       return nova;
     };
     // Venda só no pipeline oculto.
     const vendaOculta = await comPerdidaVisivel('Venda oculta');
+
     await ganharEm(
       await novaOportunidade(vendaOculta.id, { pipeline: oculto }),
       COMPRA_MARCO,
       oculto,
     );
+
     // Uma aberta visível e uma aberta oculta.
     const mista = await pessoa('Mista');
+
     await novaOportunidade(mista.id, { pipeline: oculto });
+
     // Só aberta no oculto.
     const soAbertaOculta = await comPerdidaVisivel('So aberta oculta');
+
     await novaOportunidade(soAbertaOculta.id, { pipeline: oculto });
 
     // O DONO vê tudo.
@@ -394,7 +450,9 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       ultima: `${COMPRA_MARCO.replace(' ', 'T')}.000Z`,
       abertas: 0,
     });
+
     expect(colunasDe(await lerLead(mista.id)).abertas).toBe(DUAS);
+
     expect(colunasDe(await lerLead(soAbertaOculta.id))).toMatchObject({
       ciclo: CICLOS_DE_VIDA.OPORTUNIDADE,
       abertas: 1,
@@ -407,19 +465,24 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       ultima: null,
       abertas: 0,
     });
+
     const daLista = (
       await ok(chamar('GET', `/crm/leads?tamanho=${TAMANHO_PAGINA}`, undefined, operador))
     ).itens;
     const daBusca = (await ok(buscar({}, operador))).itens;
+
     for (const itens of [daLista, daBusca]) {
       const vistas = new Map(itens.map((lead) => [lead.nome, colunasDe(lead)]));
+
       expect(vistas.get('Venda oculta')).toEqual({
         ciclo: CICLOS_DE_VIDA.LEAD,
         desde: null,
         ultima: null,
         abertas: 0,
       });
+
       expect(vistas.get('Mista')).toMatchObject({ ciclo: CICLOS_DE_VIDA.OPORTUNIDADE, abertas: 1 });
+
       expect(vistas.get('So aberta oculta')).toMatchObject({
         ciclo: CICLOS_DE_VIDA.LEAD,
         abertas: 0,
@@ -432,13 +495,16 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(await nomesDaBusca({ clienteDesdeDe: DIA_DA_COMPRA_MARCO })).toEqual(['Venda oculta']);
     expect(await nomesDaBusca({ clienteDesdeDe: DIA_DA_COMPRA_MARCO }, operador)).toEqual([]);
     expect(await nomesDaBusca({ ultimaCompraAte: DIA_DA_COMPRA_MARCO }, operador)).toEqual([]);
+
     expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.LEAD] }, operador)).toEqual(
       nomes('Venda oculta', 'So aberta oculta'),
     );
+
     // Abertas: a oculta não conta, nem no Min.
     expect(await nomesDaBusca({ oportunidadesAbertasMin: DUAS })).toEqual(['Mista']);
     expect(await nomesDaBusca({ oportunidadesAbertasMin: DUAS }, operador)).toEqual([]);
     expect(await nomesDaBusca({ oportunidadesAbertasMin: 1 }, operador)).toEqual(['Mista']);
+
     expect(await nomesDaBusca({ oportunidadesAbertasMax: 0 }, operador)).toEqual(
       nomes('Venda oculta', 'So aberta oculta'),
     );
@@ -446,8 +512,10 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
   it('caso 4: aberta arquivada não conta em abertas; ganha em pipeline de atendimento não faz cliente', async () => {
     const arquivada = await pessoa('Arquivada');
+
     await novaOportunidade(arquivada.id);
     await arquivar(arquivada.dealId);
+
     expect(colunasDe(await lerLead(arquivada.id))).toMatchObject({
       ciclo: CICLOS_DE_VIDA.OPORTUNIDADE,
       abertas: 1,
@@ -455,18 +523,22 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
     const servico = await pessoa('Servico', { semOportunidade: true });
     const dealServico = await novaOportunidade(servico.id, { pipeline: atendimento });
+
     // Aberta em atendimento conta como oportunidade aberta (qualquer tipo de pipeline).
     expect(colunasDe(await lerLead(servico.id))).toMatchObject({
       ciclo: CICLOS_DE_VIDA.OPORTUNIDADE,
       abertas: 1,
     });
+
     await ganhar(dealServico, atendimento);
+
     expect(colunasDe(await lerLead(servico.id))).toEqual({
       ciclo: CICLOS_DE_VIDA.LEAD,
       desde: null,
       ultima: null,
       abertas: 0,
     });
+
     expect(await gravado(servico.id)).toBe(CICLOS_DE_VIDA.LEAD);
 
     expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.CLIENTE] })).toEqual([]);
@@ -476,30 +548,42 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
   it('caso 5: cada filtro devolve as pessoas certas, com a borda do fuso', async () => {
     // A: ganha às 23:30 de 31/10 em São Paulo. B: ganha às 00:30 de 01/11.
     const a = await pessoa('A borda antes');
+
     await ganharEm(a.dealId, BORDA_ANTES);
+
     const b = await pessoa('B borda depois');
+
     await ganharEm(b.dealId, BORDA_DEPOIS);
+
     // C: duas compras, em março e em setembro.
     const c = await pessoa('C duas compras');
+
     await ganharEm(c.dealId, COMPRA_MARCO);
     await ganharEm(await novaOportunidade(c.id), COMPRA_SETEMBRO);
+
     // D: duas abertas. E: uma aberta. F: sem oportunidade.
     const d = await pessoa('D duas abertas');
+
     await novaOportunidade(d.id);
     await pessoa('E uma aberta');
     await pessoa('F lead', { semOportunidade: true });
 
     const doC = colunasDe(await lerLead(c.id));
+
     expect(doC.desde).toBe(`${COMPRA_MARCO.replace(' ', 'T')}.000Z`);
     expect(doC.ultima).toBe(`${COMPRA_SETEMBRO.replace(' ', 'T')}.000Z`);
     expect(colunasDe(await lerLead(a.id)).desde).toBe(BORDA_ANTES_ISO);
 
     const clientes = nomes('A borda antes', 'B borda depois', 'C duas compras');
+
     expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.CLIENTE] })).toEqual(clientes);
+
     expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.OPORTUNIDADE] })).toEqual(
       nomes('D duas abertas', 'E uma aberta'),
     );
+
     expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.LEAD] })).toEqual(['F lead']);
+
     expect(
       await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.LEAD, CICLOS_DE_VIDA.OPORTUNIDADE] }),
     ).toEqual(nomes('D duas abertas', 'E uma aberta', 'F lead'));
@@ -508,13 +592,16 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(await nomesDaBusca({ clienteDesdeAte: DIA_ANTES_DA_BORDA })).toEqual(
       nomes('A borda antes', 'C duas compras'),
     );
+
     expect(await nomesDaBusca({ clienteDesdeDe: DIA_DEPOIS_DA_BORDA })).toEqual(['B borda depois']);
+
     expect(
       await nomesDaBusca({
         clienteDesdeDe: DIA_ANTES_DA_BORDA,
         clienteDesdeAte: DIA_ANTES_DA_BORDA,
       }),
     ).toEqual(['A borda antes']);
+
     expect(
       await nomesDaBusca({
         clienteDesdeDe: DIA_DA_COMPRA_MARCO,
@@ -526,26 +613,32 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
     expect(
       await nomesDaBusca({ ultimaCompraDe: SETEMBRO_DE, ultimaCompraAte: SETEMBRO_ATE }),
     ).toEqual(['C duas compras']);
+
     expect(await nomesDaBusca({ ultimaCompraAte: DIA_ANTES_DA_BORDA })).toEqual(
       nomes('A borda antes', 'C duas compras'),
     );
+
     expect(await nomesDaBusca({ ultimaCompraDe: DIA_DEPOIS_DA_BORDA })).toEqual(['B borda depois']);
     expect(await nomesDaBusca({ ultimaCompraAte: DIA_DA_COMPRA_MARCO })).toEqual([]);
 
     // Abertas.
     expect(await nomesDaBusca({ oportunidadesAbertasMin: DUAS })).toEqual(['D duas abertas']);
+
     expect(await nomesDaBusca({ oportunidadesAbertasMin: 1, oportunidadesAbertasMax: 1 })).toEqual([
       'E uma aberta',
     ]);
+
     expect(await nomesDaBusca({ oportunidadesAbertasMax: 0 })).toEqual(
       nomes('A borda antes', 'B borda depois', 'C duas compras', 'F lead'),
     );
+
     expect(
       await nomesDaBusca({
         cicloDeVida: [CICLOS_DE_VIDA.OPORTUNIDADE],
         oportunidadesAbertasMin: DUAS,
       }),
     ).toEqual(['D duas abertas']);
+
     expect(clientes).toHaveLength(TRES);
   });
 
@@ -554,17 +647,21 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
       ['clienteDesdeDe', 'clienteDesdeAte'],
       ['ultimaCompraDe', 'ultimaCompraAte'],
     ];
+
     for (const [de, ate] of deAteInvertidos) {
       const resposta = await buscar({ [de]: DIA_DEPOIS_DA_BORDA, [ate]: DIA_ANTES_DA_BORDA });
+
       expect(resposta.status, de).toBe(HTTP_STATUS.BAD_REQUEST);
       expect(camposDoErro(resposta.corpo), de).toContain(de);
     }
 
     const minMaior = await buscar({ oportunidadesAbertasMin: TRES, oportunidadesAbertasMax: 1 });
+
     expect(minMaior.status).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(camposDoErro(minMaior.corpo)).toContain('oportunidadesAbertasMin');
 
     const cicloInvalido = await buscar({ cicloDeVida: ['xpto'] });
+
     expect(cicloInvalido.status).toBe(HTTP_STATUS.BAD_REQUEST);
     expect(JSON.stringify(cicloInvalido.corpo)).toMatch(/cicloDeVida/);
 
@@ -577,30 +674,52 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
 
   it('caso 7 (M13): sem o campo Data de conversão, as duas datas somem e o filtro delas dá 400', async () => {
     const { id, dealId } = await pessoa('Comprou');
+
     await ganharEm(dealId, COMPRA_MARCO);
+
     const noDono = await lerLead(id);
-    for (const coluna of DATAS) expect(noDono, coluna).toHaveProperty(coluna);
+
+    for (const coluna of DATAS) {
+      expect(noDono, coluna).toHaveProperty(coluna);
+    }
 
     // Campo desligado no tenant: nem o DONO recebe as datas nem filtra por elas.
     await campoDasDatas(false);
+
     try {
       const desligado = await lerLead(id);
-      for (const coluna of DATAS) expect(desligado, coluna).not.toHaveProperty(coluna);
+
+      for (const coluna of DATAS) {
+        expect(desligado, coluna).not.toHaveProperty(coluna);
+      }
+
       expect(desligado.ciclo_de_vida).toBe(CICLOS_DE_VIDA.CLIENTE);
+
       const filtrado = await buscar({ clienteDesdeDe: DIA_DA_COMPRA_MARCO });
+
       expect(filtrado.status).toBe(HTTP_STATUS.BAD_REQUEST);
     } finally {
       await campoDasDatas(true);
     }
 
     await permissaoDoOperador(CAMPO_DAS_DATAS, 'hidden');
+
     try {
       const doOperador = await lerLead(id, operador);
-      for (const coluna of DATAS) expect(doOperador, coluna).not.toHaveProperty(coluna);
+
+      for (const coluna of DATAS) {
+        expect(doOperador, coluna).not.toHaveProperty(coluna);
+      }
+
       expect(doOperador.ciclo_de_vida).toBe(CICLOS_DE_VIDA.CLIENTE);
       expect(doOperador.oportunidades_abertas).toBe(0);
+
       const naBusca = (await ok(buscar({}, operador))).itens.find((l) => l.id === id);
-      for (const coluna of DATAS) expect(naBusca, coluna).not.toHaveProperty(coluna);
+
+      for (const coluna of DATAS) {
+        expect(naBusca, coluna).not.toHaveProperty(coluna);
+      }
+
       expect(naBusca.ciclo_de_vida).toBe(CICLOS_DE_VIDA.CLIENTE);
 
       for (const chave of [
@@ -610,31 +729,42 @@ rodar('FC4: ciclo de vida na tabela de leads (CRM_DB_TESTS=1)', { timeout: TIMEO
         'ultimaCompraAte',
       ]) {
         const resposta = await buscar({ [chave]: DIA_DA_COMPRA_MARCO }, operador);
+
         expect(resposta.status, chave).toBe(HTTP_STATUS.BAD_REQUEST);
         expect(camposDoErro(resposta.corpo), chave).toContain(chave);
       }
+
       // Ciclo e abertas não dependem do campo.
       expect(await nomesDaBusca({ cicloDeVida: [CICLOS_DE_VIDA.CLIENTE] }, operador)).toEqual([
         'Comprou',
       ]);
+
       expect(await nomesDaBusca({ oportunidadesAbertasMax: 0 }, operador)).toEqual(['Comprou']);
       // O DONO continua vendo e filtrando.
       expect(await nomesDaBusca({ clienteDesdeDe: DIA_DA_COMPRA_MARCO })).toEqual(['Comprou']);
     } finally {
       await permissaoDoOperador(CAMPO_DAS_DATAS, 'edit');
     }
+
     const religado = await lerLead(id, operador);
-    for (const coluna of DATAS) expect(religado, coluna).toHaveProperty(coluna);
+
+    for (const coluna of DATAS) {
+      expect(religado, coluna).toHaveProperty(coluna);
+    }
   });
 
   it('as 4 colunas existem na resposta (GET, lista e busca) mesmo sem oportunidade', async () => {
     const { id } = await pessoa('Sozinha', { semOportunidade: true });
+
     for (const lead of [
       await lerLead(id),
       (await ok(chamar('GET', '/crm/leads'))).itens.find((l) => l.id === id),
       (await ok(buscar())).itens.find((l) => l.id === id),
     ]) {
-      for (const coluna of COLUNAS) expect(lead, coluna).toHaveProperty(coluna);
+      for (const coluna of COLUNAS) {
+        expect(lead, coluna).toHaveProperty(coluna);
+      }
+
       expect(colunasDe(lead)).toEqual({
         ciclo: CICLOS_DE_VIDA.LEAD,
         desde: null,

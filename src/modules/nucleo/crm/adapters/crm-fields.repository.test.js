@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { LISTA_CONTEXTOS_VISIBILIDADE } from '../constants.js';
 import {
   atualizarCampoConfigurado,
@@ -30,18 +32,22 @@ function registrar(strings, values) {
   const texto = strings.reduce((acc, parte, i) => {
     const valor = values[i - 1];
     const fragmento = valor && typeof valor === 'object' && 'sql' in valor ? valor.sql : '?';
+
     return acc + fragmento + parte;
   });
+
   chamadas.push({ sql: texto.replace(/\s+/g, ' '), values });
 }
 
 const tx = {
   $queryRaw: vi.fn(async (strings, ...values) => {
     registrar(strings, values);
+
     return respostasQuery.shift() ?? [];
   }),
   $executeRaw: vi.fn(async (strings, ...values) => {
     registrar(strings, values);
+
     return 1;
   }),
 };
@@ -84,13 +90,15 @@ describe('campos personalizados', () => {
       opcoes: null,
       obrigatorio: true,
     });
+
     await desativarCampoPersonalizado(TENANT, ID);
 
     expect(sqls()[0]).toContain(
       'WHERE id = ?::uuid AND tenant_id = ?::uuid AND system_key IS NULL AND is_active',
     );
+
     expect(chamadas[0].values).toContain(null); // opções de texto viram SQL NULL
-    expect(sqls()[1]).toContain('SET is_active = false');
+    expect(sqls()[1]).toMatch(/SET\s+is_active\s*=\s*false\b/i);
     expect(sqls().some((sql) => sql.includes('DELETE'))).toBe(false);
   });
 });
@@ -120,6 +128,7 @@ describe('inserirCamposSistema (reconcile)', () => {
 
     expect(criados).toBe(1);
     expect(sqls().filter((sql) => sql.includes('crm_field_visibility'))).toHaveLength(1);
+
     expect(sqls()[0]).toContain(
       'ON CONFLICT (tenant_id, system_key) WHERE system_key IS NOT NULL DO NOTHING',
     );
@@ -141,6 +150,7 @@ describe('área Configurações (M2)', () => {
 
   it('reordenar grava todas as posições num UPDATE só', async () => {
     const ids = [ID, '22222222-2222-2222-2222-222222222222'];
+
     await reordenarCampos(TENANT, ids);
 
     expect(sqls()).toHaveLength(1);

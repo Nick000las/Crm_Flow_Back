@@ -1,5 +1,12 @@
+/**
+ * @file ADAPTER: listas configuráveis (`modulo_crm.crm_option`, migration 0016 —
+ * docs/produto/crm-pessoas-e-campos.md M3). Único lugar que lê ou grava opção de lista. SQL cru
+ * via `$queryRaw`/`$executeRaw` tagged.
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { COLUNA_DA_LISTA, TIPOS_LISTA } from '../constants.js';
 import { pipelinePadraoSql } from './crm-pipelines.repository.js';
 
@@ -33,7 +40,11 @@ const RETORNO_OPCAO_SQL = Prisma.raw(
  */
 function colunaDoLead(kind) {
   const coluna = COLUNA_DA_LISTA[kind];
-  if (!coluna) throw new Error(`Lista sem coluna no lead: ${kind}`);
+
+  if (!coluna) {
+    throw new Error(`Lista sem coluna no lead: ${kind}`);
+  }
+
   return Prisma.raw(`l.${coluna}`);
 }
 
@@ -49,11 +60,21 @@ export function buscarOpcoesDoTenant(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT ${RETORNO_OPCAO_SQL}
-      FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid
-        AND (pipeline_id IS NULL OR pipeline_id = ${pipelinePadraoSql(tenantId)})
-      ORDER BY kind, position, created_at, id
+      SELECT
+        ${RETORNO_OPCAO_SQL}
+      FROM
+        modulo_crm.crm_option
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND (
+          pipeline_id IS NULL
+          OR pipeline_id = ${pipelinePadraoSql(tenantId)}
+        )
+      ORDER BY
+        kind,
+        position,
+        created_at,
+        id
     `,
   );
 }
@@ -77,11 +98,18 @@ export function buscarStatusDoPipeline(tenantId, pipelineId) {
  */
 export function statusDoPipeline(tx, tenantId, pipelineId) {
   return tx.$queryRaw`
-    SELECT ${RETORNO_OPCAO_SQL}
-    FROM modulo_crm.crm_option
-    WHERE tenant_id = ${tenantId}::uuid AND kind = 'status'
+    SELECT
+      ${RETORNO_OPCAO_SQL}
+    FROM
+      modulo_crm.crm_option
+    WHERE
+      tenant_id = ${tenantId}::uuid
+      AND kind = 'status'
       AND pipeline_id = ${pipelineId}::uuid
-    ORDER BY position, created_at, id
+    ORDER BY
+      position,
+      created_at,
+      id
   `;
 }
 
@@ -95,7 +123,15 @@ export function statusDoPipeline(tx, tenantId, pipelineId) {
 export function tenantTemLeads(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT EXISTS (SELECT 1 FROM modulo_crm.leads WHERE tenant_id = ${tenantId}::uuid) AS existe
+      SELECT
+        EXISTS (
+          SELECT
+            1
+          FROM
+            modulo_crm.leads
+          WHERE
+            tenant_id = ${tenantId}::uuid
+        ) AS existe
     `.then((rows) => Boolean(rows[FIRST_RESULT_INDEX]?.existe)),
   );
 }
@@ -110,10 +146,17 @@ export function tenantTemLeads(tenantId) {
 export function buscarTagsDosLeads(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT DISTINCT tag
-      FROM modulo_crm.leads l, unnest(l.tags) AS tag
-      WHERE l.tenant_id = ${tenantId}::uuid AND tag IS NOT NULL AND tag <> ''
-      ORDER BY tag
+      SELECT DISTINCT
+        tag
+      FROM
+        modulo_crm.leads l,
+        unnest(l.tags) AS tag
+      WHERE
+        l.tenant_id = ${tenantId}::uuid
+        AND tag IS NOT NULL
+        AND tag <> ''
+      ORDER BY
+        tag
     `.then((rows) => rows.map((row) => row.tag)),
   );
 }
@@ -132,27 +175,55 @@ export function buscarTagsDosLeads(tenantId) {
  * @returns {Promise<OpcaoLista[]>} só as criadas agora
  */
 export function inserirOpcoes(tenantId, kind, opcoes, pipelineId) {
-  if (opcoes.length === 0) return Promise.resolve([]);
+  if (opcoes.length === 0) {
+    return Promise.resolve([]);
+  }
+
   const pipeline =
     kind === TIPOS_LISTA.STATUS
       ? (pipelineId ?? null) && Prisma.sql`${pipelineId}::uuid`
       : Prisma.sql`NULL::uuid`;
+
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, stale_days, default_probability, position)
-      SELECT ${tenantId}::uuid, ${kind}, ${pipeline ?? pipelinePadraoSql(tenantId)}, o.key, o.label, o.color, o.category, o.stale_days, o.probabilidade, o.position
-      FROM unnest(
-        ${opcoes.map((opcao) => opcao.key)}::varchar[],
-        ${opcoes.map((opcao) => opcao.label)}::varchar[],
-        ${opcoes.map((opcao) => opcao.color ?? null)}::varchar[],
-        ${opcoes.map((opcao) => opcao.category ?? null)}::varchar[],
-        ${opcoes.map((opcao) => opcao.staleDays ?? null)}::int[],
-        ${opcoes.map((opcao) => opcao.probabilidadePadrao ?? null)}::smallint[],
-        ${opcoes.map((opcao) => opcao.position)}::int[]
-      ) AS o(key, label, color, category, stale_days, probabilidade, position)
+      INSERT INTO
+        modulo_crm.crm_option (
+          tenant_id,
+          kind,
+          pipeline_id,
+          key,
+          label,
+          color,
+          category,
+          stale_days,
+          default_probability,
+          position
+        )
+      SELECT
+        ${tenantId}::uuid,
+        ${kind},
+        ${pipeline ?? pipelinePadraoSql(tenantId)},
+        o.key,
+        o.label,
+        o.color,
+        o.category,
+        o.stale_days,
+        o.probabilidade,
+        o.position
+      FROM
+        unnest(
+          ${opcoes.map((opcao) => opcao.key)}::VARCHAR[],
+          ${opcoes.map((opcao) => opcao.label)}::VARCHAR[],
+          ${opcoes.map((opcao) => opcao.color ?? null)}::VARCHAR[],
+          ${opcoes.map((opcao) => opcao.category ?? null)}::VARCHAR[],
+          ${opcoes.map((opcao) => opcao.staleDays ?? null)}::INT[],
+          ${opcoes.map((opcao) => opcao.probabilidadePadrao ?? null)}::SMALLINT[],
+          ${opcoes.map((opcao) => opcao.position)}::INT[]
+        ) AS o (key, label, color, category, stale_days, probabilidade, position)
       ON CONFLICT (tenant_id, kind, pipeline_id, key) DO NOTHING
-      RETURNING ${RETORNO_OPCAO_SQL}
+      RETURNING
+        ${RETORNO_OPCAO_SQL}
     `,
   );
 }
@@ -166,10 +237,17 @@ export function inserirOpcoes(tenantId, kind, opcoes, pipelineId) {
 export function proximaPosicao(tenantId, kind, pipelineId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT COALESCE(max(position) + 1, 0)::int AS posicao
-      FROM modulo_crm.crm_option
-      WHERE tenant_id = ${tenantId}::uuid AND kind = ${kind}
-        AND (pipeline_id IS NULL OR pipeline_id = COALESCE(${pipelineId ?? null}::uuid, ${pipelinePadraoSql(tenantId)}))
+      SELECT
+        COALESCE(max(position) + 1, 0)::int AS posicao
+      FROM
+        modulo_crm.crm_option
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND kind = ${kind}
+        AND (
+          pipeline_id IS NULL
+          OR pipeline_id = COALESCE(${pipelineId ?? null}::uuid, ${pipelinePadraoSql(tenantId)})
+        )
     `.then((rows) => rows[FIRST_RESULT_INDEX].posicao),
   );
 }
@@ -191,17 +269,25 @@ export function atualizarOpcao(
   { label, color, category, ativo, probabilidadePadrao },
 ) {
   const mudaCor = color !== undefined;
+
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       UPDATE modulo_crm.crm_option
-      SET label = COALESCE(${label ?? null}, label),
-          color = CASE WHEN ${mudaCor} THEN ${color ?? null} ELSE color END,
-          category = COALESCE(${category ?? null}, category),
-          default_probability = COALESCE(${probabilidadePadrao ?? null}::smallint, default_probability),
-          is_active = COALESCE(${ativo ?? null}::boolean, is_active),
-          updated_at = now()
-      WHERE id = ${opcaoId}::uuid AND tenant_id = ${tenantId}::uuid
-      RETURNING ${RETORNO_OPCAO_SQL}
+      SET
+        label = COALESCE(${label ?? null}, label),
+        color = CASE
+          WHEN ${mudaCor} THEN ${color ?? null}
+          ELSE color
+        END,
+        category = COALESCE(${category ?? null}, category),
+        default_probability = COALESCE(${probabilidadePadrao ?? null}::smallint, default_probability),
+        is_active = COALESCE(${ativo ?? null}::boolean, is_active),
+        updated_at = now()
+      WHERE
+        id = ${opcaoId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+      RETURNING
+        ${RETORNO_OPCAO_SQL}
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -218,9 +304,15 @@ export function reordenarOpcoes(tenantId, kind, idsEmOrdem) {
     tenantId,
     (tx) => tx.$executeRaw`
       UPDATE modulo_crm.crm_option o
-      SET position = nova.posicao - 1, updated_at = now()
-      FROM unnest(${idsEmOrdem}::uuid[]) WITH ORDINALITY AS nova(id, posicao)
-      WHERE o.id = nova.id AND o.tenant_id = ${tenantId}::uuid AND o.kind = ${kind}
+      SET
+        position = nova.posicao - 1,
+        updated_at = now()
+      FROM
+        unnest(${idsEmOrdem}::UUID[]) WITH ORDINALITY AS nova (id, posicao)
+      WHERE
+        o.id = nova.id
+        AND o.tenant_id = ${tenantId}::uuid
+        AND o.kind = ${kind}
     `,
   );
 }
@@ -236,8 +328,11 @@ export function excluirOpcao(tenantId, opcaoId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       DELETE FROM modulo_crm.crm_option
-      WHERE id = ${opcaoId}::uuid AND tenant_id = ${tenantId}::uuid
-      RETURNING id
+      WHERE
+        id = ${opcaoId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+      RETURNING
+        id
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -264,42 +359,73 @@ export async function contarUsos(tenantId, kind, pipelineId) {
     const usos = await getTenantClient(
       tenantId,
       (tx) => tx.$queryRaw`
-        SELECT ${coluna} AS key, count(*)::int AS usos
-        FROM modulo_crm.crm_deal d
-        WHERE d.tenant_id = ${tenantId}::uuid AND ${coluna} IS NOT NULL AND ${doPipeline}
-        GROUP BY 1
+        SELECT
+          ${coluna} AS key,
+          count(*)::int AS usos
+        FROM
+          modulo_crm.crm_deal d
+        WHERE
+          d.tenant_id = ${tenantId}::uuid
+          AND ${coluna} IS NOT NULL
+          AND ${doPipeline}
+        GROUP BY
+          1
       `,
     );
+
     return new Map(usos.map((linha) => [linha.key, linha.usos]));
   }
+
   if (kind === TIPOS_LISTA.TIPO_ATIVIDADE) {
     const porTipo = await getTenantClient(
       tenantId,
       (tx) => tx.$queryRaw`
-        SELECT tipo AS key, count(*)::int AS usos
-        FROM modulo_crm.crm_activity
-        WHERE tenant_id = ${tenantId}::uuid
-        GROUP BY tipo
+        SELECT
+          tipo AS key,
+          count(*)::int AS usos
+        FROM
+          modulo_crm.crm_activity
+        WHERE
+          tenant_id = ${tenantId}::uuid
+        GROUP BY
+          tipo
       `,
     );
+
     return new Map(porTipo.map((linha) => [linha.key, linha.usos]));
   }
-  if (!COLUNA_DA_LISTA[kind]) return new Map();
+
+  if (!COLUNA_DA_LISTA[kind]) {
+    return new Map();
+  }
 
   const linhas = await getTenantClient(tenantId, (tx) =>
     kind === TIPOS_LISTA.TAG
       ? tx.$queryRaw`
-          SELECT tag AS key, count(*)::int AS usos
-          FROM modulo_crm.leads l, unnest(l.tags) AS tag
-          WHERE l.tenant_id = ${tenantId}::uuid
-          GROUP BY tag
-        `
+        SELECT
+          tag AS key,
+          count(*)::int AS usos
+        FROM
+          modulo_crm.leads l,
+          unnest(l.tags) AS tag
+        WHERE
+          l.tenant_id = ${tenantId}::uuid
+        GROUP BY
+          tag
+      `
       : tx.$queryRaw`
-          SELECT ${colunaDoLead(kind)} AS key, count(*)::int AS usos
-          FROM modulo_crm.leads l
-          WHERE l.tenant_id = ${tenantId}::uuid AND ${colunaDoLead(kind)} IS NOT NULL
-          GROUP BY 1
-        `,
+        SELECT
+          ${colunaDoLead(kind)} AS key,
+          count(*)::int AS usos
+        FROM
+          modulo_crm.leads l
+        WHERE
+          l.tenant_id = ${tenantId}::uuid
+          AND ${colunaDoLead(kind)} IS NOT NULL
+        GROUP BY
+          1
+      `,
   );
+
   return new Map(linhas.map((linha) => [linha.key, linha.usos]));
 }

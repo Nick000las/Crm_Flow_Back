@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { criarNovaDefinicao } from './field-definitions.service.js';
 import { obterSchemaCampos } from './field-schema.service.js';
 import { listarHistorico } from './historico.service.js';
-import { editarLeadsEmMassa } from './leads-bulk.service.js';
 import {
   atualizarLeadExistente,
   buscarLeadFormatado,
@@ -16,6 +18,7 @@ import {
   pesquisarLeads,
   registrarNovoLead,
 } from './leads.service.js';
+import { editarLeadsEmMassa } from './leads-bulk.service.js';
 import { salvarPermissoes } from './permissoes.service.js';
 import { reconciliarTenant } from './reconcile.service.js';
 
@@ -58,6 +61,7 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         subdomain: `smoke-perm-${tenantId.slice(0, TAMANHO_SUFIXO_SUBDOMINIO)}`,
       },
     });
+
     await prisma.usuario.createMany({
       data: [
         {
@@ -78,10 +82,13 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         },
       ],
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.create({
       data: { tenantId, moduleKey: MODULO_CRM, featureKey: CRM_FEATURES.PERMISSOES },
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
 
@@ -91,9 +98,11 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
       obrigatorio: false,
       ordem: ORDEM_SALARIO,
     });
+
     const { campos } = await obterSchemaCampos(tenantId);
     const id = (chave) =>
       /** @type {{ id: string }} */ (campos.find((campo) => campo.chave === chave)).id;
+
     await salvarPermissoes(tenantId, {
       OPERADOR: { [id('email')]: 'hidden', [id('salario')]: 'hidden', [id('status')]: 'view' },
     });
@@ -110,6 +119,7 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
       donoId,
       DONO,
     ));
+
     // Um diff com e-mail e salário no histórico.
     await atualizarLeadExistente(
       tenantId,
@@ -130,6 +140,7 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
     'leitura: lead, lista e campos sem o oculto; "só ver" vem marcado',
     async () => {
       const lead = await buscarLeadFormatado(tenantId, leadId, OPERADOR);
+
       expect(lead).not.toHaveProperty('email');
       expect(lead.custom_fields).not.toHaveProperty('salario');
       expect(lead).toMatchObject({ nome: 'Ana Sigilo', status: 'novo' });
@@ -139,9 +150,11 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         { filtros: [], paginacao: PAGINA },
         OPERADOR,
       );
+
       expect(itens[0]).not.toHaveProperty('email');
 
       const campos = await listarCamposDoTenant(tenantId, undefined, OPERADOR);
+
       expect(campos.map((campo) => campo.chave)).not.toEqual(expect.arrayContaining(['email']));
       expect(campos.find((campo) => campo.chave === 'status')).toMatchObject({ acesso: 'view' });
 
@@ -172,13 +185,17 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         { busca: 'ana2@sigilo', filtros: [], paginacao: PAGINA },
         OPERADOR,
       );
+
       expect(peloEmail.total).toBe(0);
+
       const peloEmailDono = await pesquisarLeads(
         tenantId,
         { busca: 'ana2@sigilo', filtros: [], paginacao: PAGINA },
         DONO,
       );
+
       expect(peloEmailDono.total).toBe(1);
+
       // O que ele vê continua buscável.
       expect(
         (
@@ -200,19 +217,26 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         (await listarHistorico(tenantId, leadId, PAGINA, acesso)).itens.flatMap((evento) =>
           evento.diff.map((entrada) => entrada.chave),
         );
+
       expect(await chavesDoDiff(DONO)).toEqual(expect.arrayContaining(['email', 'salario']));
+
       const doOperador = await chavesDoDiff(OPERADOR);
+
       expect(doOperador).not.toContain('email');
       expect(doOperador).not.toContain('salario');
+
       // M16: a edição só mexeu em campos ocultos pra ele — some da lista e do total.
       const tipos = async (acesso) => {
         const { itens, total } = await listarHistorico(tenantId, leadId, PAGINA, acesso);
+
         return { tipos: itens.map((evento) => evento.tipo), total };
       };
+
       expect(await tipos(DONO)).toEqual({
         tipos: ['atualizado', 'criado'],
         total: EVENTOS_DO_DONO,
       });
+
       expect(await tipos(OPERADOR)).toEqual({ tipos: ['criado'], total: 1 });
     },
     TIMEOUT_MS,
@@ -222,9 +246,11 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
     'escrita: "só ver" e oculto → 403 (PUT, criação e massa); o resto ele edita',
     async () => {
       const proibido = { statusCode: HTTP_STATUS.FORBIDDEN };
+
       await expect(
         atualizarLeadExistente(tenantId, leadId, { status: 'perdido' }, operadorId, OPERADOR),
       ).rejects.toMatchObject(proibido);
+
       await expect(
         atualizarLeadExistente(
           tenantId,
@@ -234,9 +260,11 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
           OPERADOR,
         ),
       ).rejects.toMatchObject(proibido);
+
       await expect(
         registrarNovoLead(tenantId, { nome: 'Novo', email: 'x@sigilo.test' }, operadorId, OPERADOR),
       ).rejects.toMatchObject(proibido);
+
       await expect(
         editarLeadsEmMassa(
           tenantId,
@@ -253,14 +281,17 @@ rodar('permissão por campo no banco (CRM_DB_TESTS=1)', () => {
         operadorId,
         OPERADOR,
       );
+
       expect(editado).toMatchObject({ nome: 'Ana S.' });
       expect(editado).not.toHaveProperty('email');
+
       const criado = await registrarNovoLead(
         tenantId,
         { nome: 'Bia', telefone: '11977776666' },
         operadorId,
         OPERADOR,
       );
+
       expect(criado.id).toEqual(expect.any(String));
     },
     TIMEOUT_MS,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { CAMADA } from '../constants.js';
 import {
   entradaDoLead,
@@ -100,6 +101,7 @@ describe('planejarPelaPolitica', () => {
       pessoa,
       agora,
     );
+
     expect(relatorio.map(({ campoId, resultado, motivo }) => [campoId, resultado, motivo])).toEqual(
       [
         [NOME, 'ignorado', 'igual'],
@@ -107,6 +109,7 @@ describe('planejarPelaPolitica', () => {
         [ALERGIAS, 'gravado', undefined],
       ],
     );
+
     expect(aGravar).toEqual([
       { campoId: ALERGIAS, chave: 'alergias', camada: CAMADA.CAMADA_3, valor: 'Iodo' },
     ]);
@@ -121,7 +124,9 @@ describe('planejarPelaPolitica', () => {
       semEmail,
       semAlergias,
     );
+
     expect(aGravar.map((item) => item.chave)).toEqual(['email']);
+
     expect(relatorio.find((linha) => linha.campoId === ALERGIAS)).toMatchObject({
       resultado: 'revisao',
       motivo: 'campo_indisponivel',
@@ -130,7 +135,9 @@ describe('planejarPelaPolitica', () => {
 
   it('sem resposta é ignorado, nunca apaga', () => {
     const { relatorio, aGravar } = planejarPelaPolitica(ITENS, { [NOME]: 'Ana' }, pessoa, agora);
+
     expect(aGravar).toEqual([]);
+
     expect(relatorio.find((linha) => linha.campoId === EMAIL)).toMatchObject({
       resultado: 'ignorado',
       motivo: 'sem_resposta',
@@ -146,6 +153,7 @@ describe('entradaDoLead', () => {
         { chave: 'alergias', camada: CAMADA.CAMADA_3, valor: 'Iodo' },
       ]),
     ).toEqual({ email: 'a@b.com', customFields: { alergias: 'Iodo' } });
+
     expect(entradaDoLead([])).toEqual({});
   });
 });

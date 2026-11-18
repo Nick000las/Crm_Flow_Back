@@ -1,3 +1,8 @@
+/**
+ * @file ADAPTER: leitura de `usuarios` pro CRM — só pra validar o responsável de um lead. A FK
+ * `leads.usuario_responsavel_id → usuarios(id)` sozinha aceitaria um usuário de OUTRO tenant;
+ * aqui o `tenant_id` (WHERE + RLS) garante que o responsável é deste tenant.
+ */
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { ROLES } from '#shared/constants/index.js';
 
@@ -18,8 +23,14 @@ const FIRST_RESULT_INDEX = 0;
 export function buscarUsuarioAtivoDoTenant(tenantId, usuarioId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT id FROM usuarios
-      WHERE id = ${usuarioId}::uuid AND tenant_id = ${tenantId}::uuid AND ativo = true
+      SELECT
+        id
+      FROM
+        usuarios
+      WHERE
+        id = ${usuarioId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND ativo = TRUE
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -35,9 +46,16 @@ export function listarUsuariosAtivosDoTenant(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id, nome FROM usuarios
-      WHERE tenant_id = ${tenantId}::uuid AND ativo = true
-      ORDER BY nome
+      SELECT
+        id,
+        nome
+      FROM
+        usuarios
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND ativo = TRUE
+      ORDER BY
+        nome
     `,
   );
 }
@@ -52,9 +70,16 @@ export function listarUsuariosAtivosDoTenant(tenantId) {
 export function listarDonosAtivosDoTenant(tenantId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT id FROM usuarios
-      WHERE tenant_id = ${tenantId}::uuid AND ativo = true AND role = ${ROLES.DONO}
-      ORDER BY id
+      SELECT
+        id
+      FROM
+        usuarios
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND ativo = TRUE
+        AND role = ${ROLES.DONO}
+      ORDER BY
+        id
     `.then((rows) => rows.map((row) => row.id)),
   );
 }
@@ -70,9 +95,17 @@ export function listarUsuariosAtivosComPapel(tenantId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT id::text, nome, role FROM usuarios
-      WHERE tenant_id = ${tenantId}::uuid AND ativo = true
-      ORDER BY id
+      SELECT
+        id::text,
+        nome,
+        role
+      FROM
+        usuarios
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND ativo = TRUE
+      ORDER BY
+        id
     `,
   );
 }
@@ -86,11 +119,20 @@ export function listarUsuariosAtivosComPapel(tenantId) {
  * @returns {Promise<Map<string, string>>}
  */
 export function buscarNomesDeUsuarios(tenantId, ids) {
-  if (ids.length === 0) return Promise.resolve(new Map());
+  if (ids.length === 0) {
+    return Promise.resolve(new Map());
+  }
+
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT id::text, nome FROM usuarios
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
+      SELECT
+        id::text,
+        nome
+      FROM
+        usuarios
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND id = ANY (${ids}::UUID[])
     `.then((rows) => new Map(rows.map((row) => [row.id, row.nome]))),
   );
 }

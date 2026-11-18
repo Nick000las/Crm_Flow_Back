@@ -1,14 +1,19 @@
-import { buscarNivelPendentePorPessoa } from '../adapters/crm-form-alerts.repository.js';
+/**
+ * @file SERVICE: o contrato de quadro do M2, com o CRM como dono.
+ */
 import { Buffer } from 'node:buffer';
+
 import { AppError, erroDeValidacao, erroNaoEncontrado } from '#core/errors/app-error.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
-import { buscarStatusDoPipeline, contarUsos } from '../adapters/crm-options.repository.js';
+
+import { buscarNivelPendentePorPessoa } from '../adapters/crm-form-alerts.repository.js';
 import {
   buscarOportunidade,
   buscarOportunidadesDaPessoa,
 } from '../adapters/crm-oportunidades.repository.js';
+import { buscarStatusDoPipeline, contarUsos } from '../adapters/crm-options.repository.js';
 import { buscarPipelines } from '../adapters/crm-pipelines.repository.js';
 import {
   buscarCardsPorIds,
@@ -75,10 +80,17 @@ const noQuadroDoPapel = (pipeline, papel) =>
  * @param {string} quadroRef
  */
 async function pipelineDoQuadro({ tenantId, role }, quadroRef) {
-  if (!(await quadroLigado(tenantId))) throw quadroInexistente();
+  if (!(await quadroLigado(tenantId))) {
+    throw quadroInexistente();
+  }
+
   const pipelines = await buscarPipelines(tenantId);
   const pipeline = pipelines.find((item) => item.id === quadroRef);
-  if (!pipeline || !noQuadroDoPapel(pipeline, role)) throw quadroInexistente();
+
+  if (!pipeline || !noQuadroDoPapel(pipeline, role)) {
+    throw quadroInexistente();
+  }
+
   return pipeline;
 }
 
@@ -94,6 +106,7 @@ async function condicoesDoQuadro(tenantId, filtros, papel) {
     papel,
     { colunaResponsavel: RESPONSAVEL_DO_CARD },
   );
+
   return condicoes;
 }
 
@@ -107,12 +120,15 @@ async function condicoesDoQuadro(tenantId, filtros, papel) {
 async function ordemDoQuadro({ tenantId, role }, pedido) {
   const { campo, direcao } = ordemDoQuadroSchema.parse(pedido ?? {});
   const definicao = ORDENS_DO_QUADRO[campo];
+
   if (definicao.campo) {
     const schema = await obterSchemaDoPapel(tenantId, role);
+
     if (!schema.campos.some((item) => item.chave === definicao.campo)) {
       throw erroDeValidacao('ordem', 'Este campo não está disponível para ordenar');
     }
   }
+
   return { ...definicao, campo, direcao };
 }
 
@@ -127,14 +143,24 @@ const chaveDaOrdem = ({ campo, direcao }) => `${campo}:${direcao}`;
  */
 function escreverCursor(ordem, linha) {
   const conteudo = { o: chaveDaOrdem(ordem), v: linha.ordem_valor, id: linha.deal_id };
+
   return Buffer.from(JSON.stringify(conteudo)).toString('base64url');
 }
 
 /** @param {unknown} valor @param {string} tipo */
 function valorDoTipo(valor, tipo) {
-  if (valor === null) return true;
-  if (typeof valor !== 'string') return false;
-  if (tipo === 'numeric') return valor.trim() !== '' && Number.isFinite(Number(valor));
+  if (valor === null) {
+    return true;
+  }
+
+  if (typeof valor !== 'string') {
+    return false;
+  }
+
+  if (tipo === 'numeric') {
+    return valor.trim() !== '' && Number.isFinite(Number(valor));
+  }
+
   return tipo === 'text' || !Number.isNaN(Date.parse(valor));
 }
 
@@ -143,18 +169,25 @@ function valorDoTipo(valor, tipo) {
  * @param {{ campo: string, direcao: string, tipo: string }} ordem
  */
 function lerCursor(cursor, ordem) {
-  if (!cursor) return null;
+  if (!cursor) {
+    return null;
+  }
+
   const invalido = () => erroDeValidacao('cursor', 'Cursor inválido');
   let conteudo;
+
   try {
     conteudo = JSON.parse(Buffer.from(cursor, 'base64url').toString());
   } catch {
     throw invalido();
   }
+
   const { o, v, id } = conteudo ?? {};
+
   if (o !== chaveDaOrdem(ordem) || !PADRAO_UUID.test(id ?? '') || !valorDoTipo(v, ordem.tipo)) {
     throw invalido();
   }
+
   return { valor: v ?? null, id };
 }
 
@@ -165,8 +198,12 @@ function numero(valor) {
 
 /** @param {TenantContext} context */
 async function listarQuadros({ tenantId, role }) {
-  if (!(await quadroLigado(tenantId))) return [];
+  if (!(await quadroLigado(tenantId))) {
+    return [];
+  }
+
   const pipelines = await buscarPipelines(tenantId);
+
   return pipelines
     .filter((pipeline) => noQuadroDoPapel(pipeline, role))
     .map((pipeline) => ({ quadroRef: pipeline.id, nome: pipeline.nome }));
@@ -185,6 +222,7 @@ async function listarColunas(context, quadroRef) {
     buscarStatusDoPipeline(context.tenantId, id),
     contarUsos(context.tenantId, TIPOS_LISTA.STATUS, id),
   ]);
+
   return status
     .filter((opcao) => opcao.ativo || usos.has(opcao.key))
     .map((opcao) => ({
@@ -217,6 +255,7 @@ async function listarCards(context, quadroRef, { colunaRef, filtros, ordem, curs
   });
   const pagina = linhas.slice(0, limite);
   const ultima = pagina.at(-1);
+
   return {
     itens: pagina.map((linha) => ({
       entidadeId: linha.deal_id,
@@ -238,11 +277,13 @@ async function buscarCards(context, quadroRef, { ids, filtros }) {
   if (!ids.every((id) => PADRAO_UUID.test(id))) {
     throw erroDeValidacao('ids', 'Id de card inválido');
   }
+
   const [{ id }, condicoes] = await Promise.all([
     pipelineDoQuadro(context, quadroRef),
     condicoesDoQuadro(context.tenantId, filtros, context.role),
   ]);
   const linhas = await listarCardsPorIds(context.tenantId, { pipelineId: id, ids, condicoes });
+
   return linhas.map((linha) => ({
     entidadeId: linha.deal_id,
     atualizadoEm: linha.deal_atualizada_em,
@@ -267,6 +308,7 @@ async function resumoColuna(context, quadroRef, { colunaRef, filtros }) {
     obterSchemaDoPapel(context.tenantId, context.role),
   ]);
   const veValor = schema.campos.some((campo) => campo.chave === 'valor');
+
   return { total: resumo.total, soma: veValor ? numero(resumo.soma) : null };
 }
 
@@ -291,8 +333,13 @@ async function acoesPermitidas({ tenantId, role }, entidadeId) {
     soVisiveis: papelComPipelinesOcultos(role),
     inatividade: null,
   });
-  if (!linha) return [];
+
+  if (!linha) {
+    return [];
+  }
+
   const schema = await obterSchemaDoPapel(tenantId, role);
+
   return podeMoverCard(linha, schema) ? [ROTULOS_DO_QUADRO.MOVER] : [];
 }
 
@@ -307,12 +354,18 @@ async function mover(
   { quadroRef, entidadeId, colunaDestino, expectedUpdatedAt, filtros, campos },
 ) {
   const { tenantId, userId, role } = context;
+
   await pipelineDoQuadro(context, quadroRef);
+
   const { motivoPerda, probabilidadeFechamento } = camposDoMoverSchema.parse(campos ?? {});
   // Antes de gravar: filtro inválido não pode mover o card.
   const condicoes = filtros ? await condicoesDoQuadro(tenantId, filtros, role) : null;
   const deal = await buscarOportunidade(tenantId, entidadeId);
-  if (!deal) throw erroNaoEncontrado('Oportunidade não encontrada');
+
+  if (!deal) {
+    throw erroNaoEncontrado('Oportunidade não encontrada');
+  }
+
   if (deal.pipeline_id !== quadroRef) {
     throw new AppError({
       statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -320,6 +373,7 @@ async function mover(
       message: 'O card só se move dentro do próprio pipeline',
     });
   }
+
   const movida = await mudarStatusDaOportunidade(
     tenantId,
     entidadeId,
@@ -327,6 +381,7 @@ async function mover(
     userId,
     { papel: role },
   );
+
   return {
     entidadeId,
     colunaRef: colunaDestino,
@@ -347,6 +402,7 @@ async function mover(
 async function criar(context, { quadroRef, colunaRef, dados }) {
   const { tenantId, userId, role } = context;
   const { id: pipelineId } = await pipelineDoQuadro(context, quadroRef);
+
   garantirEscritaPermitida(await obterSchemaDoPapel(tenantId, role), { status: colunaRef });
 
   if (dados.leadId !== undefined) {
@@ -358,6 +414,7 @@ async function criar(context, { quadroRef, colunaRef, dados }) {
       userId,
       { papel: role },
     );
+
     return { entidadeId: criada.id, colunaRef };
   }
 
@@ -368,6 +425,7 @@ async function criar(context, { quadroRef, colunaRef, dados }) {
     oportunidade: { pipelineId, status: colunaRef },
   });
   const [deal] = await buscarOportunidadesDaPessoa(tenantId, id);
+
   return { entidadeId: deal.id, colunaRef, leadId: id };
 }
 
@@ -380,11 +438,18 @@ async function criar(context, { quadroRef, colunaRef, dados }) {
  * @param {{ definicoes: any[] }} schema
  */
 function valorNoCard(linha, item, schema) {
-  if (item.chave === CHAVE_RESPONSAVEL) return linha.deal_dono_id;
-  if (item.chave === CHAVE_STATUS) return linha.estagio_nome;
+  if (item.chave === CHAVE_RESPONSAVEL) {
+    return linha.deal_dono_id;
+  }
+
+  if (item.chave === CHAVE_STATUS) {
+    return linha.estagio_nome;
+  }
+
   const valor = item.coluna
     ? linha[item.coluna]
     : customFieldsParaApi(schema.definicoes, linha.custom_fields ?? {})[item.chave];
+
   return typeof valor === 'object' && valor !== null && 'toNumber' in valor
     ? valor.toNumber()
     : (valor ?? null);
@@ -414,7 +479,10 @@ function selosDoCard(linha, nivelDoAlerta) {
  * @param {string[]} ids
  */
 async function descrever({ tenantId, userId, role }, ids) {
-  if (ids.length === 0) return [];
+  if (ids.length === 0) {
+    return [];
+  }
+
   const [inatividade, formularios] = await Promise.all([
     featureAtiva(tenantId, CRM_FEATURES.INATIVIDADE),
     featureAtiva(tenantId, CRM_FEATURES.FORMULARIOS),
@@ -470,6 +538,7 @@ async function descrever({ tenantId, userId, role }, ids) {
  */
 async function resolverVinculos(tenantId, ids) {
   const existentes = new Set(await buscarIdsDeOportunidades(tenantId, ids));
+
   return Object.fromEntries(ids.map((id) => [id, existentes.has(id) ? id : null]));
 }
 

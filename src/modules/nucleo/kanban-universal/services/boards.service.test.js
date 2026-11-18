@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { featureAtiva } from '#core/tenant/feature-flags.js';
+
 import { buscarBoardsPorTenant } from '../adapters/boards.repository.js';
 import { listarBoardsDoTenant } from './boards.service.js';
 import { listarQuadrosDeEntidade } from './quadro-entidade.service.js';
@@ -7,6 +9,7 @@ import { listarQuadrosDeEntidade } from './quadro-entidade.service.js';
 vi.mock('../adapters/boards.repository.js', () => ({
   buscarBoardsPorTenant: vi.fn(),
 }));
+
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
 vi.mock('./quadro-entidade.service.js', () => ({ listarQuadrosDeEntidade: vi.fn() }));
 
@@ -40,6 +43,7 @@ describe('listarBoardsDoTenant', () => {
 
   it('flag ligada: junta nativos e quadros dos provedores, com o modo', async () => {
     const deEntidade = { boardType: 'b', quadroRef: 'q', nome: 'Vendas', modo: 'entidade' };
+
     vi.mocked(featureAtiva).mockResolvedValue(true);
     vi.mocked(listarQuadrosDeEntidade).mockResolvedValue([deEntidade]);
 
@@ -47,6 +51,7 @@ describe('listarBoardsDoTenant', () => {
       { ...boards[0], modo: 'nativo' },
       deEntidade,
     ]);
+
     expect(listarQuadrosDeEntidade).toHaveBeenCalledWith(context, logger);
   });
 });

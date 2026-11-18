@@ -1,4 +1,10 @@
+/**
+ * @file SERVICE: base comum das regras (M8) entre lead e oportunidade. Fica fora de
+ * `leads.service.js` para o service de oportunidade usar sem dependência circular: na F4, o
+ * lead passa a escrever pela oportunidade.
+ */
 import { featureAtiva } from '#core/tenant/feature-flags.js';
+
 import { CRM_FEATURES } from '../constants.js';
 import { customFieldsParaApi } from './field-schema.service.js';
 
@@ -15,7 +21,10 @@ import { customFieldsParaApi } from './field-schema.service.js';
  * @param {import('./field-schema.service.js').SchemaCampos} schema
  */
 export async function regrasAplicaveis(tenantId, schema) {
-  if (!(await featureAtiva(tenantId, CRM_FEATURES.REGRAS))) return [];
+  if (!(await featureAtiva(tenantId, CRM_FEATURES.REGRAS))) {
+    return [];
+  }
+
   return (schema.regras ?? []).filter((regra) => regra.ativo);
 }
 
@@ -32,6 +41,8 @@ export function leadParaApi(linha, { campos, definicoes }) {
       .filter((campo) => campo.coluna)
       .map((campo) => [campo.chave, linha[campo.coluna] ?? null]),
   );
+
   lead.customFields = customFieldsParaApi(definicoes, linha.custom_fields ?? {});
+
   return lead;
 }

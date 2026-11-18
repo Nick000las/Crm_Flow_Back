@@ -1,10 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { buildApp } from '#api/app.js';
 import { encerrarCache } from '#core/cache/cache.js';
 import { getAdminClient, getTenantClient } from '#core/db/tenantClient.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import { purgarLixeira } from '../adapters/leads.repository.js';
 import { CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { atualizarConfiguracaoCampo } from '../services/configuracoes-campos.service.js';
@@ -56,11 +59,15 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       headers: { authorization: `Bearer ${token}` },
     });
     const corpo = resposta.body ? JSON.parse(resposta.body) : null;
+
     return { status: resposta.statusCode, corpo, dados: corpo?.data };
   }
+
   const ok = async (promessa, status = HTTP_STATUS.OK) => {
     const resposta = await promessa;
+
     expect(resposta.status, JSON.stringify(resposta.corpo)).toBe(status);
+
     return resposta.dados;
   };
   const novaPessoa = async (nome = 'Paula Reis') =>
@@ -75,10 +82,13 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       chamar('POST', `/crm/leads/${leadId}/formularios/${formulario.id}/link`, {}),
       HTTP_STATUS.CREATED,
     );
+
     return { id: link.link.id, token: link.url.match(TOKEN_NA_URL)[1] };
   };
+
   async function responder(token, respostas, extra = {}) {
     ipDaVez += 1;
+
     const resposta = await app.inject({
       method: 'POST',
       url: `/public/f/${token}/respostas`,
@@ -86,14 +96,18 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       remoteAddress: `10.6.0.${ipDaVez}`,
       headers: { 'user-agent': 'Navegador FM6' },
     });
+
     expect(resposta.statusCode, resposta.body).toBe(HTTP_STATUS.CREATED);
   }
+
   const statusDoLink = async (linkId) => {
     const [linha] = await prisma.$queryRaw`
       SELECT status, lead_id::text FROM modulo_crm.crm_form_link WHERE id = ${linkId}::uuid
     `;
+
     return linha;
   };
+
   async function publicar(nome, itens, alertas = []) {
     const criado = await ok(chamar('POST', CONFIG, { nome }), HTTP_STATUS.CREATED);
     const salvo = await ok(
@@ -106,12 +120,15 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         rascunho: { ...salvo.rascunho, alertas: alertas(salvo.rascunho.secoes[0].itens) },
       }),
     );
+
     await ok(chamar('POST', `${CONFIG}/${criado.id}/publicar`), HTTP_STATUS.CREATED);
+
     return { ...criado, itens: comAlertas.rascunho.secoes[0].itens };
   }
 
   beforeAll(async () => {
     process.env.FORMS_TOKEN_KEY ??= randomBytes(BYTES_DA_CHAVE).toString('base64');
+
     await prisma.tenant.create({
       data: {
         id: tenantId,
@@ -119,6 +136,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         subdomain: `smoke-ciclo-${tenantId.slice(0, TAMANHO_SUFIXO)}`,
       },
     });
+
     await prisma.usuario.create({
       data: {
         id: donoId,
@@ -129,7 +147,9 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         role: 'DONO',
       },
     });
+
     await prisma.tenantModule.create({ data: { tenantId, moduleKey: MODULO_CRM } });
+
     await prisma.tenantModuleFeature.createMany({
       data: [
         CRM_FEATURES.FORMULARIOS,
@@ -138,14 +158,17 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         CRM_FEATURES.ARQUIVO,
       ].map((featureKey) => ({ tenantId, moduleKey: MODULO_CRM, featureKey })),
     });
+
     await invalidarFeatures(tenantId);
     await reconciliarTenant(tenantId);
+
     alergias = await criarNovaDefinicao(tenantId, {
       label: 'Alergias',
       tipo: 'texto',
       obrigatorio: false,
       ordem: ORDEM,
     });
+
     // Seleção sobrevive à anonimização, a não ser que seja sensível (FM6).
     gestante = await criarNovaDefinicao(tenantId, {
       label: 'Gestante',
@@ -154,9 +177,11 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       obrigatorio: false,
       ordem: ORDEM + 1,
     });
+
     for (const campo of [alergias, gestante]) {
       await atualizarConfiguracaoCampo(tenantId, campo.id, { sensivel: true });
     }
+
     await invalidarSchemaCampos(tenantId);
 
     app = await buildApp({
@@ -168,10 +193,15 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         JWT_REFRESH_SECRET: 'local-test-secret-refresh-only',
       },
     });
+
     const elegiveis = await ok(chamar('GET', `${CONFIG}/campos-elegiveis`));
+
     campoNome = elegiveis.find((campo) => campo.chave === 'nome').id;
+
     const opcaoSim = elegiveis.find((campo) => campo.id === gestante.id).opcoes[0];
+
     gestante.sim = opcaoSim;
+
     anamnese = await publicar(
       'Anamnese',
       [
@@ -191,6 +221,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         },
       ],
     );
+
     perguntas = { fuma: anamnese.itens[3].pergunta.id, observacao: anamnese.itens[4].pergunta.id };
     pesquisa = await publicar('Pesquisa', [{ campoId: campoNome }], () => []);
   });
@@ -207,6 +238,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
     it('nenhuma resposta sensível sobra nas respostas, nos campos, no histórico ou no outbox', async () => {
       const leadId = await novaPessoa();
       const respondido = await novoLink(leadId);
+
       await responder(
         respondido.token,
         {
@@ -218,16 +250,20 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         },
         { preenchidoPor: 'responsavel', nomeResponsavel: SEGREDOS.RESPONSAVEL },
       );
+
       const pendente = await novoLink(leadId, pesquisa);
+
       expect(await ok(chamar('GET', `/crm/leads/${leadId}/formularios/alertas`))).toHaveLength(1);
 
       await ok(chamar('POST', `/crm/leads/${leadId}/anonimizar`));
 
       expect((await statusDoLink(pendente.id)).status).toBe('revoked');
+
       const [resposta] = await prisma.$queryRaw`
         SELECT answers, guardian_name, ip, user_agent, filled_by, write_report, consent_hash
         FROM modulo_crm.crm_form_submission WHERE lead_id = ${leadId}::uuid
       `;
+
       expect(resposta).toMatchObject({
         answers: { campos: {}, perguntas: {} },
         guardian_name: 'Anonimizado',
@@ -235,6 +271,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         user_agent: null,
         filled_by: 'responsavel',
       });
+
       // Metadados ficam: o relatório (sem valores) e o hash do termo.
       expect(resposta.write_report.length).toBeGreaterThan(0);
       expect(resposta.consent_hash).not.toBeNull();
@@ -242,6 +279,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       const [{ alertas }] = await prisma.$queryRaw`
         SELECT count(*)::int AS alertas FROM modulo_crm.crm_form_alert WHERE lead_id = ${leadId}::uuid
       `;
+
       expect(alertas).toBe(0);
 
       const [{ sobras }] = await prisma.$queryRaw`
@@ -256,10 +294,13 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
             WHERE o.tenant_id = ${tenantId}::uuid AND to_jsonb(o)::text ~ ${Object.values(SEGREDOS).join('|')})
         )::int AS sobras
       `;
+
       expect(sobras).toBe(0);
+
       const [pessoa] = await prisma.$queryRaw`
         SELECT custom_fields FROM modulo_crm.leads WHERE id = ${leadId}::uuid
       `;
+
       expect(pessoa.custom_fields).not.toHaveProperty(gestante.id);
       expect(pessoa.custom_fields).not.toHaveProperty(alergias.id);
 
@@ -268,6 +309,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       const detalhe = await ok(
         chamar('GET', `/crm/leads/${leadId}/formularios/respostas/${resumo.id}`),
       );
+
       expect(detalhe.secoes[0].itens.every((item) => item.valor === null)).toBe(true);
     });
   });
@@ -279,6 +321,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       const doPrincipal = await novoLink(principalId);
       const doSecundario = await novoLink(secundarioId);
       const respondido = await novoLink(secundarioId, pesquisa);
+
       await responder(respondido.token, { [campoNome]: 'Paula Secundaria' });
 
       await ok(chamar('POST', '/crm/leads/merge', { principalId, secundarioId }));
@@ -287,17 +330,23 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
         status: 'revoked',
         lead_id: principalId,
       });
+
       expect(await statusDoLink(doSecundario.id)).toEqual({
         status: 'active',
         lead_id: principalId,
       });
+
       expect((await statusDoLink(respondido.id)).lead_id).toBe(principalId);
+
       const respostas = await ok(chamar('GET', `/crm/leads/${principalId}/formularios/respostas`));
+
       expect(respostas.map((resposta) => resposta.formulario.nome)).toEqual(['Pesquisa']);
+
       const [{ ativos }] = await prisma.$queryRaw`
         SELECT count(*)::int AS ativos FROM modulo_crm.crm_form_link
         WHERE lead_id = ${principalId}::uuid AND form_id = ${anamnese.id}::uuid AND status = 'active'
       `;
+
       expect(ativos).toBe(1);
     });
 
@@ -305,9 +354,12 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
       const principalId = await novaPessoa('Rui Principal');
       const secundarioId = await novaPessoa('Rui Secundario');
       const link = await novoLink(secundarioId);
+
       await responder(link.token, { [campoNome]: 'Rui Secundario', [perguntas.fuma]: true });
       await ok(chamar('POST', '/crm/leads/merge', { principalId, secundarioId }));
+
       const alertas = await ok(chamar('GET', `/crm/leads/${principalId}/formularios/alertas`));
+
       expect(alertas.map((alerta) => alerta.texto)).toEqual(['Fumante']);
     });
   });
@@ -316,6 +368,7 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
     it('arquivar revoga os links ativos; desarquivar não os traz de volta', async () => {
       const leadId = await novaPessoa();
       const link = await novoLink(leadId);
+
       await ok(chamar('POST', `/crm/leads/${leadId}/arquivar`));
       expect((await statusDoLink(link.id)).status).toBe('revoked');
       await ok(chamar('POST', `/crm/leads/${leadId}/desarquivar`));
@@ -325,18 +378,23 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
     it('lixeira revoga os links ativos, e a purga apaga respostas, alertas e links', async () => {
       const leadId = await novaPessoa();
       const respondido = await novoLink(leadId);
+
       await responder(respondido.token, { [campoNome]: 'Paula Reis', [perguntas.fuma]: true });
+
       const pendente = await novoLink(leadId, pesquisa);
+
       await ok(chamar('DELETE', `/crm/leads/${leadId}`));
       expect((await statusDoLink(pendente.id)).status).toBe('revoked');
 
       await purgarLixeira(tenantId, new Date(Date.now() + UM_DIA_MS));
+
       const [contagem] = await prisma.$queryRaw`
         SELECT
           (SELECT count(*) FROM modulo_crm.crm_form_link WHERE lead_id = ${leadId}::uuid)::int AS links,
           (SELECT count(*) FROM modulo_crm.crm_form_submission WHERE lead_id = ${leadId}::uuid)::int AS respostas,
           (SELECT count(*) FROM modulo_crm.crm_form_alert WHERE lead_id = ${leadId}::uuid)::int AS alertas
       `;
+
       expect(contagem).toEqual({ links: 0, respostas: 0, alertas: 0 });
     });
   });
@@ -344,16 +402,20 @@ rodar('formulários no ciclo de vida da pessoa (CRM_DB_TESTS=1)', { timeout: TIM
   it('a resposta segue imutável: o GUC da mesclagem só deixa trocar a pessoa', async () => {
     const leadId = await novaPessoa();
     const link = await novoLink(leadId, pesquisa);
+
     await responder(link.token, { [campoNome]: 'Paula Reis' });
+
     await expect(
       getTenantClient(tenantId, async (tx) => {
         await tx.$queryRaw`SELECT set_config('app.form_mesclando', 'on', true)`;
+
         await tx.$executeRaw`
           UPDATE modulo_crm.crm_form_submission SET answers = '{}'::jsonb
           WHERE lead_id = ${leadId}::uuid
         `;
       }),
     ).rejects.toThrow(/imutável/);
+
     await expect(
       getTenantClient(
         tenantId,

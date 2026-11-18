@@ -1,5 +1,12 @@
+/**
+ * @file Regras por tipo de campo (docs/produto/crm-pessoas-e-campos.md, M2) — funções puras,
+ * uma fonte só pro formulário/PUT (`leads.service.js`), a planilha (`import.service.js`) e o
+ * filtro (`lead-filter.service.js`), pra personalizados e pros nativos do mesmo tipo (e-mail,
+ * telefone).
+ */
 import { BRAZIL_DOCUMENTS, BRAZIL_PHONE } from '#shared/constants/index.js';
 import { cnpjValido, cpfValido, emailSchema, uuidSchema } from '#shared/validators/index.js';
+
 import { PARTES_ENDERECO, TAMANHO_UF, TIPOS_CAMPO, TIPOS_LISTA } from '../constants.js';
 
 /**
@@ -25,6 +32,7 @@ import { PARTES_ENDERECO, TAMANHO_UF, TIPOS_CAMPO, TIPOS_LISTA } from '../consta
  */
 
 export const LIMITE_TEXTO_LONGO = 10_000;
+
 const CASAS_DECIMAIS_MONETARIO = 2;
 const BASE_DECIMAL = 10;
 const FATOR_CENTAVOS = BASE_DECIMAL ** CASAS_DECIMAIS_MONETARIO;
@@ -57,10 +65,19 @@ export function somenteDigitos(texto) {
  * @param {unknown} valor
  */
 export function valorAusente(valor) {
-  if (valor === undefined || valor === null || valor === '') return true;
-  if (Array.isArray(valor)) return valor.length === 0;
+  if (valor === undefined || valor === null || valor === '') {
+    return true;
+  }
+
+  if (Array.isArray(valor)) {
+    return valor.length === 0;
+  }
+
   // Endereço / intervalo (M11): objeto sem nenhuma parte preenchida.
-  if (objetoSimples(valor)) return Object.values(/** @type {object} */ (valor)).every(valorAusente);
+  if (objetoSimples(valor)) {
+    return Object.values(/** @type {object} */ (valor)).every(valorAusente);
+  }
+
   return false;
 }
 
@@ -79,27 +96,38 @@ function doisDigitos(numero) {
 /** @param {string} texto @returns {string | null} */
 export function normalizarCpf(texto) {
   const digitos = somenteDigitos(texto);
+
   return cpfValido(digitos) ? digitos : null;
 }
 
 /** @param {string} texto @returns {string | null} */
 export function normalizarCnpj(texto) {
   const chave = chaveDocumento(texto);
+
   return chave && cnpjValido(chave) ? chave : null;
 }
 
 /** @param {string} texto @returns {string | null} */
 export function normalizarCep(texto) {
   const digitos = somenteDigitos(texto);
+
   return digitos.length === BRAZIL_DOCUMENTS.CEP_LENGTH ? digitos : null;
 }
 
 /** `9:05`, `09:05` ou `09:05:30` → `09:05`. @param {string} texto @returns {string | null} */
 export function normalizarHora(texto) {
   const partes = PADRAO_HORA.exec(texto.trim());
-  if (!partes) return null;
+
+  if (!partes) {
+    return null;
+  }
+
   const [horas, minutos] = [Number(partes[1]), Number(partes[2])];
-  if (horas >= HORAS_NO_DIA || minutos >= MINUTOS_NA_HORA) return null;
+
+  if (horas >= HORAS_NO_DIA || minutos >= MINUTOS_NA_HORA) {
+    return null;
+  }
+
   return `${doisDigitos(horas)}:${partes[2]}`;
 }
 
@@ -114,22 +142,47 @@ function diaIsoValido(valor) {
 
 /** @param {unknown} valor */
 function intervaloValido(valor) {
-  if (!objetoSimples(valor)) return false;
+  if (!objetoSimples(valor)) {
+    return false;
+  }
+
   const { de, ate, ...resto } = /** @type {Record<string, unknown>} */ (valor);
-  if (Object.keys(resto).length > 0 || !diaIsoValido(de) || !diaIsoValido(ate)) return false;
+
+  if (Object.keys(resto).length > 0 || !diaIsoValido(de) || !diaIsoValido(ate)) {
+    return false;
+  }
+
   return String(de).slice(0, TAMANHO_DIA_ISO) <= String(ate).slice(0, TAMANHO_DIA_ISO);
 }
 
 /** @param {unknown} valor */
 function enderecoValido(valor) {
-  if (!objetoSimples(valor)) return false;
+  if (!objetoSimples(valor)) {
+    return false;
+  }
+
   return Object.entries(/** @type {Record<string, unknown>} */ (valor)).every(
     ([parte, conteudo]) => {
-      if (!PARTES_ENDERECO.includes(parte)) return false;
-      if (conteudo === null || conteudo === undefined || conteudo === '') return true;
-      if (typeof conteudo !== 'string') return false;
-      if (parte === 'cep') return normalizarCep(conteudo) !== null;
-      if (parte === 'uf') return PADRAO_UF.test(conteudo.trim().toUpperCase());
+      if (!PARTES_ENDERECO.includes(parte)) {
+        return false;
+      }
+
+      if (conteudo === null || conteudo === undefined || conteudo === '') {
+        return true;
+      }
+
+      if (typeof conteudo !== 'string') {
+        return false;
+      }
+
+      if (parte === 'cep') {
+        return normalizarCep(conteudo) !== null;
+      }
+
+      if (parte === 'uf') {
+        return PADRAO_UF.test(conteudo.trim().toUpperCase());
+      }
+
       return true;
     },
   );
@@ -139,13 +192,23 @@ function enderecoValido(valor) {
 function normalizarEndereco(endereco) {
   /** @type {Record<string, string>} */
   const normalizado = {};
+
   for (const parte of PARTES_ENDERECO) {
     const conteudo = typeof endereco[parte] === 'string' ? endereco[parte].trim() : '';
-    if (!conteudo) continue;
-    if (parte === 'cep') normalizado.cep = normalizarCep(conteudo) ?? conteudo;
-    else if (parte === 'uf') normalizado.uf = conteudo.toUpperCase();
-    else normalizado[parte] = conteudo;
+
+    if (!conteudo) {
+      continue;
+    }
+
+    if (parte === 'cep') {
+      normalizado.cep = normalizarCep(conteudo) ?? conteudo;
+    } else if (parte === 'uf') {
+      normalizado.uf = conteudo.toUpperCase();
+    } else {
+      normalizado[parte] = conteudo;
+    }
   }
+
   return normalizado;
 }
 
@@ -161,10 +224,23 @@ export function textoDeBusca(tipo, texto) {
   if (tipo === TIPOS_CAMPO.TELEFONE || tipo === TIPOS_CAMPO.CPF || tipo === TIPOS_CAMPO.CEP) {
     return somenteDigitos(texto) || texto;
   }
-  if (tipo === TIPOS_CAMPO.CNPJ) return chaveDocumento(texto) ?? texto;
-  if (tipo === TIPOS_CAMPO.HORA) return normalizarHora(texto) ?? texto;
-  if (tipo === TIPOS_CAMPO.USUARIO) return texto.toLowerCase();
-  if (tipo === TIPOS_CAMPO.EMAIL) return texto.trim().toLowerCase();
+
+  if (tipo === TIPOS_CAMPO.CNPJ) {
+    return chaveDocumento(texto) ?? texto;
+  }
+
+  if (tipo === TIPOS_CAMPO.HORA) {
+    return normalizarHora(texto) ?? texto;
+  }
+
+  if (tipo === TIPOS_CAMPO.USUARIO) {
+    return texto.toLowerCase();
+  }
+
+  if (tipo === TIPOS_CAMPO.EMAIL) {
+    return texto.trim().toLowerCase();
+  }
+
   return texto;
 }
 
@@ -176,11 +252,14 @@ export function textoDeBusca(tipo, texto) {
  */
 export function normalizarTelefone(texto) {
   let digitos = somenteDigitos(texto);
+
   if (digitos.length > BRAZIL_PHONE.MOBILE_LENGTH && digitos.startsWith(DDI_BRASIL)) {
     digitos = digitos.slice(DDI_BRASIL.length);
   }
+
   const valido =
     digitos.length >= BRAZIL_PHONE.LANDLINE_LENGTH && digitos.length <= BRAZIL_PHONE.MOBILE_LENGTH;
+
   return valido ? digitos : null;
 }
 
@@ -209,16 +288,23 @@ export function chaveEmail(valor) {
  * @param {unknown} valor
  */
 export function chaveTelefone(valor) {
-  if (typeof valor !== 'string') return null;
+  if (typeof valor !== 'string') {
+    return null;
+  }
+
   let digitos = somenteDigitos(valor);
-  if (TAMANHOS_COM_DDI.has(digitos.length) && digitos.startsWith(DDI_BRASIL))
+
+  if (TAMANHOS_COM_DDI.has(digitos.length) && digitos.startsWith(DDI_BRASIL)) {
     digitos = digitos.slice(DDI_BRASIL.length);
+  }
+
   if (
     digitos.length === BRAZIL_PHONE.MOBILE_LENGTH &&
     digitos[INDICE_NONO_DIGITO] === NONO_DIGITO
   ) {
     digitos = digitos.slice(0, INDICE_NONO_DIGITO) + digitos.slice(INDICE_NONO_DIGITO + 1);
   }
+
   return digitos || null;
 }
 
@@ -237,6 +323,7 @@ export function chaveDocumento(valor) {
 function urlValida(texto) {
   try {
     const url = new URL(texto);
+
     return PROTOCOLOS_URL.has(url.protocol) && url.hostname.length > 0;
   } catch {
     return false;
@@ -249,6 +336,7 @@ const TOLERANCIA_CENTAVOS = 1e-6;
 /** @param {number} valor */
 function temNoMaximoDuasCasas(valor) {
   const centavos = valor * FATOR_CENTAVOS;
+
   return Math.abs(centavos - Math.round(centavos)) < TOLERANCIA_CENTAVOS;
 }
 
@@ -313,16 +401,25 @@ export function valorValidoParaTipo(tipo, valor, opcoes) {
 export function normalizarValorDoTipo(tipo, valor) {
   if (objetoSimples(valor)) {
     const objeto = /** @type {Record<string, unknown>} */ (valor);
-    if (tipo === TIPOS_CAMPO.ENDERECO) return normalizarEndereco(objeto);
+
+    if (tipo === TIPOS_CAMPO.ENDERECO) {
+      return normalizarEndereco(objeto);
+    }
+
     if (tipo === TIPOS_CAMPO.INTERVALO_DATAS) {
       return {
         de: String(objeto.de).slice(0, TAMANHO_DIA_ISO),
         ate: String(objeto.ate).slice(0, TAMANHO_DIA_ISO),
       };
     }
+
     return valor;
   }
-  if (typeof valor !== 'string') return valor;
+
+  if (typeof valor !== 'string') {
+    return valor;
+  }
+
   switch (tipo) {
     case TIPOS_CAMPO.CPF:
       return normalizarCpf(valor) ?? valor;
@@ -363,28 +460,42 @@ export function converterCelula(campo, bruto) {
       return { valor: texto };
     case TIPOS_CAMPO.NUMERO: {
       const numero = typeof bruto === 'number' ? bruto : converterNumero(texto);
+
       return Number.isFinite(numero)
         ? { valor: numero }
         : { erro: `"${campo.label}" espera um número` };
     }
+
     case TIPOS_CAMPO.DATA: {
       const data = bruto instanceof Date ? bruto : converterData(texto);
+
       return data && !Number.isNaN(data.getTime())
         ? { valor: data.toISOString() }
         : { erro: `"${campo.label}" espera uma data (dd/mm/aaaa)` };
     }
+
     case TIPOS_CAMPO.BOOLEANO: {
       const normalizado = String(bruto).trim().toLowerCase();
-      if (bruto === true || VALORES_VERDADEIROS.has(normalizado)) return { valor: true };
-      if (bruto === false || VALORES_FALSOS.has(normalizado)) return { valor: false };
+
+      if (bruto === true || VALORES_VERDADEIROS.has(normalizado)) {
+        return { valor: true };
+      }
+
+      if (bruto === false || VALORES_FALSOS.has(normalizado)) {
+        return { valor: false };
+      }
+
       return { erro: `"${campo.label}" espera sim ou não` };
     }
+
     case TIPOS_CAMPO.SELECAO: {
       const opcao = casarOpcao(campo, texto);
+
       return opcao !== undefined
         ? { valor: opcao }
         : { erro: `"${texto}" não é uma opção de "${campo.label}"` };
     }
+
     case TIPOS_CAMPO.SELECAO_MULTIPLA: {
       const itens = texto
         .split(/[,;]/)
@@ -392,10 +503,12 @@ export function converterCelula(campo, bruto) {
         .filter(Boolean);
       const valores = itens.map((item) => casarOpcao(campo, item));
       const invalido = itens.find((_, i) => valores[i] === undefined);
+
       return invalido === undefined
         ? { valor: valores }
         : { erro: `"${invalido}" não é uma opção de "${campo.label}"` };
     }
+
     case TIPOS_CAMPO.TEXTO_LONGO:
       return texto.length <= LIMITE_TEXTO_LONGO
         ? { valor: texto }
@@ -403,16 +516,20 @@ export function converterCelula(campo, bruto) {
     case TIPOS_CAMPO.MONETARIO: {
       const numero =
         typeof bruto === 'number' ? bruto : converterNumero(texto.replace(/^R\$\s*/i, ''));
+
       return Number.isFinite(numero)
         ? { valor: Math.round(numero * FATOR_CENTAVOS) / FATOR_CENTAVOS }
         : { erro: `"${campo.label}" espera um valor em reais` };
     }
+
     case TIPOS_CAMPO.TELEFONE: {
       const telefone = normalizarTelefone(texto);
+
       return telefone
         ? { valor: telefone }
         : { erro: `Telefone inválido em "${campo.label}": "${texto}"` };
     }
+
     case TIPOS_CAMPO.EMAIL:
       return emailSchema.safeParse(texto).success
         ? { valor: texto.toLowerCase() }
@@ -424,35 +541,47 @@ export function converterCelula(campo, bruto) {
     // Documento em célula numérica perde o zero da frente (CEP 1310100).
     case TIPOS_CAMPO.CPF: {
       const cpf = normalizarCpf(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CPF_LENGTH));
+
       return cpf ? { valor: cpf } : { erro: `CPF inválido em "${campo.label}": "${texto}"` };
     }
+
     case TIPOS_CAMPO.CNPJ: {
       const cnpj = normalizarCnpj(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CNPJ_LENGTH));
+
       return cnpj ? { valor: cnpj } : { erro: `CNPJ inválido em "${campo.label}": "${texto}"` };
     }
+
     case TIPOS_CAMPO.CEP: {
       const cep = normalizarCep(comZerosAEsquerda(bruto, texto, BRAZIL_DOCUMENTS.CEP_LENGTH));
+
       return cep ? { valor: cep } : { erro: `CEP inválido em "${campo.label}": "${texto}"` };
     }
+
     case TIPOS_CAMPO.HORA: {
       const hora = converterHora(bruto, texto);
+
       return hora ? { valor: hora } : { erro: `"${campo.label}" espera uma hora (hh:mm)` };
     }
+
     case TIPOS_CAMPO.INTERVALO_DATAS: {
       const intervalo = converterIntervalo(bruto, texto);
+
       return intervalo
         ? { valor: intervalo }
         : { erro: `"${campo.label}" espera um período (dd/mm/aaaa - dd/mm/aaaa)` };
     }
+
     case TIPOS_CAMPO.ENDERECO:
       // Uma célula só não dá pra separar em partes: vai inteira no logradouro.
       return { valor: { logradouro: texto } };
     case TIPOS_CAMPO.USUARIO: {
       const id = campo.usuarios?.get(texto.toLowerCase());
+
       return id
         ? { valor: id }
         : { erro: `"${texto}" não é um usuário ativo (em "${campo.label}")` };
     }
+
     default:
       return { erro: `Tipo de campo "${campo.tipo}" não suportado` };
   }
@@ -468,14 +597,22 @@ export function converterCelula(campo, bruto) {
  */
 function casarOpcao(campo, valor) {
   const alvo = valor.toLowerCase();
-  if (campo.lista === TIPOS_LISTA.TAG) return valor;
+
+  if (campo.lista === TIPOS_LISTA.TAG) {
+    return valor;
+  }
+
   if (campo.opcoesLista) {
     return campo.opcoesLista.find(
       (opcao) =>
         opcao.ativo && (opcao.key.toLowerCase() === alvo || opcao.label.toLowerCase() === alvo),
     )?.key;
   }
-  if (!campo.opcoes) return valor;
+
+  if (!campo.opcoes) {
+    return valor;
+  }
+
   return campo.opcoes.find((opcao) => opcao.toLowerCase() === alvo);
 }
 
@@ -483,6 +620,7 @@ function casarOpcao(campo, valor) {
 function converterNumero(texto) {
   const limpo = texto.replace(/\s/g, '');
   const normalizado = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
+
   return normalizado.length > 0 ? Number(normalizado) : Number.NaN;
 }
 
@@ -505,12 +643,16 @@ function comZerosAEsquerda(bruto, texto, tamanho) {
  * @param {string} texto
  */
 function converterHora(bruto, texto) {
-  if (bruto instanceof Date)
+  if (bruto instanceof Date) {
     return `${doisDigitos(bruto.getUTCHours())}:${doisDigitos(bruto.getUTCMinutes())}`;
+  }
+
   if (typeof bruto === 'number' && bruto >= 0 && bruto < 1) {
     const minutos = Math.round(bruto * MINUTOS_NO_DIA) % MINUTOS_NO_DIA;
+
     return `${doisDigitos(Math.floor(minutos / MINUTOS_NA_HORA))}:${doisDigitos(minutos % MINUTOS_NA_HORA)}`;
   }
+
   return normalizarHora(texto);
 }
 
@@ -527,26 +669,33 @@ function converterIntervalo(bruto, texto) {
     bruto instanceof Date
       ? [bruto]
       : texto.split(SEPARADOR_INTERVALO).map((parte) => converterData(parte.trim()));
+
   if (
     datas.length > DATAS_NO_INTERVALO ||
     datas.some((data) => !data || Number.isNaN(data.getTime()))
-  )
+  ) {
     return null;
+  }
+
   const [de, ate = de] = /** @type {Date[]} */ (datas).map((data) =>
     data.toISOString().slice(0, TAMANHO_DIA_ISO),
   );
+
   return de <= ate ? { de, ate } : null;
 }
 
 /** Aceita `dd/mm/aaaa` e ISO. @param {string} texto */
 function converterData(texto) {
   const br = PADRAO_DATA_BR.exec(texto);
+
   if (br) {
     const [, dia, mes, ano] = br.map(Number);
     const data = new Date(Date.UTC(ano, mes - 1, dia));
     // `Date.UTC` datas impossíveis (31/02 → 03/03) em vez de falhar.
     const valida = data.getUTCDate() === dia && data.getUTCMonth() === mes - 1;
+
     return valida ? data : null;
   }
+
   return new Date(texto);
 }

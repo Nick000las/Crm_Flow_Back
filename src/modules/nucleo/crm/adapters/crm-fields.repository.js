@@ -1,5 +1,11 @@
+/**
+ * @file ADAPTER: registro único de campos (`modulo_crm.crm_field` + `crm_field_visibility`,
+ * migration 0012 — docs/produto/crm-pessoas-e-campos.md M1).
+ */
 import { Prisma } from '@prisma/client';
+
 import { getTenantClient } from '#core/db/tenantClient.js';
+
 import { LISTA_CONTEXTOS_VISIBILIDADE } from '../constants.js';
 
 const FIRST_RESULT_INDEX = 0;
@@ -49,17 +55,37 @@ export function buscarCamposDoTenant(tenantId) {
     tenantId,
     (tx) => tx.$queryRaw`
       SELECT
-        f.id, f.system_key, f.chave, f.label, f.type, f.options, f.position,
-        f.is_required, f.is_active, f.is_sensitive, f.created_at,
+        f.id,
+        f.system_key,
+        f.chave,
+        f.label,
+        f.type,
+        f.options,
+        f.position,
+        f.is_required,
+        f.is_active,
+        f.is_sensitive,
+        f.created_at,
         COALESCE(
-          (SELECT jsonb_object_agg(v.context, v.visible)
-           FROM modulo_crm.crm_field_visibility v
-           WHERE v.field_id = f.id AND v.tenant_id = f.tenant_id),
+          (
+            SELECT
+              jsonb_object_agg(v.context, v.visible)
+            FROM
+              modulo_crm.crm_field_visibility v
+            WHERE
+              v.field_id = f.id
+              AND v.tenant_id = f.tenant_id
+          ),
           '{}'::jsonb
         ) AS visibilidade
-      FROM modulo_crm.crm_field f
-      WHERE f.tenant_id = ${tenantId}::uuid
-      ORDER BY f.position, f.created_at, f.id
+      FROM
+        modulo_crm.crm_field f
+      WHERE
+        f.tenant_id = ${tenantId}::uuid
+      ORDER BY
+        f.position,
+        f.created_at,
+        f.id
     `,
   );
 }
@@ -77,21 +103,28 @@ export function buscarCamposDoTenant(tenantId) {
 export function inserirCamposSistema(tenantId, campos) {
   return getTenantClient(tenantId, async (tx) => {
     let criados = 0;
+
     for (const campo of campos) {
       const [linha] = await tx.$queryRaw`
-        INSERT INTO modulo_crm.crm_field
-          (tenant_id, system_key, chave, label, type, position, is_required)
+        INSERT INTO
+          modulo_crm.crm_field (tenant_id, system_key, chave, label, type, position, is_required)
         VALUES
-          (${tenantId}::uuid, ${campo.systemKey}, ${campo.systemKey}, ${campo.label}, ${campo.tipo},
-           ${campo.position}, ${campo.isRequired})
-        ON CONFLICT (tenant_id, system_key) WHERE system_key IS NOT NULL DO NOTHING
-        RETURNING id
+          (${tenantId}::uuid, ${campo.systemKey}, ${campo.systemKey}, ${campo.label}, ${campo.tipo}, ${campo.position}, ${campo.isRequired})
+        ON CONFLICT (tenant_id, system_key)
+        WHERE
+          system_key IS NOT NULL DO NOTHING
+        RETURNING
+          id
       `;
-      if (!linha) continue;
+
+      if (!linha) {
+        continue;
+      }
 
       criados += 1;
       await inserirVisibilidade(tx, tenantId, linha.id, campo.visivel);
     }
+
     return criados;
   });
 }
@@ -104,9 +137,15 @@ export function inserirCamposSistema(tenantId, campos) {
  */
 function inserirVisibilidade(tx, tenantId, fieldId, visivel) {
   return tx.$executeRaw`
-    INSERT INTO modulo_crm.crm_field_visibility (tenant_id, field_id, context, visible)
-    SELECT ${tenantId}::uuid, ${fieldId}::uuid, contexto, ${visivel}
-    FROM unnest(${LISTA_CONTEXTOS_VISIBILIDADE}::varchar[]) AS contexto
+    INSERT INTO
+      modulo_crm.crm_field_visibility (tenant_id, field_id, context, visible)
+    SELECT
+      ${tenantId}::uuid,
+      ${fieldId}::uuid,
+      contexto,
+      ${visivel}
+    FROM
+      unnest(${LISTA_CONTEXTOS_VISIBILIDADE}::VARCHAR[]) AS contexto
     ON CONFLICT (field_id, context) DO NOTHING
   `;
 }
@@ -122,8 +161,15 @@ function inserirVisibilidade(tx, tenantId, fieldId, visivel) {
 export function buscarPersonalizadoAtivoPorChave(tenantId, chave) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT id FROM modulo_crm.crm_field
-      WHERE tenant_id = ${tenantId}::uuid AND chave = ${chave} AND system_key IS NULL AND is_active
+      SELECT
+        id
+      FROM
+        modulo_crm.crm_field
+      WHERE
+        tenant_id = ${tenantId}::uuid
+        AND chave = ${chave}
+        AND system_key IS NULL
+        AND is_active
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -141,13 +187,25 @@ export function criarCampoPersonalizado(
 ) {
   return getTenantClient(tenantId, async (tx) => {
     const [criado] = await tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_field
-        (tenant_id, system_key, chave, label, type, options, position, is_required)
+      INSERT INTO
+        modulo_crm.crm_field (tenant_id, system_key, chave, label, type, options, position, is_required)
       VALUES
-        (${tenantId}::uuid, NULL, ${chave}, ${label}, ${tipo}, ${opcoesJson(opcoes)}::jsonb, ${ordem}, ${obrigatorio})
-      RETURNING ${RETORNO_DEFINICAO_SQL}
+        (
+          ${tenantId}::uuid,
+          NULL,
+          ${chave},
+          ${label},
+          ${tipo},
+          ${opcoesJson(opcoes)}::jsonb,
+          ${ordem},
+          ${obrigatorio}
+        )
+      RETURNING
+        ${RETORNO_DEFINICAO_SQL}
     `;
+
     await inserirVisibilidade(tx, tenantId, criado.id, true);
+
     return criado;
   });
 }
@@ -165,10 +223,19 @@ export function editarCampoPersonalizado(tenantId, fieldId, { label, tipo, opcoe
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       UPDATE modulo_crm.crm_field
-      SET label = ${label}, type = ${tipo}, options = ${opcoesJson(opcoes)}::jsonb,
-          is_required = ${obrigatorio}, updated_at = now()
-      WHERE id = ${fieldId}::uuid AND tenant_id = ${tenantId}::uuid AND system_key IS NULL AND is_active
-      RETURNING ${RETORNO_DEFINICAO_SQL}
+      SET
+        label = ${label},
+        type = ${tipo},
+        options = ${opcoesJson(opcoes)}::jsonb,
+        is_required = ${obrigatorio},
+        updated_at = now()
+      WHERE
+        id = ${fieldId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND system_key IS NULL
+        AND is_active
+      RETURNING
+        ${RETORNO_DEFINICAO_SQL}
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -184,10 +251,16 @@ export function editarCampoPersonalizado(tenantId, fieldId, { label, tipo, opcoe
 export function existeValorDoCampo(tenantId, fieldId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
-      SELECT EXISTS (
-        SELECT 1 FROM modulo_crm.leads
-        WHERE tenant_id = ${tenantId}::uuid AND custom_fields ? ${fieldId}
-      ) AS existe
+      SELECT
+        EXISTS (
+          SELECT
+            1
+          FROM
+            modulo_crm.leads
+          WHERE
+            tenant_id = ${tenantId}::uuid
+            AND custom_fields ? ${fieldId}
+        ) AS existe
     `.then((rows) => Boolean(rows[FIRST_RESULT_INDEX]?.existe)),
   );
 }
@@ -205,9 +278,16 @@ export function desativarCampoPersonalizado(tenantId, fieldId) {
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
       UPDATE modulo_crm.crm_field
-      SET is_active = false, updated_at = now()
-      WHERE id = ${fieldId}::uuid AND tenant_id = ${tenantId}::uuid AND system_key IS NULL AND is_active
-      RETURNING id
+      SET
+        is_active = FALSE,
+        updated_at = now()
+      WHERE
+        id = ${fieldId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND system_key IS NULL
+        AND is_active
+      RETURNING
+        id
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
   );
 }
@@ -229,17 +309,25 @@ export function atualizarCampoConfigurado(
   return getTenantClient(tenantId, async (tx) => {
     await tx.$executeRaw`
       UPDATE modulo_crm.crm_field
-      SET label = COALESCE(${label ?? null}, label),
-          is_required = COALESCE(${isRequired ?? null}::boolean, is_required),
-          is_sensitive = COALESCE(${isSensitive ?? null}::boolean, is_sensitive),
-          updated_at = now()
-      WHERE id = ${fieldId}::uuid AND tenant_id = ${tenantId}::uuid
+      SET
+        label = COALESCE(${label ?? null}, label),
+        is_required = COALESCE(${isRequired ?? null}::boolean, is_required),
+        is_sensitive = COALESCE(${isSensitive ?? null}::boolean, is_sensitive),
+        updated_at = now()
+      WHERE
+        id = ${fieldId}::uuid
+        AND tenant_id = ${tenantId}::uuid
     `;
+
     for (const [contexto, visivel] of Object.entries(visibilidade)) {
       await tx.$executeRaw`
-        INSERT INTO modulo_crm.crm_field_visibility (tenant_id, field_id, context, visible)
-        VALUES (${tenantId}::uuid, ${fieldId}::uuid, ${contexto}, ${visivel})
-        ON CONFLICT (field_id, context) DO UPDATE SET visible = EXCLUDED.visible
+        INSERT INTO
+          modulo_crm.crm_field_visibility (tenant_id, field_id, context, visible)
+        VALUES
+          (${tenantId}::uuid, ${fieldId}::uuid, ${contexto}, ${visivel})
+        ON CONFLICT (field_id, context) DO UPDATE
+        SET
+          visible = EXCLUDED.visible
       `;
     }
   });
@@ -257,9 +345,14 @@ export function reordenarCampos(tenantId, idsEmOrdem) {
     tenantId,
     (tx) => tx.$executeRaw`
       UPDATE modulo_crm.crm_field f
-      SET position = nova.posicao - 1, updated_at = now()
-      FROM unnest(${idsEmOrdem}::uuid[]) WITH ORDINALITY AS nova(id, posicao)
-      WHERE f.id = nova.id AND f.tenant_id = ${tenantId}::uuid
+      SET
+        position = nova.posicao - 1,
+        updated_at = now()
+      FROM
+        unnest(${idsEmOrdem}::UUID[]) WITH ORDINALITY AS nova (id, posicao)
+      WHERE
+        f.id = nova.id
+        AND f.tenant_id = ${tenantId}::uuid
     `,
   );
 }

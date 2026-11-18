@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { criarNotificacoes } from '#core/notificacoes/notificacoes.js';
 import { featureAtiva } from '#core/tenant/feature-flags.js';
 import { HTTP_STATUS, ROLES } from '#shared/constants/index.js';
+
 import {
   buscarConfigDistribuicao,
   excluirGrupo as excluirGrupoRepository,
@@ -10,7 +12,6 @@ import {
   listarRegrasDistribuicao,
   salvarConfigERegras,
 } from '../adapters/crm-distribuicao.repository.js';
-import { avancarRodizio } from '../adapters/crm-rodizio.repository.js';
 import { listarUsuariosAtivosComPapel } from '../adapters/usuarios.repository.js';
 import { CAMADA } from '../constants.js';
 import {
@@ -22,9 +23,11 @@ import {
   notificarAtribuicoesDoImport,
   salvarConfigDistribuicao,
 } from './distribuicao.service.js';
+import { avancarRodizio } from './rodizio.service.js';
 
 vi.mock('#core/tenant/feature-flags.js', () => ({ featureAtiva: vi.fn() }));
 vi.mock('#core/notificacoes/notificacoes.js', () => ({ criarNotificacoes: vi.fn() }));
+
 vi.mock('../adapters/crm-distribuicao.repository.js', () => ({
   buscarConfigDistribuicao: vi.fn(),
   listarRegrasDistribuicao: vi.fn(),
@@ -34,7 +37,8 @@ vi.mock('../adapters/crm-distribuicao.repository.js', () => ({
   atualizarGrupo: vi.fn(),
   excluirGrupo: vi.fn(),
 }));
-vi.mock('../adapters/crm-rodizio.repository.js', () => ({ avancarRodizio: vi.fn() }));
+
+vi.mock('./rodizio.service.js', () => ({ avancarRodizio: vi.fn() }));
 vi.mock('../adapters/usuarios.repository.js', () => ({ listarUsuariosAtivosComPapel: vi.fn() }));
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
@@ -69,11 +73,13 @@ beforeEach(() => {
   buscarConfigDistribuicao.mockResolvedValue({ ativo: true, fallback: 'rodizio_geral' });
   listarRegrasDistribuicao.mockResolvedValue([]);
   listarGrupos.mockResolvedValue([{ id: GRUPO, nome: 'Vendas', membros: [ANA, BRUNO] }]);
+
   listarUsuariosAtivosComPapel.mockResolvedValue([
     { id: ANA, nome: 'Ana', role: ROLES.OPERADOR },
     { id: BRUNO, nome: 'Bruno', role: ROLES.DONO },
     { id: MASTER, nome: 'Suporte', role: ROLES.MASTER },
   ]);
+
   avancarRodizio.mockImplementation(async (_tenant, _chave, candidatos) => candidatos[0]);
   criarNotificacoes.mockResolvedValue(1);
 });
@@ -93,6 +99,7 @@ describe('carregarContextoDistribuicao', () => {
 
   it('rodízio geral: DONO e OPERADOR ativos, sem o MASTER', async () => {
     const contexto = await carregarContextoDistribuicao(TENANT);
+
     expect(contexto?.rodizioGeral).toEqual([ANA, BRUNO]);
   });
 });
@@ -110,32 +117,40 @@ describe('distribuir', () => {
         destino_grupo_id: GRUPO,
       },
     ]);
+
     const contexto = /** @type {any} */ (await carregarContextoDistribuicao(TENANT));
+
     expect(await distribuir(TENANT, contexto, {})).toEqual({
       usuarioId: ANA,
       regraId: 'r1',
       regraNome: 'Site',
       origem: 'regra',
     });
+
     expect(avancarRodizio).toHaveBeenCalledWith(TENANT, GRUPO, [ANA, BRUNO]);
   });
 
   it('nenhuma regra: rodízio geral, ou sem responsável conforme o fallback', async () => {
     const geral = /** @type {any} */ (await carregarContextoDistribuicao(TENANT));
+
     expect(await distribuir(TENANT, geral, {})).toMatchObject({
       usuarioId: ANA,
       regraId: null,
       origem: 'rodizio_geral',
     });
+
     expect(avancarRodizio).toHaveBeenCalledWith(TENANT, 'geral', [ANA, BRUNO]);
 
     avancarRodizio.mockClear();
     buscarConfigDistribuicao.mockResolvedValue({ ativo: true, fallback: 'sem_responsavel' });
+
     const semDono = /** @type {any} */ (await carregarContextoDistribuicao(TENANT));
+
     expect(await distribuir(TENANT, semDono, {})).toMatchObject({
       usuarioId: null,
       origem: 'sem_responsavel',
     });
+
     expect(avancarRodizio).not.toHaveBeenCalled();
   });
 });
@@ -150,6 +165,7 @@ describe('notificações', () => {
       atribuicao,
       criadorId: BRUNO,
     });
+
     expect(criarNotificacoes).toHaveBeenCalledWith(TENANT, [
       expect.objectContaining({
         usuarioId: ANA,
@@ -160,6 +176,7 @@ describe('notificações', () => {
     ]);
 
     criarNotificacoes.mockClear();
+
     expect(
       await notificarAtribuicao(TENANT, {
         leadId: 'l1',
@@ -168,9 +185,11 @@ describe('notificações', () => {
         criadorId: ANA,
       }),
     ).toBe(0);
+
     expect(criarNotificacoes).not.toHaveBeenCalled();
 
     criarNotificacoes.mockRejectedValue(new Error('banco fora'));
+
     await expect(
       notificarAtribuicao(TENANT, { leadId: 'l2', leadNome: 'Caio', atribuicao }),
     ).resolves.toBe(0);
@@ -181,11 +200,13 @@ describe('notificações', () => {
       [ANA, TOTAL_ANA],
       [BRUNO, 1],
     ]);
+
     await notificarAtribuicoesDoImport(TENANT, {
       importJobId: 'job-1',
       totais,
       importadorId: BRUNO,
     });
+
     expect(criarNotificacoes).toHaveBeenCalledWith(TENANT, [
       expect.objectContaining({
         usuarioId: ANA,
@@ -218,6 +239,7 @@ describe('salvarConfigDistribuicao', () => {
         },
       ],
     });
+
     expect(salvarConfigERegras).toHaveBeenCalledWith(TENANT, base, [
       expect.objectContaining({ nome: 'Site', destinoUsuarioId: ANA, destinoGrupoId: null }),
       expect.objectContaining({
@@ -239,18 +261,23 @@ describe('salvarConfigDistribuicao', () => {
     await expect(
       tentar({ condicoes: [{ campoId: GRUPO, operador: 'igual', valor: 'x' }] }),
     ).rejects.toMatchObject(invalido);
+
     await expect(
       tentar({ condicoes: [{ campoId: ID_VALOR, operador: 'contem', valor: 'x' }] }),
     ).rejects.toMatchObject(invalido);
+
     await expect(tentar({ destino: { tipo: 'usuario', id: GRUPO } })).rejects.toMatchObject({
       fields: { 'regras.0.destino': [expect.stringContaining('usuário ativo')] },
     });
+
     await expect(tentar({ destino: { tipo: 'grupo', id: ANA } })).rejects.toMatchObject(invalido);
     await expect(tentar({ id: REGRA_EXISTENTE })).rejects.toMatchObject(invalido);
+
     const muitas = Array.from({ length: ACIMA_DO_LIMITE_DE_CONDICOES }, () => ({
       campoId: ID_FONTE,
       operador: 'nao_vazio',
     }));
+
     await expect(tentar({ condicoes: muitas })).rejects.toMatchObject(invalido);
     expect(salvarConfigERegras).not.toHaveBeenCalled();
   });
@@ -261,9 +288,11 @@ describe('grupos', () => {
     await expect(criarGrupo(TENANT, { nome: 'VENDAS', membros: [] })).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     await expect(criarGrupo(TENANT, { nome: 'SDR', membros: [GRUPO] })).rejects.toMatchObject({
       statusCode: HTTP_STATUS.BAD_REQUEST,
     });
+
     expect(inserirGrupo).not.toHaveBeenCalled();
   });
 
@@ -279,9 +308,11 @@ describe('grupos', () => {
         destino_grupo_id: GRUPO,
       },
     ]);
+
     await expect(excluirGrupo(TENANT, GRUPO)).rejects.toMatchObject({
       statusCode: HTTP_STATUS.CONFLICT,
     });
+
     expect(excluirGrupoRepository).not.toHaveBeenCalled();
   });
 });

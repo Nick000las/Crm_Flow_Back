@@ -1,5 +1,11 @@
+/**
+ * @file Centraliza o transporte HTTP de server, na área de aplicação, preservando os contratos
+ * da API.
+ */
 import { pathToFileURL } from 'node:url';
+
 import { loadEnv } from '#core/config/env.js';
+
 import { listenOptions } from './listen-options.js';
 
 const ENTRY_SCRIPT_ARGUMENT_INDEX = 1;

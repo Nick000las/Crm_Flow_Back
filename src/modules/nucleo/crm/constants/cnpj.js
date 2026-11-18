@@ -1,4 +1,9 @@
 /**
+ * @file Configuração de tenant que nunca salvou: ligado, modo manual (só a lupa), sem
+ * sobrescrever. O mapeamento padrão é por `systemKey` — o service troca pelo `id` do campo no
+ * tenant (campo oculto fica de fora).
+ */
+/**
  * Enriquecimento por CNPJ (M11b, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 import { TIPOS_CAMPO } from './campos.js';

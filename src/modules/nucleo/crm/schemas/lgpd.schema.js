@@ -1,4 +1,9 @@
+/**
+ * @file Valida a estrutura de entrada de lgpd, na área de CRM, antes da execução dos casos de
+ * uso.
+ */
 import { z } from 'zod';
+
 import { LISTA_BASES_LEGAIS } from '../constants.js';
 
 // Base legal LGPD (M15). `obrigatoria` liga a obrigatoriedade do campo

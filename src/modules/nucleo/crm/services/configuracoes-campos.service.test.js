@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { HTTP_STATUS } from '#shared/constants/index.js';
+
 import {
   atualizarCampoConfigurado,
   buscarCamposDoTenant,
@@ -19,20 +21,25 @@ import { invalidarSchemaCampos } from './field-schema.service.js';
 vi.mock('../adapters/crm-options.repository.js', async () =>
   (await import('../testing/listas.fixture.js')).mockRepositorioOpcoes(),
 );
+
 // Regras (M8) e permissões (M13): o schema real lê as duas tabelas — sem mock, o teste ia ao banco.
 vi.mock('../adapters/crm-field-rules.repository.js', () => ({
   buscarRegrasDoTenant: vi.fn().mockResolvedValue([]),
   semearRegrasDoSistema: vi.fn().mockResolvedValue(0),
 }));
+
 vi.mock('../adapters/crm-field-permissions.repository.js', () => ({
   listarPermissoes: vi.fn().mockResolvedValue([]),
 }));
+
 vi.mock('../adapters/crm-fields.repository.js', () => ({
   buscarCamposDoTenant: vi.fn(),
   atualizarCampoConfigurado: vi.fn(),
   reordenarCampos: vi.fn(),
 }));
+
 vi.mock('./campos-reconcile.service.js', () => ({ reconciliarCampos: vi.fn() }));
+
 vi.mock('./field-schema.service.js', async (importOriginal) => ({
   ...(await importOriginal()),
   invalidarSchemaCampos: vi.fn(),
@@ -75,6 +82,7 @@ function linhas() {
     created_at: criadoEm,
     visibilidade: todos(true),
   });
+
   return [
     ...sistema,
     personalizado(ID_PERSONALIZADO, 'segmento', '2026-10-03T00:00:00Z'),
@@ -93,16 +101,19 @@ describe('listarConfiguracaoCampos', () => {
     const campos = await listarConfiguracaoCampos(TENANT);
 
     expect(campos).toHaveLength(CAMPOS_SISTEMA.length + ['segmento', 'regiao'].length);
+
     expect(campos.find((campo) => campo.chave === 'nome')).toMatchObject({
       camada: CAMADA.CAMADA_1,
       labelPadrao: 'Nome',
       obrigatorio: true,
       capacidades: { canHide: false, canMakeOptional: false, canRename: true },
     });
+
     expect(campos.find((campo) => campo.chave === 'cpf')).toMatchObject({
       camada: CAMADA.CAMADA_2,
       visibilidade: todos(false),
     });
+
     expect(campos.find((campo) => campo.id === ID_PERSONALIZADO)).toMatchObject({
       camada: CAMADA.CAMADA_3,
       labelPadrao: null,
@@ -125,6 +136,7 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
       isRequired: undefined,
       visibilidade: { table: false },
     });
+
     expect(invalidarSchemaCampos).toHaveBeenCalledWith(TENANT);
   });
 
@@ -134,6 +146,7 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
     ).rejects.toMatchObject({
       fields: { visibilidade: [expect.stringContaining('não pode ser ocultado')] },
     });
+
     expect(atualizarCampoConfigurado).not.toHaveBeenCalled();
   });
 
@@ -143,6 +156,7 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
     ).rejects.toMatchObject({ fields: { obrigatorio: expect.any(Array) } });
 
     await atualizarConfiguracaoCampo(TENANT, idDoSistema('status'), { obrigatorio: true });
+
     expect(atualizarCampoConfigurado).toHaveBeenCalledWith(
       TENANT,
       idDoSistema('status'),
@@ -202,6 +216,7 @@ describe('atualizarConfiguracaoCampo — capacidades', () => {
 describe('ordem', () => {
   it('reordena com a lista completa', async () => {
     const ids = (await listarConfiguracaoCampos(TENANT)).map((campo) => campo.id).reverse();
+
     await reordenarCampos(TENANT, ids);
     expect(reordenarCamposRepository).toHaveBeenCalledWith(TENANT, ids);
     expect(invalidarSchemaCampos).toHaveBeenCalled();
@@ -209,11 +224,13 @@ describe('ordem', () => {
 
   it('lista incompleta, repetida ou com id estranho → 400, sem gravar', async () => {
     const ids = (await listarConfiguracaoCampos(TENANT)).map((campo) => campo.id);
+
     for (const invalida of [ids.slice(1), [...ids, ids[0]], [...ids.slice(1), 'outro-tenant']]) {
       await expect(reordenarCampos(TENANT, invalida)).rejects.toMatchObject({
         statusCode: HTTP_STATUS.BAD_REQUEST,
       });
     }
+
     expect(reordenarCamposRepository).not.toHaveBeenCalled();
   });
 
@@ -221,6 +238,7 @@ describe('ordem', () => {
     await restaurarOrdemPadrao(TENANT);
 
     const [[, ids]] = reordenarCamposRepository.mock.calls;
+
     expect(ids).toEqual([
       ...CAMPOS_SISTEMA.map((campo) => idDoSistema(campo.systemKey)),
       ID_ANTIGO, // criado antes

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import {
   comPrimeiroNomeNaCriacao,
   comPrimeiroNomeNaEdicao,
@@ -21,6 +22,7 @@ describe('primeiroNomeDe', () => {
 describe('criação', () => {
   it('sem primeiro nome (ou vazio) → derivado do nome', () => {
     expect(comPrimeiroNomeNaCriacao({ nome: 'Maria Souza' }).primeiroNome).toBe('Maria');
+
     expect(comPrimeiroNomeNaCriacao({ nome: 'Maria Souza', primeiroNome: '  ' }).primeiroNome).toBe(
       'Maria',
     );
@@ -41,6 +43,7 @@ describe('edição', () => {
     expect(comPrimeiroNomeNaEdicao({ nome: 'Mariana Souza' }, ATUAL_DERIVADO).primeiroNome).toBe(
       'Mariana',
     );
+
     expect(
       comPrimeiroNomeNaEdicao({ nome: 'Mariana' }, { nome: 'X', primeiro_nome: null }).primeiroNome,
     ).toBe('Mariana');
@@ -56,6 +59,7 @@ describe('edição', () => {
     expect(comPrimeiroNomeNaEdicao({ primeiroNome: null }, ATUAL_EDITADO).primeiroNome).toBe(
       'José',
     );
+
     expect(
       comPrimeiroNomeNaEdicao({ nome: 'Pedro Lima', primeiroNome: '' }, ATUAL_EDITADO).primeiroNome,
     ).toBe('Pedro');
