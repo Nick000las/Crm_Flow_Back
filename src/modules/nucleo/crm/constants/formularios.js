@@ -165,3 +165,15 @@ export const LIMITES_ALERTA = Object.freeze({ POR_FORMULARIO: 30, TEXTO: 300 });
 
 /** O que vê quem não pode ver o alvo do alerta (campo ou pergunta sensível). */
 export const TEXTO_ALERTA_GENERICO = 'Há um alerta restrito nesta pessoa. Fale com a gestão.';
+
+/** GUC que o trigger da resposta respeita na mesclagem (migration 0047). */
+export const GUC_FORM_MESCLANDO = 'app.form_mesclando';
+
+/**
+ * Como a resposta fica depois de anonimizar (FM6): sem nenhum valor. O nome
+ * do responsável vira um marcador para o CHECK de quem preencheu continuar valendo.
+ */
+export const RESPOSTA_ANONIMIZADA = Object.freeze({
+  RESPOSTAS: Object.freeze({ campos: {}, perguntas: {} }),
+  RESPONSAVEL: 'Anonimizado',
+});

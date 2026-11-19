@@ -1,3 +1,7 @@
+import {
+  moverFormulariosNaMesclagem,
+  revogarLinksAtivosDasPessoas,
+} from './crm-form-ciclo.repository.js';
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import {
@@ -381,8 +385,11 @@ export function moverParaLixeira(tenantId, leadId, historico) {
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
       RETURNING id, deleted_at
     `;
-    if (excluido)
+    if (excluido) {
       await excluirOportunidadesDoLead(tx, tenantId, leadId, historico?.autorId ?? null);
+      // FM6: pessoa na lixeira não responde formulário.
+      await revogarLinksAtivosDasPessoas(tx, tenantId, [leadId]);
+    }
     if (excluido && historico) {
       await inserirEvento(tx, tenantId, leadId, {
         tipo: TIPOS_EVENTO_LEAD.EXCLUIDO,
@@ -420,6 +427,8 @@ export function definirArquivamento(tenantId, leadId, arquivar, historico) {
       SET archived_at = ${valor}, updated_at = now()
       WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid
     `;
+    // FM6: arquivar revoga os links ativos; desarquivar não os traz de volta.
+    if (arquivar) await revogarLinksAtivosDasPessoas(tx, tenantId, [leadId]);
     await publicarEventoDaPessoa(
       tx,
       tenantId,
@@ -542,6 +551,8 @@ export function mesclarLeads(
       WHERE id = ${principalId}::uuid AND tenant_id = ${tenantId}::uuid
     `;
     await moverOportunidades(tx, tenantId, { principalId, secundarioId }, autorId);
+    // FM6: links, respostas e alertas vão junto; dois ativos do mesmo formulário → fica o mais novo.
+    await moverFormulariosNaMesclagem(tx, tenantId, { principalId, secundarioId });
     const depois = await lerLead(tx, tenantId, principalId);
     await publicarEventoDaPessoa(tx, tenantId, principalId, EVENTOS_PESSOA.MESCLADA);
     await inserirEvento(tx, tenantId, principalId, {
