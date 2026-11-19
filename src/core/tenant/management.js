@@ -4,7 +4,7 @@ import { HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import { invalidarFeatures } from '#core/tenant/feature-flags.js';
 import { invalidarAcessoModulo } from '#core/tenant/module-access.js';
-import { reconciliarModulos } from '#core/tenant/reconcile.js';
+import { avisarFeaturesLigadas, reconciliarModulos } from '#core/tenant/reconcile.js';
 import { modulosRegistrados, validarModuleKeys } from '#core/registry/modules.js';
 
 /**
@@ -206,8 +206,12 @@ export class TenantManagement {
     );
     const prisma = getAdminClient();
 
-    await prisma.$transaction(async (tx) => {
+    const antes = await prisma.$transaction(async (tx) => {
       await buscarTenantOuFalhar(tx, tenantId);
+      const ligadasAntes = await tx.tenantModuleFeature.findMany({
+        where: { tenantId },
+        select: { featureKey: true },
+      });
       await tx.tenantModuleFeature.deleteMany({
         where: { tenantId, featureKey: { notIn: featureKeys } },
       });
@@ -219,10 +223,17 @@ export class TenantManagement {
         })),
         skipDuplicates: true,
       });
+      return new Set(ligadasAntes.map((linha) => linha.featureKey));
     });
 
     await invalidarFeatures(tenantId);
-    return [...new Set(featureKeys)].sort();
+    const ligadas = [...new Set(featureKeys)].sort();
+    // Depois do commit e da invalidação: o módulo lê a flag já ligada.
+    await avisarFeaturesLigadas(
+      tenantId,
+      ligadas.filter((chave) => !antes.has(chave)),
+    );
+    return ligadas;
   }
 
   /** Soft-disable — mantém a linha (histórico de billing), só marca `disabledAt`. */

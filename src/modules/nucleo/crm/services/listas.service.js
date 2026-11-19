@@ -15,6 +15,7 @@ import {
   LISTA_DO_CAMPO,
   LISTA_TIPOS_LISTA,
   LISTAS_SEMEADAS,
+  PROBABILIDADE_PADRAO,
   TIPOS_LISTA,
 } from '../constants.js';
 import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service.js';
@@ -76,19 +77,20 @@ export async function listarListas(tenantId) {
 /**
  * @param {string} tenantId
  * @param {string} kind
- * @param {{ label: string, color?: string | null, category?: string }} dados
+ * @param {{ label: string, color?: string | null, category?: string, probabilidadePadrao?: number }} dados
  * @param {{ pipelineId?: string }} [escopo]  status de outro pipeline; sem ele, o padrão
  * @returns {Promise<OpcaoLista>}
  */
 export async function criarOpcao(
   tenantId,
   kind,
-  { label, color = null, category },
+  { label, color = null, category, probabilidadePadrao },
   { pipelineId } = {},
 ) {
   const opcoes = await opcoesDaLista(tenantId, kind, pipelineId);
   const nome = garantirLabelLivre(opcoes, label);
   validarCategoria(kind, category, { obrigatoria: true });
+  validarProbabilidadePadrao(kind, category, probabilidadePadrao);
 
   const key = chaveUnica(slugify(nome) || KEY_PADRAO, new Set(opcoes.map((opcao) => opcao.key)));
   const [criada] = await inserirOpcoes(
@@ -100,6 +102,7 @@ export async function criarOpcao(
         label: nome,
         color,
         category: category ?? null,
+        probabilidadePadrao: probabilidadePadrao ?? null,
         position: await proximaPosicao(tenantId, kind, pipelineId),
       },
     ],
@@ -113,13 +116,13 @@ export async function criarOpcao(
 }
 
 /**
- * PUT parcial: `label`, `color` (`null` limpa), `category` (só status) e
- * `ativo`. `key` nunca muda.
+ * PUT parcial: `label`, `color` (`null` limpa), `category` e
+ * `probabilidadePadrao` (só status) e `ativo`. `key` nunca muda.
  *
  * @param {string} tenantId
  * @param {string} kind
  * @param {string} opcaoId
- * @param {{ label?: string, color?: string | null, category?: string, ativo?: boolean }} mudancas
+ * @param {{ label?: string, color?: string | null, category?: string, ativo?: boolean, probabilidadePadrao?: number }} mudancas
  * @param {{ pipelineId?: string }} [escopo]
  * @returns {Promise<OpcaoLista>}
  */
@@ -131,6 +134,11 @@ export async function atualizarOpcao(tenantId, kind, opcaoId, mudancas, { pipeli
   const label =
     mudancas.label === undefined ? undefined : garantirLabelLivre(opcoes, mudancas.label, opcaoId);
   validarCategoria(kind, mudancas.category, { obrigatoria: false });
+  validarProbabilidadePadrao(
+    kind,
+    mudancas.category ?? atual.category,
+    mudancas.probabilidadePadrao,
+  );
   await garantirCategoriaLivre(tenantId, kind, atual, mudancas.category, pipelineId);
 
   const depois = { ...atual, ...(mudancas.category && { category: mudancas.category }) };
@@ -405,6 +413,28 @@ function validarCategoria(kind, category, { obrigatoria }) {
   }
   if (obrigatoria && category === undefined) {
     throw erroDeValidacao('category', 'Informe a categoria do status (aberto, ganho ou perdido)');
+  }
+}
+
+/**
+ * Probabilidade padrão só existe em status, e ganho e perdido são fixos
+ * (100 e 0). Sem o valor, o trigger da migration 0048 decide.
+ *
+ * @param {string} kind
+ * @param {string | null | undefined} categoria  a do status depois da mudança
+ * @param {number | undefined} probabilidade
+ */
+function validarProbabilidadePadrao(kind, categoria, probabilidade) {
+  if (probabilidade === undefined) return;
+  if (kind !== TIPOS_LISTA.STATUS) {
+    throw erroDeValidacao('probabilidadePadrao', 'Só a lista Status tem probabilidade padrão');
+  }
+  const fixa = categoria ? PROBABILIDADE_PADRAO.FIXA[categoria] : undefined;
+  if (fixa !== undefined && probabilidade !== fixa) {
+    throw erroDeValidacao(
+      'probabilidadePadrao',
+      `Status da categoria "${categoria}" tem sempre ${fixa}% de probabilidade`,
+    );
   }
 }
 

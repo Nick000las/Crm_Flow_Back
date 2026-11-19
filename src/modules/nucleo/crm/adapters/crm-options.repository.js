@@ -13,12 +13,16 @@ const FIRST_RESULT_INDEX = 0;
  * @typedef {{
  *   id: string, kind: string, key: string, label: string, color: string | null,
  *   position: number, category: string | null, ativo: boolean,
+ *   probabilidadePadrao: number | null,
  * }} OpcaoLista
  */
 
-/** Colunas no formato da API. Texto fixo deste arquivo — único motivo pra `Prisma.raw`. */
+/**
+ * Colunas no formato da API. Texto fixo deste arquivo — único motivo pra
+ * `Prisma.raw`. `probabilidadePadrao` só existe em status (FC1).
+ */
 const RETORNO_OPCAO_SQL = Prisma.raw(
-  'id, kind, key, label, color, position, category, is_active AS ativo',
+  'id, kind, key, label, color, position, category, is_active AS ativo, default_probability::int AS "probabilidadePadrao"',
 );
 
 /**
@@ -118,11 +122,12 @@ export function buscarTagsDosLeads(tenantId) {
  * Insere as opções que ainda não existem (`ON CONFLICT DO NOTHING` em
  * `(tenant_id, kind, pipeline_id, key)`) — rodar de novo não muda nada, e opção
  * que o tenant já editou nunca é sobrescrita. Status sem `pipelineId` entra no
- * pipeline padrão.
+ * pipeline padrão. Status sem `probabilidadePadrao` recebe o padrão do trigger
+ * da migration 0048.
  *
  * @param {string} tenantId
  * @param {string} kind
- * @param {{ key: string, label: string, color?: string | null, category?: string | null, staleDays?: number | null, position: number }[]} opcoes
+ * @param {{ key: string, label: string, color?: string | null, category?: string | null, staleDays?: number | null, probabilidadePadrao?: number | null, position: number }[]} opcoes
  * @param {string} [pipelineId]
  * @returns {Promise<OpcaoLista[]>} só as criadas agora
  */
@@ -135,16 +140,17 @@ export function inserirOpcoes(tenantId, kind, opcoes, pipelineId) {
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      INSERT INTO modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, stale_days, position)
-      SELECT ${tenantId}::uuid, ${kind}, ${pipeline ?? pipelinePadraoSql(tenantId)}, o.key, o.label, o.color, o.category, o.stale_days, o.position
+      INSERT INTO modulo_crm.crm_option (tenant_id, kind, pipeline_id, key, label, color, category, stale_days, default_probability, position)
+      SELECT ${tenantId}::uuid, ${kind}, ${pipeline ?? pipelinePadraoSql(tenantId)}, o.key, o.label, o.color, o.category, o.stale_days, o.probabilidade, o.position
       FROM unnest(
         ${opcoes.map((opcao) => opcao.key)}::varchar[],
         ${opcoes.map((opcao) => opcao.label)}::varchar[],
         ${opcoes.map((opcao) => opcao.color ?? null)}::varchar[],
         ${opcoes.map((opcao) => opcao.category ?? null)}::varchar[],
         ${opcoes.map((opcao) => opcao.staleDays ?? null)}::int[],
+        ${opcoes.map((opcao) => opcao.probabilidadePadrao ?? null)}::smallint[],
         ${opcoes.map((opcao) => opcao.position)}::int[]
-      ) AS o(key, label, color, category, stale_days, position)
+      ) AS o(key, label, color, category, stale_days, probabilidade, position)
       ON CONFLICT (tenant_id, kind, pipeline_id, key) DO NOTHING
       RETURNING ${RETORNO_OPCAO_SQL}
     `,
@@ -169,16 +175,21 @@ export function proximaPosicao(tenantId, kind, pipelineId) {
 }
 
 /**
- * Label, cor, categoria e ativo de uma opção. `undefined` não muda;
- * `color: null` limpa a cor (por isso a flag `mudaCor` em vez de COALESCE).
- * `key` e `kind` nunca mudam.
+ * Label, cor, categoria, probabilidade padrão e ativo de uma opção.
+ * `undefined` não muda; `color: null` limpa a cor (por isso a flag `mudaCor`
+ * em vez de COALESCE). `key` e `kind` nunca mudam. Mudar a categoria sem
+ * mandar a probabilidade deixa o trigger da migration 0048 decidir.
  *
  * @param {string} tenantId
  * @param {string} opcaoId
- * @param {{ label?: string, color?: string | null, category?: string, ativo?: boolean }} mudancas
+ * @param {{ label?: string, color?: string | null, category?: string, ativo?: boolean, probabilidadePadrao?: number }} mudancas
  * @returns {Promise<OpcaoLista | undefined>}
  */
-export function atualizarOpcao(tenantId, opcaoId, { label, color, category, ativo }) {
+export function atualizarOpcao(
+  tenantId,
+  opcaoId,
+  { label, color, category, ativo, probabilidadePadrao },
+) {
   const mudaCor = color !== undefined;
   return getTenantClient(tenantId, (tx) =>
     tx.$queryRaw`
@@ -186,6 +197,7 @@ export function atualizarOpcao(tenantId, opcaoId, { label, color, category, ativ
       SET label = COALESCE(${label ?? null}, label),
           color = CASE WHEN ${mudaCor} THEN ${color ?? null} ELSE color END,
           category = COALESCE(${category ?? null}, category),
+          default_probability = COALESCE(${probabilidadePadrao ?? null}::smallint, default_probability),
           is_active = COALESCE(${ativo ?? null}::boolean, is_active),
           updated_at = now()
       WHERE id = ${opcaoId}::uuid AND tenant_id = ${tenantId}::uuid

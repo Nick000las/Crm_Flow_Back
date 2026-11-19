@@ -23,7 +23,9 @@ export const ordemDoQuadroSchema = z
   .strict();
 
 /** O que o arraste grava junto com o status, para o formulário de campos faltantes. */
-export const camposDoMoverSchema = mudarStatusBodySchema.pick({ motivoPerda: true }).strict();
+export const camposDoMoverSchema = mudarStatusBodySchema
+  .pick({ motivoPerda: true, probabilidadeFechamento: true })
+  .strict();
 
 /** Card em pessoa existente: uma oportunidade nova para ela. */
 export const cardDePessoaExistenteSchema = criarOportunidadeBodySchema

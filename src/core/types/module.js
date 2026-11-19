@@ -20,6 +20,10 @@
  * @property {(tenantId: string) => Promise<unknown>} [reconciliar]  ajustes
  *   idempotentes do estado do módulo num tenant (ex: semear configuração
  *   padrão). Pode rodar quantas vezes for preciso — `scripts/reconcile.js`
+ * @property {(tenantId: string, chaves: string[]) => Promise<unknown>} [aoLigarFeatures]
+ *   chamado depois que o MASTER liga flags do módulo num tenant, só com as que
+ *   estavam desligadas (ex.: `crm.forecast` liga os campos de que precisa).
+ *   Best-effort: erro é logado e a flag continua ligada
  * @property {ProvedorDeQuadro[]} [quadros]  quadros que o módulo publica no
  *   motor do Kanban (`#core/quadros/registro.js`)
  * @property {ProvedorDeEntidade[]} [entidades]  registros que outro módulo
@@ -158,6 +162,11 @@ export function assertModule(candidato) {
   }
   if (mod.reconciliar !== undefined && typeof mod.reconciliar !== 'function') {
     throw new Error(`Módulo "${mod.key}" inválido: \`reconciliar(tenantId)\` deve ser função.`);
+  }
+  if (mod.aoLigarFeatures !== undefined && typeof mod.aoLigarFeatures !== 'function') {
+    throw new Error(
+      `Módulo "${mod.key}" inválido: \`aoLigarFeatures(tenantId, chaves)\` deve ser função.`,
+    );
   }
 
   assertProvedores(

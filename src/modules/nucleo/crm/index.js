@@ -21,6 +21,7 @@ import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { registrarRotasFormularios } from './controllers/formularios.controller.js';
 import { registrarRotasPublicasFormularios } from './controllers/formulario-publico.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
+import { aoLigarFeaturesDoCrm } from './services/forecast-flag.service.js';
 import { provedorDePessoa } from './services/pessoa-entidade.service.js';
 import { provedorComercial, provedorDeOportunidade } from './services/quadro-comercial.service.js';
 import { reconciliarTenant } from './services/reconcile.service.js';
@@ -31,6 +32,8 @@ export const crmModule = {
   name: 'CRM de Vendas',
   featureFlags: Object.values(CRM_FEATURES),
   reconciliar: reconciliarTenant,
+  // Ligar `crm.forecast` liga os campos de que o forecast precisa (FC1).
+  aoLigarFeatures: aoLigarFeaturesDoCrm,
   entidades: [provedorDePessoa, provedorDeOportunidade],
   quadros: [provedorComercial],
   // Sem login, sob `/public`: a página do link de formulário (FM3). Cada rota

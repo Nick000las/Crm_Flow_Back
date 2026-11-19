@@ -236,43 +236,92 @@ Fecha a revisão do dono. Sem migration: rascunho e versão já guardam as seç�
 
 **Aceite:** depois de anonimizar, nenhuma resposta sensível sobra em `crm_form_submission`, nos campos ou no outbox. ✅ (15/11/2026: `formulario-ciclo.db.test.js` procura o segredo em submissões, leads, eventos da pessoa e outbox; 6/6 testes, 10/10 sabotagens detectadas, bateria completa 1173 testes, cobertura de RLS/FK e isolamento verdes, boot OK, zero tenant SMOKE.)
 
-### FM7. Uploads (marco próprio)
+### FM7. Uploads: fora deste plano
 
-- [ ] **Você:** bucket S3-compatível (ex.: Cloudflare R2) e credenciais no `.env`.
-- [ ] Tipo de campo `upload`. `POST /public/f/:token/uploads` devolve URL pré-assinada para prefixo temporário. Limites: 10 MB, 5 por campo, JPEG/PNG/HEIC/PDF conferido pelo conteúdo.
-- [ ] No envio: reprocessar imagem sem EXIF (`sharp`), mover para o prefixo definitivo. Temporários órfãos: regra de ciclo de vida do bucket (24 h).
-- [ ] Leitura só por URL assinada de 5 min. LGPD e purga apagam os arquivos.
-
-**Aceite:** foto enviada chega sem EXIF; arquivo de outro tenant não abre nem com a chave.
+**Decisão do dono (19/11/2026):** uploads saem do plano e vão para "Fica de fora". O formulário fica sem campo de arquivo. Quando o bucket existir, entram num plano próprio, com o que estava previsto aqui: tipo `upload`, URL pré-assinada para um prefixo temporário, 10 MB e 5 arquivos por campo, JPEG/PNG/HEIC/PDF conferidos pelo conteúdo, EXIF removido com `sharp`, leitura por URL assinada de 5 min, e LGPD e purga apagando os arquivos.
 
 ---
 
 ## Trilha de forecast (flag `crm.forecast`)
 
-### FC1. Probabilidade padrão
+**Decisões do dono (19/11/2026):**
 
-- [ ] Migration: `crm_option.default_probability`. Ganho 100 e perdido 0, fixos; status aberto exige valor. Seed e reconcile preenchem: Novo 10, Em contato 20, Qualificado 40, Proposta 60, Negociação 80.
-- [ ] Override volta ao padrão quando o status muda (`planejarStatus` em `oportunidade-transicao.service.js`), e a resposta avisa.
-- [ ] Configurações de status editam o padrão (só gestão).
+- **Data prevista e Probabilidade ligam com a flag:** os dois campos continuam desligados por padrão (Camada 2). Ligar `crm.forecast` num tenant liga os dois. Desligar a flag não desliga os campos. Se o dono desligar um campo depois, o forecast avisa.
+- **Ordem:** FC1 → FC2 → FC3 → FC4, com parada e handoff ao fim de cada um.
 
-**Aceite:** mudar o status limpa o override e avisa.
+O que já existe e não muda: `crm_deal.probability_override` (0–100), `expected_close_date DATE` e `won_at TIMESTAMP` (UTC), com os índices `idx_crm_deal_previsao` e `idx_crm_deal_ganhas` (0037). Não há coluna nova em `crm_deal`.
 
-### FC2. Consulta e API
+### FC1. Probabilidade padrão por status
 
-- [ ] Uma consulta agregada sobre `crm_deal`, só pipelines `sales`: realizado por `won_at` no fuso do tenant, ponderado e melhor caso por data prevista, blocos Atrasadas, Sem previsão e Sem valor. Soma no banco.
-- [ ] Horizonte padrão: 3 meses para trás e 3 para frente. Agrupar por total, responsável da oportunidade e status. Filtro por pipeline.
-- [ ] Mesmas regras de acesso do quadro: visibilidade por pipeline (D4) e permissão de Valor (quem não vê só recebe contagens, também na API).
-- [ ] Cache de 60 s por tenant, filtros e papel, invalidado na escrita de oportunidade.
-- [ ] Colunas da 1A.5 na tabela de leads: Ciclo de vida, Cliente desde, Última compra e Oportunidades abertas, calculadas na leitura.
+- [x] Migration 0048: `crm_option.default_probability SMALLINT`, 0–100, só em status. CHECK `chk_crm_option_probabilidade_status`: ganho = 100, perdido = 0, aberto não nulo, outras listas nulo. **Mudou do plano:** quem preenche é um trigger (`crm_option_probabilidade_padrao`), não cada caminho de escrita. Ele cobre o seed das listas, o pipeline novo, o status criado em Configurações e a troca de categoria. Ganho e perdido são forçados a 100 e 0; aberto sem valor recebe a sugestão pela chave (novo 10, em_contato 20, qualificado 40, proposta 60, negociacao 80) ou 10. Os status existentes foram preenchidos pelo próprio trigger, sem mexer em `updated_at`.
+- [x] `PROBABILIDADE_PADRAO` em `constants/listas.js` (`FIXA`, `SUGERIDA`, `ABERTO_SEM_SUGESTAO`) espelha o trigger, para a validação e os testes. O teste de banco confere que o banco segue a constante. `inserirOpcoes` e `atualizarOpcao` gravam `probabilidadePadrao` quando ele vem.
+- [x] Status (e toda opção) devolve `probabilidadePadrao` (`RETORNO_OPCAO_SQL`). Criar e editar aceitam o campo (inteiro 0–100, só gestão: as rotas já eram `apenasGestao`). Ganho e perdido com outro valor dão 400 em `probabilidadePadrao` (`validarProbabilidadePadrao`), também quando a categoria muda junto. Em outra lista, o campo também dá 400. **Mudou do plano:** o status que volta a ser aberto recebe a sugestão em vez de exigir o valor; se o valor vier junto, vale o mandado.
+- [x] Função pura `probabilidadeEfetiva(override, padrao)`. A oportunidade devolve `probabilidadeEfetiva`: a leitura traz `probabilidade_padrao` do status por subconsulta (`probabilidadeDoStatusSql`). Some junto com `probabilidadeFechamento` quando o campo é desligado ou oculto (`SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE`).
+- [x] Override volta ao padrão: `planejarStatus` zera `probability_override` quando o status muda (também entre dois status da mesma categoria) e devolve `probabilidadeRedefinida`. A probabilidade mandada junto vence: no `PUT` do lead (`planejarEdicaoDoLead`), no `PATCH .../status` (o corpo aceita `probabilidadeFechamento`) e no mover (`campos.probabilidadeFechamento`). As regras do M8 avaliam a probabilidade já depois da mudança.
+- [x] `avisos` (`PROBABILIDADE_REDEFINIDA`, com `anterior`) no `PATCH .../status`, no resultado do mover do quadro e no `PUT` do lead; sempre uma lista. O aviso traz o valor anterior, então quem não vê Probabilidade recebe a lista vazia. **Mudou do plano:** o `PUT` da oportunidade não muda status, então não tem aviso.
+- [x] Flag `crm.forecast` em `CRM_FEATURES`.
+- [x] Gancho `Module.aoLigarFeatures(tenantId, chaves)` em `src/core/types/module.js`, validado em `assertModule` e documentado em `MODULE_CONTRACT.md`. `atualizarFeaturesTenant` lê as flags ligadas antes e, depois do commit, chama `avisarFeaturesLigadas` (`#core/tenant/reconcile.js`) só com as que acabaram de ligar. É best-effort: o erro é logado e a flag fica ligada. O CRM (`aoLigarFeaturesDoCrm`, `forecast-flag.service.js`) liga Data prevista e Probabilidade em todos os contextos (`CAMPOS_DO_FORECAST`).
 
-**Aceite:** ponderado de um mês bate com a planilha para 20 oportunidades; ganha às 23:30 do último dia do mês em São Paulo cai no mês certo; p95 da consulta abaixo de 500 ms com 20 mil oportunidades.
+**Aceite**
 
-### FC3. Assertividade
+- [x] Mudar o status de uma oportunidade com override limpa o override, e a resposta avisa com o valor anterior. Status e probabilidade juntos mantêm a mandada, sem aviso. Vale no `PATCH`, no `PUT` do lead e no mover (`controllers/forecast-probabilidade.db.test.js`, 11 testes).
+- [x] Ganho e perdido não aceitam outro valor (400 na API; o banco força 100 e 0). Um `UPDATE` direto que zera a probabilidade de um aberto volta com a sugestão, e outra lista com probabilidade é recusada pelo CHECK.
+- [x] Num tenant novo, sem ligar nada na preparação, Data prevista e Probabilidade nascem desligadas. Ligar `crm.forecast` por `atualizarFeaturesTenant` liga as duas, e desligar a flag as mantém. Religar a flag liga de novo um campo que o dono tinha desligado; manter a flag ligada não toca nele.
+- [x] Gates verdes em 19/11/2026: 1191 de 1191 com banco e os testes de integração do Kanban, cache em memória (4 pulados, os que exigem Redis). Com Redis (`REDIS_URL`), os testes da FC1 e os de banco passam; ver o achado sobre cache abaixo. Lint, formato (`--end-of-line auto`), RLS, FK, isolamento e boot real no Node (`/health` 200; rota do CRM sem token 401). Nenhum tenant SMOKE sobrando.
+- [x] 11 proteções quebradas uma a uma, todas detectadas: volta ao padrão, probabilidade mandada vencendo, aviso só para quem vê, ganho e perdido fixos na API, flag ligando os campos, só as flags novas, `probabilidadePadrao` na opção, efetiva usando o override, aviso no `PUT` do lead, efetiva sumindo com o campo e aviso no mover.
 
-- [ ] Migration: `crm_forecast_snapshot`. Job semanal no `crm.worker.js` (segunda, 06:00 no fuso do tenant) para o mês atual e os 3 seguintes.
-- [ ] Assertividade do mês fechado = realizado / ponderado do primeiro snapshot do mês.
+**Achados**
 
-**Aceite:** mudar a probabilidade padrão muda o forecast e não muda os snapshots.
+- Os arquivos do repositório estão em CRLF no disco (`core.autocrlf=true`), e o `.prettierrc.json` pede LF. Assim, `pnpm format:check` acusa todos os arquivos, inclusive os não tocados. O gate de formato desta entrega foi `prettier --check --end-of-line auto .`, que confere o estilo e ignora o fim de linha.
+- Na bateria com Redis de verdade, três testes de unidade de cache (`module-access`, `field-definitions`, a rota de inatividade) às vezes falham, porque arquivos em paralelo dividem as mesmas chaves (`tenant-1`). Sozinhos, passam. Não é da FC1, mas vale isolar as chaves por arquivo.
+
+**Handoff ao front:** `handoff-front-fc1.md`.
+
+### FC2. Consulta e API do forecast
+
+- [ ] Uma consulta agregada sobre `crm_deal` sob RLS: oportunidade e pessoa não excluídas, não arquivadas e não anonimizadas; só pipelines `sales` ativos; fora os ocultos do papel. Somas no banco.
+  - Realizado: ganhas, pelo mês de `won_at` no fuso do tenant.
+  - Ponderado e melhor caso: abertas com data prevista a partir de hoje (no fuso), pelo mês da data.
+  - Previsto do mês = realizado + ponderado.
+  - Blocos: Atrasadas, Sem previsão, Além do horizonte (para os totais baterem com o pipeline) e Sem valor (só contagem). Ganha sem valor conta na quantidade, com R$ 0.
+- [ ] `GET /crm/forecast`: `de`/`ate` (`YYYY-MM`, padrão 3 meses para trás e 3 para frente, até 24 meses), `pipelineId`, `responsavelId`, `agrupar=total|responsavel|status` (`status` exige `pipelineId`). Devolve meses, blocos, grupos, `veValor`, `veProbabilidade` e `camposDesligados`.
+- [ ] `GET /crm/forecast/oportunidades` (um mês ou um bloco, paginada) e `POST /crm/forecast/data-prevista` (ação em massa, até 200, pelo caminho da edição da oportunidade).
+- [ ] Mesmas regras de acesso do quadro: visibilidade por pipeline (D4) e permissão de Valor (sem ela, todo R$ vem `null`, também na API).
+- [ ] Cache de 60 s por tenant, papel e filtros; a chave inclui o último evento do outbox do tenant e a última mudança de status, e muda sozinha a cada escrita.
+- [ ] Tenant sem oportunidade de vendas: `vazio: true`.
+
+**Aceite**
+
+- [ ] Ponderado de um mês bate com a soma manual de 20 oportunidades.
+- [ ] Ganha às 23:30 de 31/10 em São Paulo cai em outubro.
+- [ ] OPERADOR sem permissão de Valor não recebe nenhum R$; OPERADOR não vê pipeline oculto, nem nos totais.
+- [ ] Reabrir, excluir e restaurar mexem no forecast; mudar a probabilidade padrão muda o próximo pedido.
+- [ ] p95 abaixo de 500 ms com 20 mil oportunidades (teste de carga separado, `CRM_CARGA=1`).
+- [ ] Gates verdes, proteções quebradas, boot real, zero tenant SMOKE.
+
+### FC3. Snapshots e assertividade
+
+- [ ] Migration 0049: `crm_forecast_snapshot` (semana local, mês, ponderado, melhor caso, realizado, contagens e os mesmos números por responsável em JSONB). Um por tenant, semana e mês. Imutável, com RLS e FK por tenant.
+- [ ] Job `snapshot-forecast` de hora em hora no `crm.worker.js`: por tenant com a flag, a partir de segunda 06:00 no fuso, se a semana ainda não tem snapshot, grava o mês atual e os 3 seguintes com a consulta da FC2. Worker parado recupera na próxima hora.
+- [ ] `GET /crm/forecast/assertividade`: mês fechado = realizado / previsto do primeiro snapshot do mês (realizado no snapshot + ponderado no snapshot). **Desvio do documento do dono:** lá é só o ponderado, mas o primeiro snapshot sai até o dia 7, e o já ganho até ali ficaria fora. Mês sem snapshot: "sem dados ainda".
+
+**Aceite**
+
+- [ ] Mudar a probabilidade padrão muda o forecast e não muda os snapshots.
+- [ ] Rodar o job duas vezes na semana grava uma vez; antes de segunda 06:00 no fuso, não grava.
+- [ ] Gates verdes, proteções quebradas, boot real com o worker, zero tenant SMOKE.
+
+### FC4. Colunas do ciclo de vida na tabela de leads (1A.5)
+
+Independe da flag.
+
+- [ ] Ciclo de vida, Cliente desde (`MIN(won_at)`), Última compra (`MAX(won_at)`) e Oportunidades abertas, calculadas na leitura no molde de `crm-inatividade.sql.js`, sem as excluídas e sem os pipelines ocultos do papel.
+- [ ] Filtros: ciclo de vida (um dos), cliente desde e última compra (entre datas), oportunidades abertas (mínimo e máximo).
+
+**Aceite**
+
+- [ ] Ganhar a primeira preenche "Cliente desde"; ganhar outra mexe só em "Última compra"; reabrir a única ganha limpa as duas e o ciclo volta.
+- [ ] Gates verdes, proteções quebradas, boot real, zero tenant SMOKE.
 
 ---
 
@@ -287,14 +336,16 @@ Fecha a revisão do dono. Sem migration: rascunho e versão já guardam as seç�
 | Segunda venda (D6)                                             | depois desta trilha, ou junto, se você preferir      |
 | Meta mensal no forecast                                        | quando houver pedido                                 |
 | Selo `+N` de oportunidades abertas na tabela                   | quando houver pedido                                 |
+| FM7, uploads no formulário                                     | quando o bucket existir, num plano próprio           |
+| Lista e export de oportunidades                                | quando houver pedido                                 |
+| Snapshot e assertividade por pipeline                          | quando houver mais de um pipeline de vendas em uso   |
 
 ## Ordem e paradas
 
 1. P0 (motivo da perda) e a tela do aceite do M3.
 2. FM1 → FM2 → FM2b → FM3 → FM4 → FM5 → FM6. Parada do jurídico antes de ligar em tenant real.
-3. FM7 (uploads), depois que você criar o bucket.
-4. FC1 → FC2 → FC3.
-5. Piloto: tenant interno, depois um tenant real por uma semana, só então todos.
+3. FC1 → FC2 → FC3 → FC4.
+4. Piloto: tenant interno, depois um tenant real por uma semana, só então todos.
 
 ## Riscos
 

@@ -191,6 +191,7 @@ Todo módulo exporta, do seu `index.js`, um objeto que satisfaz:
  * @property {(app: FastifyInstance) => void | Promise<void>} [registerPublicRoutes]  // sem login, sob /public
  * @property {string[]} [featureFlags]     // catálogo de flags, prefixadas pela key
  * @property {(tenantId: string) => Promise<unknown>} [reconciliar]
+ * @property {(tenantId: string, chaves: string[]) => Promise<unknown>} [aoLigarFeatures]
  */
 ```
 
@@ -206,6 +207,12 @@ Todo módulo exporta, do seu `index.js`, um objeto que satisfaz:
   padrão). Roda no deploy por `pnpm reconcile` (ou `pnpm crm:reconcile`) e
   pode rodar de novo sem efeito colateral. Dado de configuração por tenant
   entra por aqui, nunca como migration de dado.
+- **`aoLigarFeatures(tenantId, chaves)`** — chamado por
+  `PUT /admin/tenants/:id/features` depois do commit, só com as flags do
+  módulo que **acabaram** de ligar (`avisarFeaturesLigadas`,
+  `#core/tenant/reconcile.js`). Serve para preparar o que a flag precisa (ex.:
+  `crm.forecast` liga os campos Data prevista e Probabilidade). Best-effort:
+  um erro é logado e a flag continua ligada. Desligar a flag não chama nada.
 
 Validado em runtime por `assertModule()` (`#core/types/module.js`) — um
 módulo mal formado quebra o **boot** do servidor, não uma requisição em

@@ -73,6 +73,12 @@ export const editarOportunidadeBodySchema = z
   .strict();
 
 // PATCH /crm/oportunidades/:id/status — versão antiga grava e devolve `conflito: true` (P8).
+// Trocar o status volta a probabilidade ao padrão (FC1); mandada aqui, ela vence.
 export const mudarStatusBodySchema = z
-  .object({ status, motivoPerda, expectedUpdatedAt: expectedUpdatedAt.optional() })
+  .object({
+    status,
+    motivoPerda,
+    probabilidadeFechamento,
+    expectedUpdatedAt: expectedUpdatedAt.optional(),
+  })
   .strict();

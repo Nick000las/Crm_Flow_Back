@@ -38,6 +38,10 @@ vi.mock('./field-schema.service.js', async (importOriginal) => ({
 const TENANT = 'tenant-1';
 const USOS_PERDIDO = 3;
 const POSICAO_FINAL = 7;
+const PROBABILIDADE_QUALQUER = 30;
+const FORA_DO_FIXO = 90;
+const PROBABILIDADE_DO_ABERTO = 50;
+const FORA_DO_PERDIDO = 20;
 
 /** @param {string} kind @param {string} key */
 const opcao = (kind, key) => listas[kind].find((item) => item.key === key);
@@ -69,12 +73,40 @@ describe('criarOpcao', () => {
           label: 'Feira de Negócios',
           color: '#123ABC',
           category: null,
+          probabilidadePadrao: null,
           position: POSICAO_FINAL,
         },
       ],
       undefined,
     );
     expect(invalidarSchemaCampos).toHaveBeenCalledWith(TENANT);
+  });
+
+  it('probabilidade padrão (FC1): só status, e ganho e perdido são fixos', async () => {
+    await expect(
+      criarOpcao(TENANT, TIPOS_LISTA.FONTE_LEAD, {
+        label: 'Feira',
+        probabilidadePadrao: PROBABILIDADE_QUALQUER,
+      }),
+    ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+    await expect(
+      criarOpcao(TENANT, TIPOS_LISTA.STATUS, {
+        label: 'Fechado',
+        category: CATEGORIAS_STATUS.GANHO,
+        probabilidadePadrao: FORA_DO_FIXO,
+      }),
+    ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+    expect(inserirOpcoes).not.toHaveBeenCalled();
+
+    inserirOpcoes.mockResolvedValueOnce([{ id: 'nova' }]);
+    await criarOpcao(TENANT, TIPOS_LISTA.STATUS, {
+      label: 'Demonstração',
+      category: CATEGORIAS_STATUS.ABERTO,
+      probabilidadePadrao: PROBABILIDADE_DO_ABERTO,
+    });
+    expect(inserirOpcoes.mock.calls[0][2][0]).toMatchObject({
+      probabilidadePadrao: PROBABILIDADE_DO_ABERTO,
+    });
   });
 
   it('slug que colide com uma key existente ganha sufixo (a key nunca é reaproveitada)', async () => {
@@ -121,6 +153,24 @@ describe('atualizarOpcao', () => {
     await expect(
       atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, { ativo: false }),
     ).resolves.toBeTruthy();
+  });
+
+  it('probabilidade padrão de perdido é 0: outro valor dá 400, mesmo mudando a categoria', async () => {
+    const perdido = opcao(TIPOS_LISTA.STATUS, 'perdido');
+    await expect(
+      atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, perdido.id, {
+        probabilidadePadrao: FORA_DO_PERDIDO,
+      }),
+    ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+
+    const novo = opcao(TIPOS_LISTA.STATUS, 'novo');
+    await expect(
+      atualizarOpcao(TENANT, TIPOS_LISTA.STATUS, novo.id, {
+        category: CATEGORIAS_STATUS.PERDIDO,
+        probabilidadePadrao: FORA_DO_PERDIDO,
+      }),
+    ).rejects.toMatchObject({ fields: { probabilidadePadrao: expect.any(Array) } });
+    expect(atualizarOpcaoRepository).not.toHaveBeenCalled();
   });
 
   it('mudar a categoria do único "ganho" pra aberto também é barrado', async () => {

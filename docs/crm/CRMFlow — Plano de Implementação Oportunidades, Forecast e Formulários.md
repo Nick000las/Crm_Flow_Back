@@ -249,7 +249,7 @@ Horizonte padrão: mês atual + 3 meses à frente + 3 meses para trás (realizad
 
 - [ ] Ponderado de um mês bate com a soma manual em planilha para um tenant de teste com 20 oportunidades.
 - [ ] Oportunidade ganha na virada do mês cai no mês correto no fuso do tenant.
-- [ ] Override é limpo ao mudar status e o usuário é avisado.
+- [x] Override é limpo ao mudar status e o usuário é avisado. (FC1, 19/11/2026: `forecast-probabilidade.db.test.js`; mandar a probabilidade junto com o status a mantém)
 - [ ] OPERADOR sem permissão de Valor não vê nenhum R$ no forecast nem na resposta da API.
 
 ## Trilha 2 — Motor de formulários
@@ -360,7 +360,7 @@ Uma transação:
 - [x] Copiar duas vezes devolve o mesmo link; duas recepcionistas ao mesmo tempo geram um link só. (FM2, 07/11/2026: `formulario-links.db.test.js`)
 - [x] Token de um tenant nunca acessa dados de outro (teste de RLS na rota pública). (FM3, 08/11/2026: `formulario-publico.db.test.js`)
 - [ ] Prévia do link no WhatsApp não mostra nome do paciente e não marca o link como aberto. (FM3: no back, `GET` não marca abertura, só o `POST /aberto`; falta provar a prévia, que vem do `index.html` do front)
-- [ ] Foto enviada chega sem EXIF.
+- [ ] Foto enviada chega sem EXIF. (Fora desta sprint: uploads saíram do plano por decisão do dono em 19/11/2026 e voltam num plano próprio, quando houver o bucket.)
 - [x] Submissão é imutável: editar o campo na ficha não altera "Ver respostas". (FM4, 08/11/2026: `formulario-respostas.db.test.js`; o banco também recusa UPDATE)
 - [x] OPERADOR sem acesso a campos sensíveis vê o alerta genérico e não vê as respostas. (FM5, 15/11/2026: `formulario-alertas.db.test.js`)
 

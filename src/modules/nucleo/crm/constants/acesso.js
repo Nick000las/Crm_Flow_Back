@@ -38,4 +38,5 @@ export const CRM_FEATURES = Object.freeze({
   TIMELINE: 'crm.timeline',
   QUADRO_COMERCIAL: 'crm.quadro_comercial',
   FORMULARIOS: 'crm.formularios',
+  FORECAST: 'crm.forecast',
 });
