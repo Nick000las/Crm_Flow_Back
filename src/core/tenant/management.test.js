@@ -3,7 +3,7 @@ import { MODULES } from '#api/modules.js';
 import { registrarModulos } from '#core/registry/modules.js';
 import { HTTP_STATUS } from '#shared/constants/index.js';
 import { cacheGet, cacheSet, encerrarCache } from '#core/cache/cache.js';
-import { reconciliarModulos } from '#core/tenant/reconcile.js';
+import { avisarFeaturesLigadas, reconciliarModulos } from '#core/tenant/reconcile.js';
 import { TenantManagement, listarCatalogoFeatures } from './management.js';
 
 const mockTx = {
@@ -14,7 +14,7 @@ const mockTx = {
     createMany: vi.fn(),
     updateMany: vi.fn(),
   },
-  tenantModuleFeature: { deleteMany: vi.fn(), createMany: vi.fn() },
+  tenantModuleFeature: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
 };
 
 const mockPrisma = {
@@ -23,7 +23,10 @@ const mockPrisma = {
   $transaction: vi.fn((callback) => callback(mockTx)),
 };
 
-vi.mock('#core/tenant/reconcile.js', () => ({ reconciliarModulos: vi.fn().mockResolvedValue([]) }));
+vi.mock('#core/tenant/reconcile.js', () => ({
+  reconciliarModulos: vi.fn().mockResolvedValue([]),
+  avisarFeaturesLigadas: vi.fn().mockResolvedValue([]),
+}));
 
 vi.mock('#core/db/tenantClient.js', () => ({
   getAdminClient: () => mockPrisma,
@@ -306,6 +309,7 @@ describe('feature flags do tenant', () => {
     vi.clearAllMocks();
     await encerrarCache();
     mockTx.tenant.findUnique.mockResolvedValue({ id: tenantId });
+    mockTx.tenantModuleFeature.findMany.mockResolvedValue([]);
   });
 
   it('o catálogo vem do que cada módulo declara, com o módulo dono', () => {
@@ -358,5 +362,17 @@ describe('feature flags do tenant', () => {
     await expect(TenantManagement.atualizarFeaturesTenant(tenantId, [])).rejects.toMatchObject({
       statusCode: HTTP_STATUS.NOT_FOUND,
     });
+  });
+
+  it('avisa o módulo só das flags que acabaram de ligar (FC1)', async () => {
+    mockTx.tenantModuleFeature.findMany.mockResolvedValue([{ featureKey: 'crm.listas' }]);
+    await TenantManagement.atualizarFeaturesTenant(tenantId, ['crm.listas', 'crm.forecast']);
+    expect(avisarFeaturesLigadas).toHaveBeenCalledWith(tenantId, ['crm.forecast']);
+  });
+
+  it('desligar não avisa ninguém', async () => {
+    mockTx.tenantModuleFeature.findMany.mockResolvedValue([{ featureKey: 'crm.forecast' }]);
+    await TenantManagement.atualizarFeaturesTenant(tenantId, []);
+    expect(avisarFeaturesLigadas).toHaveBeenCalledWith(tenantId, []);
   });
 });

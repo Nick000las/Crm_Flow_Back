@@ -23,6 +23,43 @@ const EVENTO_DA_CATEGORIA = Object.freeze({
   [CATEGORIAS_STATUS.PERDIDO]: EVENTOS_OPORTUNIDADE.PERDIDA,
 });
 
+/** Avisos que a resposta de uma mudança de status pode trazer (FC1). */
+export const AVISOS_OPORTUNIDADE = Object.freeze({
+  PROBABILIDADE_REDEFINIDA: 'PROBABILIDADE_REDEFINIDA',
+});
+
+/**
+ * Probabilidade que vale no forecast (FC1): a da oportunidade, se preenchida;
+ * senão, a padrão do status.
+ *
+ * @param {number | null | undefined} override
+ * @param {number | null | undefined} padrao
+ * @returns {number | null}
+ */
+export function probabilidadeEfetiva(override, padrao) {
+  if (override !== null && override !== undefined) return Number(override);
+  return padrao === null || padrao === undefined ? null : Number(padrao);
+}
+
+/**
+ * Avisos do plano para a resposta. Hoje só um: a probabilidade da oportunidade
+ * voltou à padrão do novo status.
+ *
+ * @param {{ probabilidadeRedefinida?: number | null } | null | undefined} plano
+ * @returns {{ codigo: string, campo: string, anterior: number }[]}
+ */
+export function avisosDoPlano(plano) {
+  const anterior = plano?.probabilidadeRedefinida;
+  if (anterior === null || anterior === undefined) return [];
+  return [
+    {
+      codigo: AVISOS_OPORTUNIDADE.PROBABILIDADE_REDEFINIDA,
+      campo: 'probabilidadeFechamento',
+      anterior,
+    },
+  ];
+}
+
 /**
  * @param {Record<string, any>} deal  linha atual
  * @param {OpcaoDeStatus} opcao  status de destino, do pipeline da oportunidade
@@ -47,6 +84,10 @@ export function planejarStatus(deal, opcao, { motivoPerda }, agora) {
   };
 
   const statusMudou = deal.status !== opcao.key;
+  // Override esquecido de uma etapa anterior é a maior fonte de forecast
+  // inflado: trocar o status volta à probabilidade padrão do novo (FC1).
+  const override = deal.probability_override ?? null;
+  if (statusMudou) mudancas.probability_override = null;
   const evento =
     (mudouCategoria && EVENTO_DA_CATEGORIA[destino]) ||
     (reabriu ? EVENTOS_OPORTUNIDADE.REABERTA : EVENTOS_OPORTUNIDADE.STATUS_MUDOU);
@@ -56,6 +97,7 @@ export function planejarStatus(deal, opcao, { motivoPerda }, agora) {
     evento,
     statusMudou,
     statusAnterior: deal.status,
+    probabilidadeRedefinida: statusMudou && override !== null ? Number(override) : null,
     ganhou: mudouCategoria && destino === CATEGORIAS_STATUS.GANHO,
     // Só venda ganha tem atendimento nascido dela para avisar.
     reabriu: reabriu && origem === CATEGORIAS_STATUS.GANHO,
@@ -229,6 +271,9 @@ export function planejarEdicaoDoLead(deal, opcoes, dados, agora) {
   return {
     ...base,
     mudancas,
+    // A probabilidade mandada junto com o status vence: o usuário acabou de escolher.
+    probabilidadeRedefinida:
+      dados.probabilidadeFechamento === undefined ? (base.probabilidadeRedefinida ?? null) : null,
     evento: base.statusMudou ? base.evento : EVENTOS_OPORTUNIDADE.ATUALIZADA,
   };
 }

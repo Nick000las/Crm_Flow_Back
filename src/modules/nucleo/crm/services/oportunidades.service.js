@@ -24,12 +24,14 @@ import {
 } from '../constants/oportunidades.js';
 import { leadAnonimizadoNaoEditavel } from './lgpd.service.js';
 import {
+  avisosDoPlano,
   diffDaOportunidade,
   novaOportunidadeDoLead,
   opcaoDoStatus,
   planejarEdicaoDoLead,
   planejarStatus,
   primeiroStatusAberto,
+  probabilidadeEfetiva,
   separarComerciais,
   validarComerciais,
 } from './oportunidade-transicao.service.js';
@@ -90,6 +92,11 @@ export function formatarOportunidade(linha) {
     categoria: linha.status_category,
     valor: linha.amount === null ? null : Number(linha.amount),
     probabilidadeFechamento: linha.probability_override,
+    // A que vale no forecast (FC1): a da oportunidade ou a padrão do status.
+    probabilidadeEfetiva: probabilidadeEfetiva(
+      linha.probability_override,
+      linha.probabilidade_padrao,
+    ),
     dataPrevistaFechamento: linha.expected_close_date,
     ganhaEm: linha.won_at,
     perdidaEm: linha.lost_at,
@@ -188,7 +195,8 @@ function lancarErrosDasRegras(erros) {
  * @param {string} leadId
  * @param {Record<string, any>} dados
  * @param {Parameters<typeof atualizarLead>[3]} historico
- * @param {Parameters<typeof atualizarLead>[4]} [opcoes]
+ * @param {Parameters<typeof atualizarLead>[4] & { avisos?: { lista: ReturnType<typeof avisosDoPlano> } }} [opcoes]
+ *   `avisos`: recebe os avisos da mudança na oportunidade principal (FC1)
  */
 export async function atualizarLeadComOportunidade(
   tenantId,
@@ -212,16 +220,21 @@ export async function atualizarLeadComOportunidade(
               if (!exigeOportunidade) return null;
               throw erroDeConflito('oportunidade', 'A oportunidade desta pessoa não está visível');
             }
-            return planejarEdicaoDoLead(
+            const plano = planejarEdicaoDoLead(
               deal,
               status,
               { ...comerciais, usuarioResponsavelId },
               new Date(),
             );
+            // Atribuição, não acúmulo: o plano pode ser refeito na mesma edição.
+            if (opcoes.avisos) opcoes.avisos.lista = avisosDoPlano(plano);
+            return plano;
           },
         }
       : undefined;
-  return atualizarLead(tenantId, leadId, contato, historico, { ...opcoes, oportunidade });
+  const { avisos, ...doLead } = opcoes;
+  if (avisos) avisos.lista = [];
+  return atualizarLead(tenantId, leadId, contato, historico, { ...doLead, oportunidade });
 }
 
 /**
@@ -349,11 +362,13 @@ export async function criarOportunidade(tenantId, leadId, dados, usuarioId, { pa
 
 /**
  * Mover no quadro, ganhar, perder e reabrir. Mover segue "a última gravação
- * vence, com aviso" (P8): `conflito` diz que outra pessoa mexeu antes.
+ * vence, com aviso" (P8): `conflito` diz que outra pessoa mexeu antes. Trocar o
+ * status volta a probabilidade ao padrão do novo (FC1), com aviso em `avisos`;
+ * `probabilidadeFechamento` mandada junto vence.
  *
  * @param {string} tenantId
  * @param {string} id
- * @param {{ status: string, motivoPerda?: string | null, expectedUpdatedAt?: string }} dados
+ * @param {{ status: string, motivoPerda?: string | null, probabilidadeFechamento?: number | null, expectedUpdatedAt?: string }} dados
  * @param {string | null | undefined} usuarioId
  * @param {Acesso} [acesso]
  */
@@ -365,10 +380,16 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
     obterSchemaDoPapel(tenantId, papel),
     buscarStatusDoPipeline(tenantId, atual.pipeline_id),
   ]);
-  garantirEscritaPermitida(schema, { status: dados.status, motivoPerda: dados.motivoPerda });
+  validarComerciais(dados);
+  garantirEscritaPermitida(schema, {
+    status: dados.status,
+    motivoPerda: dados.motivoPerda,
+    probabilidadeFechamento: dados.probabilidadeFechamento,
+  });
   const regras = await regrasAplicaveis(tenantId, schema);
 
   let conflito = false;
+  let avisos = [];
   const depois = await alterarOportunidade(
     tenantId,
     id,
@@ -376,7 +397,14 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
       garantirAtiva(deal);
       garantirPessoaEditavel(lead);
       const opcao = opcaoDoStatus(opcoes, dados.status, deal.status);
-      const plano = planejarStatus(deal, opcao, dados, new Date());
+      const plano = comProbabilidadeMandada(
+        planejarStatus(deal, opcao, dados, new Date()),
+        dados.probabilidadeFechamento,
+      );
+      const probabilidadeDepois =
+        'probability_override' in plano.mudancas
+          ? plano.mudancas.probability_override
+          : deal.probability_override;
       garantirRegras(
         schema,
         regras,
@@ -385,7 +413,7 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
           status: opcao.key,
           motivoPerda: plano.mudancas.lost_reason,
           valor: deal.amount === null ? null : Number(deal.amount),
-          probabilidadeFechamento: deal.probability_override,
+          probabilidadeFechamento: probabilidadeDepois,
           dataPrevistaFechamento: deal.expected_close_date,
           dataConversao: plano.mudancas.won_at,
         },
@@ -396,6 +424,10 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
         dados.expectedUpdatedAt &&
         new Date(dados.expectedUpdatedAt).getTime() !== new Date(deal.updated_at).getTime(),
       );
+      // O aviso traz a probabilidade anterior: só para quem vê o campo.
+      if (schema.campos.some((campo) => campo.chave === 'probabilidadeFechamento')) {
+        avisos = avisosDoPlano(plano);
+      }
       return {
         ...plano,
         diff: diffDaOportunidade(deal, plano.mudancas, CAMPOS_NO_HISTORICO),
@@ -405,7 +437,24 @@ export async function mudarStatusDaOportunidade(tenantId, id, dados, usuarioId, 
   );
   if (!depois) throw naoEncontrada();
   await recalcularScoreDosLeads(tenantId, [depois.lead_id]);
-  return { ...oportunidadeParaOPapel(depois, schema), conflito };
+  return { ...oportunidadeParaOPapel(depois, schema), conflito, avisos };
+}
+
+/**
+ * A probabilidade mandada junto com o status vence a volta ao padrão.
+ *
+ * @template {{ mudancas: Record<string, unknown>, probabilidadeRedefinida?: number | null }} P
+ * @param {P} plano
+ * @param {number | null | undefined} probabilidade
+ * @returns {P}
+ */
+function comProbabilidadeMandada(plano, probabilidade) {
+  if (probabilidade === undefined) return plano;
+  return {
+    ...plano,
+    mudancas: { ...plano.mudancas, probability_override: probabilidade },
+    probabilidadeRedefinida: null,
+  };
 }
 
 /**

@@ -114,7 +114,7 @@ export const SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE = Object.freeze({
   status: Object.freeze(['status', 'categoria', 'ganhaEm', 'perdidaEm']),
   valor: Object.freeze(['valor']),
   motivoPerda: Object.freeze(['motivoPerda']),
-  probabilidadeFechamento: Object.freeze(['probabilidadeFechamento']),
+  probabilidadeFechamento: Object.freeze(['probabilidadeFechamento', 'probabilidadeEfetiva']),
   dataPrevistaFechamento: Object.freeze(['dataPrevistaFechamento']),
   dataConversao: Object.freeze(['ganhaEm']),
 });

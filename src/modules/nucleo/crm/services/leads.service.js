@@ -291,6 +291,7 @@ export async function atualizarLeadExistente(
 
   await gravarTagsNovas(tenantId, tagsNovas);
   const ignorar = input.ultimaInteracaoEm === undefined ? ['ultimaInteracaoEm'] : [];
+  const avisos = { lista: [] };
   const leadAtualizado = await atualizarLeadComOportunidade(
     tenantId,
     leadId,
@@ -310,6 +311,7 @@ export async function atualizarLeadExistente(
         await transacao?.conferir(lead, tx);
       },
       depoisDeGravar: transacao?.depoisDeGravar,
+      avisos,
     },
   );
 
@@ -326,7 +328,10 @@ export async function atualizarLeadExistente(
   const scores = await recalcularScoreDosLeads(tenantId, [leadId]);
   if (scores?.has(leadId)) leadAtualizado.lead_score = scores.get(leadId);
 
-  return formatarLead(leadAtualizado, schema);
+  // FC1: a probabilidade da principal voltou ao padrão do status. O aviso traz
+  // a anterior, então só vai para quem vê o campo.
+  const veProbabilidade = schema.campos.some((campo) => campo.chave === 'probabilidadeFechamento');
+  return { ...formatarLead(leadAtualizado, schema), avisos: veProbabilidade ? avisos.lista : [] };
 }
 
 /**

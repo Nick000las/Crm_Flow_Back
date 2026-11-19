@@ -308,7 +308,7 @@ async function mover(
 ) {
   const { tenantId, userId, role } = context;
   await pipelineDoQuadro(context, quadroRef);
-  const { motivoPerda } = camposDoMoverSchema.parse(campos ?? {});
+  const { motivoPerda, probabilidadeFechamento } = camposDoMoverSchema.parse(campos ?? {});
   // Antes de gravar: filtro inválido não pode mover o card.
   const condicoes = filtros ? await condicoesDoQuadro(tenantId, filtros, role) : null;
   const deal = await buscarOportunidade(tenantId, entidadeId);
@@ -323,7 +323,7 @@ async function mover(
   const movida = await mudarStatusDaOportunidade(
     tenantId,
     entidadeId,
-    { status: colunaDestino, motivoPerda, expectedUpdatedAt },
+    { status: colunaDestino, motivoPerda, probabilidadeFechamento, expectedUpdatedAt },
     userId,
     { papel: role },
   );
@@ -331,6 +331,7 @@ async function mover(
     entidadeId,
     colunaRef: colunaDestino,
     conflito: movida.conflito,
+    avisos: movida.avisos,
     atualizadoEm: movida.atualizadaEm,
     saiuDoFiltro: condicoes ? !(await cardAtendeAoFiltro(tenantId, entidadeId, condicoes)) : false,
   };

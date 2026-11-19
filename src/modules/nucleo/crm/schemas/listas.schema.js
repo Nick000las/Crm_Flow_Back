@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { TEXT_LIMITS } from '#shared/constants/index.js';
-import { LISTA_CATEGORIAS_STATUS, LISTA_TIPOS_LISTA, PADRAO_COR } from '../constants.js';
+import {
+  LIMITES_OPORTUNIDADE,
+  LISTA_CATEGORIAS_STATUS,
+  LISTA_TIPOS_LISTA,
+  PADRAO_COR,
+} from '../constants.js';
+
+const PROBABILIDADE_MINIMA = 0;
 
 const enumDe = (valores, mensagem) =>
   z.enum(/** @type {[string, ...string[]]} */ ([...valores]), {
@@ -33,9 +40,21 @@ export const opcaoParamSchema = tipoListaParamSchema.extend({
   id: z.string({ required_error: 'Informe o id da opção' }).uuid('Id de opção inválido'),
 });
 
+// Probabilidade padrão do status (FC1): só status; ganho e perdido são fixos.
+const probabilidadePadrao = z
+  .number({ invalid_type_error: 'Informe um número de 0 a 100' })
+  .int('Informe um número inteiro de 0 a 100')
+  .min(PROBABILIDADE_MINIMA, 'Informe um número de 0 a 100')
+  .max(LIMITES_OPORTUNIDADE.PROBABILIDADE_MAXIMA, 'Informe um número de 0 a 100');
+
 // POST /crm/configuracoes/listas/:tipo — `category` só (e sempre) em status.
 export const criarOpcaoBodySchema = z
-  .object({ label: nome, color: cor.optional(), category: categoria.optional() })
+  .object({
+    label: nome,
+    color: cor.optional(),
+    category: categoria.optional(),
+    probabilidadePadrao: probabilidadePadrao.optional(),
+  })
   .strict();
 
 // PUT /crm/configuracoes/listas/:tipo/:id — parcial; `color: null` limpa.
@@ -44,6 +63,7 @@ export const atualizarOpcaoBodySchema = z
     label: nome.optional(),
     color: cor.optional(),
     category: categoria.optional(),
+    probabilidadePadrao: probabilidadePadrao.optional(),
     ativo: z.boolean({ invalid_type_error: 'Informe verdadeiro ou falso' }).optional(),
   })
   .strict()

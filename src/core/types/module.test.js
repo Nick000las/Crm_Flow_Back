@@ -20,6 +20,8 @@ describe('assertModule — featureFlags e reconciliar', () => {
   it('rejeita featureFlags que não é array e reconciliar que não é função', () => {
     expect(() => assertModule({ ...base, featureFlags: 'crm.x' })).toThrow(/array/);
     expect(() => assertModule({ ...base, reconciliar: 'sim' })).toThrow(/função/);
+    expect(() => assertModule({ ...base, aoLigarFeatures: 'sim' })).toThrow(/aoLigarFeatures/);
+    expect(() => assertModule({ ...base, aoLigarFeatures: async () => {} })).not.toThrow();
   });
 
   it('registerPublicRoutes é opcional, mas se vier precisa ser função', () => {

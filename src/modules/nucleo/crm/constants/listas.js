@@ -63,6 +63,24 @@ export const LISTAS_SEMEADAS = Object.freeze([
   TIPOS_LISTA.TIPO_ATIVIDADE,
 ]);
 
+/**
+ * Probabilidade padrão do status (FC1, `crm_option.default_probability`).
+ * Quem preenche é o trigger da migration 0048; isto espelha o que ele faz,
+ * para a validação e os testes. Ganho e perdido são fixos; status aberto sem
+ * sugestão pela chave começa em `ABERTO_SEM_SUGESTAO`.
+ */
+export const PROBABILIDADE_PADRAO = Object.freeze({
+  FIXA: Object.freeze({ [CATEGORIAS_STATUS.GANHO]: 100, [CATEGORIAS_STATUS.PERDIDO]: 0 }),
+  SUGERIDA: Object.freeze({
+    novo: 10,
+    em_contato: 20,
+    qualificado: 40,
+    proposta: 60,
+    negociacao: 80,
+  }),
+  ABERTO_SEM_SUGESTAO: 10,
+});
+
 export const PADRAO_COR = /^#[0-9a-fA-F]{6}$/;
 
 const COR_ABERTO = '#64748B';

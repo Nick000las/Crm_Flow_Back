@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { CATEGORIAS_STATUS, TIPOS_EVENTO_LEAD, TIPOS_PIPELINE } from '../constants.js';
 import { ENTIDADE_OPORTUNIDADE, EVENTOS_OPORTUNIDADE } from '../constants/oportunidades.js';
@@ -37,6 +38,21 @@ import { pipelinePadraoSql } from './crm-pipelines.repository.js';
  *   planejar: (deal: LinhaOportunidade, opcoes: OpcaoLista[]) => Plano | null,
  * }} ComercialDoLead
  */
+
+/**
+ * Probabilidade padrão do status da oportunidade (FC1), para a resposta calcular
+ * a efetiva. `alias` é texto fixo deste arquivo: o nome da tabela ou o apelido.
+ *
+ * @param {'d' | 'crm_deal'} alias
+ */
+function probabilidadeDoStatusSql(alias) {
+  const deal = Prisma.raw(alias);
+  return Prisma.sql`(
+    SELECT o.default_probability::int FROM modulo_crm.crm_option o
+    WHERE o.tenant_id = ${deal}.tenant_id AND o.kind = 'status'
+      AND o.pipeline_id = ${deal}.pipeline_id AND o.key = ${deal}.status
+  ) AS probabilidade_padrao`;
+}
 
 /**
  * Oportunidade principal e ciclo de vida, derivados (decisões F-2 e F-3).
@@ -186,7 +202,7 @@ function marcarOrigemReaberta(tx, tenantId, vendaId) {
 export function buscarOportunidade(tenantId, id, { incluirExcluidas = false } = {}) {
   return getTenantClient(tenantId, async (tx) => {
     const [deal] = await tx.$queryRaw`
-      SELECT d.*, d.id::text, d.lead_id::text, d.pipeline_id::text
+      SELECT d.*, d.id::text, d.lead_id::text, d.pipeline_id::text, ${probabilidadeDoStatusSql('d')}
       FROM modulo_crm.crm_deal d
       WHERE d.tenant_id = ${tenantId}::uuid AND d.id = ${id}::uuid
         AND (${incluirExcluidas} OR d.deleted_at IS NULL)
@@ -205,7 +221,7 @@ export function buscarOportunidadesDaPessoa(tenantId, leadId, { daLixeira = fals
   return getTenantClient(
     tenantId,
     (tx) => tx.$queryRaw`
-      SELECT d.*, d.id::text, d.lead_id::text, d.pipeline_id::text
+      SELECT d.*, d.id::text, d.lead_id::text, d.pipeline_id::text, ${probabilidadeDoStatusSql('d')}
       FROM modulo_crm.crm_deal d
       WHERE d.tenant_id = ${tenantId}::uuid AND d.lead_id = ${leadId}::uuid
         AND (d.deleted_at IS NOT NULL) = ${daLixeira}
@@ -242,7 +258,7 @@ async function inserirOportunidade(tx, tenantId, lead, pipelineId, nova, opcoes)
       CASE WHEN ${ganha} THEN COALESCE(${nova.ganhaEm ?? null}::timestamp, now()) END,
       CASE WHEN ${perdida} THEN now() END
     )
-    RETURNING *, id::text, lead_id::text, pipeline_id::text
+    RETURNING *, id::text, lead_id::text, pipeline_id::text, ${probabilidadeDoStatusSql('crm_deal')}
   `;
   await registrar(tx, tenantId, deal, {
     tipoHistorico,
@@ -427,7 +443,7 @@ async function aplicarPlano(tx, tenantId, deal, plano, opcoes) {
         archived_at = ${proximo.archived_at}::timestamp,
         deleted_at = ${proximo.deleted_at}::timestamp
     WHERE tenant_id = ${tenantId}::uuid AND id = ${deal.id}::uuid
-    RETURNING *, id::text, lead_id::text, pipeline_id::text
+    RETURNING *, id::text, lead_id::text, pipeline_id::text, ${probabilidadeDoStatusSql('crm_deal')}
   `;
 
   if (plano.statusMudou && contaInteracao) {
@@ -473,7 +489,8 @@ export function alterarOportunidade(tenantId, id, montar, { autorId }) {
       FOR UPDATE
     `;
     const [deal] = await tx.$queryRaw`
-      SELECT *, id::text, lead_id::text, pipeline_id::text FROM modulo_crm.crm_deal
+      SELECT *, id::text, lead_id::text, pipeline_id::text, ${probabilidadeDoStatusSql('crm_deal')}
+      FROM modulo_crm.crm_deal
       WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid
       FOR UPDATE
     `;

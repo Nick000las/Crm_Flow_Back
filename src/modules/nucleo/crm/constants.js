@@ -19,7 +19,8 @@
  * - `constants/permissoes.js`: permissão por campo (acessos, papéis);
  * - `constants/score.js`: pontuação de leads (faixas padrão, limites);
  * - `constants/lgpd.js`: base legal, origem do registro e anonimização;
- * - `constants/formularios.js`: campos elegíveis, política de escrita e limites.
+ * - `constants/formularios.js`: campos elegíveis, política de escrita e limites;
+ * - `constants/forecast.js`: o que o forecast precisa e os limites dele.
  */
 export * from './constants/arquivo.js';
 export * from './constants/pipelines.js';
@@ -39,3 +40,4 @@ export * from './constants/permissoes.js';
 export * from './constants/score.js';
 export * from './constants/lgpd.js';
 export * from './constants/formularios.js';
+export * from './constants/forecast.js';

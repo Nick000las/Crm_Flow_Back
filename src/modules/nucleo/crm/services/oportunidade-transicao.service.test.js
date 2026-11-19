@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { EVENTOS_OPORTUNIDADE } from '../constants/oportunidades.js';
 import {
+  AVISOS_OPORTUNIDADE,
+  avisosDoPlano,
   diffDaOportunidade,
   novaOportunidadeDoLead,
   planejarEdicaoDoLead,
   planejarStatus,
+  probabilidadeEfetiva,
   separarComerciais,
   validarComerciais,
 } from './oportunidade-transicao.service.js';
@@ -219,5 +222,67 @@ describe('campos comerciais de /crm/leads', () => {
     expect(
       editar({ status: 'novo', motivoPerda: 'prazo' }, perdida).mudancas.lost_reason,
     ).toBeNull();
+  });
+});
+
+describe('probabilidade padrão (FC1)', () => {
+  const OVERRIDE = 60;
+  const PADRAO = 40;
+
+  it('efetiva: a da oportunidade, senão a do status; zero é valor', () => {
+    expect(probabilidadeEfetiva(OVERRIDE, PADRAO)).toBe(OVERRIDE);
+    expect(probabilidadeEfetiva(null, PADRAO)).toBe(PADRAO);
+    expect(probabilidadeEfetiva(0, PADRAO)).toBe(0);
+    expect(probabilidadeEfetiva(null, null)).toBeNull();
+  });
+
+  it('trocar o status limpa o override e guarda o anterior para o aviso', () => {
+    const plano = planejarStatus(
+      deal({ probability_override: OVERRIDE }),
+      opcao('proposta', 'aberto'),
+      {},
+      AGORA,
+    );
+    expect(plano.mudancas.probability_override).toBeNull();
+    expect(plano.probabilidadeRedefinida).toBe(OVERRIDE);
+    expect(avisosDoPlano(plano)).toEqual([
+      {
+        codigo: AVISOS_OPORTUNIDADE.PROBABILIDADE_REDEFINIDA,
+        campo: 'probabilidadeFechamento',
+        anterior: OVERRIDE,
+      },
+    ]);
+  });
+
+  it('sem override, ou sem trocar de status, não há aviso', () => {
+    const semOverride = planejarStatus(deal(), opcao('proposta', 'aberto'), {}, AGORA);
+    expect(avisosDoPlano(semOverride)).toEqual([]);
+
+    const mesmoStatus = planejarStatus(
+      deal({ probability_override: OVERRIDE }),
+      opcao('novo', 'aberto'),
+      {},
+      AGORA,
+    );
+    expect(mesmoStatus.mudancas).not.toHaveProperty('probability_override');
+    expect(avisosDoPlano(mesmoStatus)).toEqual([]);
+  });
+
+  it('pela tabela: a probabilidade mandada junto com o status vence', () => {
+    const atual = deal({ probability_override: OVERRIDE });
+    const opcoes = [opcao('novo', 'aberto'), opcao('proposta', 'aberto')];
+
+    const soStatus = planejarEdicaoDoLead(atual, opcoes, { status: 'proposta' }, AGORA);
+    expect(soStatus.mudancas.probability_override).toBeNull();
+    expect(avisosDoPlano(soStatus)).toHaveLength(1);
+
+    const junto = planejarEdicaoDoLead(
+      atual,
+      opcoes,
+      { status: 'proposta', probabilidadeFechamento: PADRAO },
+      AGORA,
+    );
+    expect(junto.mudancas.probability_override).toBe(PADRAO);
+    expect(avisosDoPlano(junto)).toEqual([]);
   });
 });
