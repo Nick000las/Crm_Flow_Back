@@ -228,13 +228,13 @@ Fecha a revisão do dono. Sem migration: rascunho e versão já guardam as seç�
 
 ### FM6. LGPD e ciclo de vida da pessoa
 
-- [ ] Anonimizar (`lgpd.service.js`): apaga as respostas das perguntas próprias (todas, não só as sensíveis: não há outro lugar com esse dado) e as respostas sensíveis dos campos, mantém metadados mínimos, revoga links ativos.
-- [ ] Mesclar (`mesclagem.service.js`): links e submissões vão para o principal; dois ativos do mesmo formulário → mantém o mais recente e revoga o outro.
-- [ ] Arquivar e lixeira revogam links ativos; purga apaga em cascata.
-- [ ] Menor de idade: `filled_by` e nome do responsável obrigatório quando é o responsável.
-- [ ] **Parada do dono:** termo de aceite, fluxo de menor e política de exclusão validados com jurídico antes de ligar a flag em tenant real.
+- [x] Anonimizar (`lgpd.service.js`): apaga as respostas das perguntas próprias (todas, não só as sensíveis: não há outro lugar com esse dado) e as respostas sensíveis dos campos, mantém metadados mínimos, revoga links ativos. (15/11/2026: `anonimizarFormulariosDasPessoas` em `crm-form-ciclo.repository.js`, chamado por `anonimizarLead`. A resposta perde **todos** os valores, campos inclusive; o nome do responsável vira "Anonimizado"; IP e navegador vão a null; alertas apagados. Campo personalizado sensível deixa de sobreviver à anonimização (`personalizadosMantidos`). Ficam formulário, versão, datas, aceite e relatório de escrita. Migration 0047 libera só essas colunas, com o GUC da LGPD.)
+- [x] Mesclar (`mesclagem.service.js`): links e submissões vão para o principal; dois ativos do mesmo formulário → mantém o mais recente e revoga o outro. (15/11/2026: `moverFormulariosNaMesclagem`, chamado em `mesclarLeads` de `leads.repository.js`; alertas e "visto" vão junto; a troca de pessoa na resposta imutável passa só com o GUC `app.form_mesclando`, e o banco continua recusando mudar `answers`.)
+- [x] Arquivar e lixeira revogam links ativos; purga apaga em cascata. (15/11/2026: `definirArquivamento` e `moverParaLixeira`; desarquivar e restaurar não reativam o link; purga provada sem sobra de link, resposta ou alerta.)
+- [x] Menor de idade: `filled_by` e nome do responsável obrigatório quando é o responsável. (Entregue na FM4: CHECK em `crm_form_submission` e `nomeResponsavel` obrigatório no schema do envio; sem validação de idade, quem preenche se declara.)
+- [ ] **Parada do dono:** termo de aceite, fluxo de menor e política de exclusão validados com jurídico antes de ligar a flag em tenant real. (Aberto: depende do jurídico. Atenção à guarda de prontuário: hoje a anonimização apaga **todos** os valores da resposta.)
 
-**Aceite:** depois de anonimizar, nenhuma resposta sensível sobra em `crm_form_submission`, nos campos ou no outbox.
+**Aceite:** depois de anonimizar, nenhuma resposta sensível sobra em `crm_form_submission`, nos campos ou no outbox. ✅ (15/11/2026: `formulario-ciclo.db.test.js` procura o segredo em submissões, leads, eventos da pessoa e outbox; 6/6 testes, 10/10 sabotagens detectadas, bateria completa 1173 testes, cobertura de RLS/FK e isolamento verdes, boot OK, zero tenant SMOKE.)
 
 ### FM7. Uploads (marco próprio)
 

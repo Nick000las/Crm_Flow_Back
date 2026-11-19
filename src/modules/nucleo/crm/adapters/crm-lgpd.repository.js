@@ -1,3 +1,4 @@
+import { anonimizarFormulariosDasPessoas } from './crm-form-ciclo.repository.js';
 import { Prisma } from '@prisma/client';
 import { getTenantClient } from '#core/db/tenantClient.js';
 import { ANONIMIZACAO, EVENTOS_PESSOA, TIPOS_EVENTO_LEAD } from '../constants.js';
@@ -65,6 +66,8 @@ export function buscarSituacaoLgpd(tenantId, leadId) {
  *
  * - lead: nome vira `ANONIMIZACAO.NOME`, as colunas pessoais ficam nulas e
  *   `custom_fields` guarda só os personalizados de `mantidos` (ids);
+ * - formulários (FM6): links ativos revogados, respostas sem nenhum valor
+ *   (ficam formulário, versão, datas e aceite) e alertas apagados;
  * - atividades: título genérico, sem notas (tipo e datas ficam);
  * - oportunidades: sem título; status, valor e motivo de perda ficam;
  * - histórico: antes/depois dos campos pessoais vira `null` e o `detalhes`
@@ -117,6 +120,9 @@ export function anonimizarLead(tenantId, leadId, { autorId, mantidos }) {
         anonimizado_em = now(), updated_at = now()
       WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
     `;
+
+    // FM6: links revogados, respostas sem valores e alertas apagados.
+    await anonimizarFormulariosDasPessoas(tx, tenantId, ids);
 
     const atividades = await tx.$executeRaw`
       UPDATE modulo_crm.crm_activity

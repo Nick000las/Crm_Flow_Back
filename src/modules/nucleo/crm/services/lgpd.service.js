@@ -145,8 +145,9 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
 
 /**
  * Personalizados que sobrevivem à anonimização: os ativos de tipo que não
- * identifica a pessoa (número, data, seleção...). Os outros — e os de campo
- * excluído, cujo tipo já não se sabe — são apagados.
+ * identifica a pessoa (número, data, seleção...) e que não são sensíveis
+ * (FM6: "Alergia: Sim" é dado de saúde, mesmo sendo seleção). Os outros, e
+ * os de campo excluído, cujo tipo já não se sabe, são apagados.
  *
  * @param {import('../types/index.js').FieldDefinition[]} definicoes
  * @returns {string[]} ids dos campos
@@ -154,6 +155,7 @@ export async function salvarConfigLgpd(tenantId, { basePadrao, obrigatoria }) {
 export function personalizadosMantidos(definicoes) {
   return definicoes
     .filter((definicao) => ANONIMIZACAO.TIPOS_PERSONALIZADO_MANTIDOS.includes(definicao.tipo))
+    .filter((definicao) => !definicao.sensivel)
     .map((definicao) => definicao.id);
 }
 
