@@ -247,10 +247,10 @@ Horizonte padrão: mês atual + 3 meses à frente + 3 meses para trás (realizad
 
 ### 1B.7 Critérios de aceite
 
-- [ ] Ponderado de um mês bate com a soma manual em planilha para um tenant de teste com 20 oportunidades.
-- [ ] Oportunidade ganha na virada do mês cai no mês correto no fuso do tenant.
+- [x] Ponderado de um mês bate com a soma manual em planilha para um tenant de teste com 20 oportunidades. (FC2, 19/11/2026: `forecast.db.test.js`, conta em centavos)
+- [x] Oportunidade ganha na virada do mês cai no mês correto no fuso do tenant. (FC2: 01/11 02:30 UTC cai em outubro em São Paulo)
 - [x] Override é limpo ao mudar status e o usuário é avisado. (FC1, 19/11/2026: `forecast-probabilidade.db.test.js`; mandar a probabilidade junto com o status a mantém)
-- [ ] OPERADOR sem permissão de Valor não vê nenhum R$ no forecast nem na resposta da API.
+- [x] OPERADOR sem permissão de Valor não vê nenhum R$ no forecast nem na resposta da API. (FC2: resposta varrida inteira, também a lista)
 
 ## Trilha 2 — Motor de formulários
 
