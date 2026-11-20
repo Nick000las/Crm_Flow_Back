@@ -279,25 +279,36 @@ O que já existe e não muda: `crm_deal.probability_override` (0–100), `expect
 
 ### FC2. Consulta e API do forecast
 
-- [ ] Uma consulta agregada sobre `crm_deal` sob RLS: oportunidade e pessoa não excluídas, não arquivadas e não anonimizadas; só pipelines `sales` ativos; fora os ocultos do papel. Somas no banco.
-  - Realizado: ganhas, pelo mês de `won_at` no fuso do tenant.
-  - Ponderado e melhor caso: abertas com data prevista a partir de hoje (no fuso), pelo mês da data.
-  - Previsto do mês = realizado + ponderado.
-  - Blocos: Atrasadas, Sem previsão, Além do horizonte (para os totais baterem com o pipeline) e Sem valor (só contagem). Ganha sem valor conta na quantidade, com R$ 0.
-- [ ] `GET /crm/forecast`: `de`/`ate` (`YYYY-MM`, padrão 3 meses para trás e 3 para frente, até 24 meses), `pipelineId`, `responsavelId`, `agrupar=total|responsavel|status` (`status` exige `pipelineId`). Devolve meses, blocos, grupos, `veValor`, `veProbabilidade` e `camposDesligados`.
-- [ ] `GET /crm/forecast/oportunidades` (um mês ou um bloco, paginada) e `POST /crm/forecast/data-prevista` (ação em massa, até 200, pelo caminho da edição da oportunidade).
-- [ ] Mesmas regras de acesso do quadro: visibilidade por pipeline (D4) e permissão de Valor (sem ela, todo R$ vem `null`, também na API).
-- [ ] Cache de 60 s por tenant, papel e filtros; a chave inclui o último evento do outbox do tenant e a última mudança de status, e muda sozinha a cada escrita.
-- [ ] Tenant sem oportunidade de vendas: `vazio: true`.
+**Decisões do dono (19/11/2026):** oportunidade de pessoa anonimizada **entra** no forecast (é venda real; a lista mostra o nome anonimizado), revendo "não anonimizadas" do plano; **todos os papéis** abrem o forecast, com as restrições de pipeline e de Valor.
+
+**Como foi feito (orquestração, decisão do dono):** especificação e revisão com Opus; consulta, service, permissões, cache e rotas com Opus em esforço médio; testes de aceite, teste de carga e handoff com Sonnet; um caso de teste mecânico com Haiku. Gates e proteções conferidos por quem coordena.
+
+- [x] `adapters/crm-forecast.repository.js`: uma consulta agregada sob RLS (`consultaAgregada`), com `GROUPING SETS` quando há agrupamento, somas e ponderado no banco (`round(sum(amount × probabilidade / 100), 2)`, devolvidos em texto) e previsto também no SQL. Escopo: pipelines `sales` ativos e visíveis ao papel; oportunidade e pessoa fora do arquivo e da lixeira. Probabilidade efetiva `COALESCE(probability_override, default_probability)`.
+  - Realizado pelo mês de `(won_at AT TIME ZONE 'UTC') AT TIME ZONE <fuso>`; ponderado e melhor caso pelo mês da data prevista, de hoje em diante (hoje no fuso do tenant).
+  - Cada oportunidade cai numa faixa só: um mês, Atrasadas, **Antes do período** (acrescentado: abertas de hoje em diante antes do mês `de`, quando o período começa no futuro; sem ele, sumiam), Sem previsão ou Além do horizonte. Sem valor conta à parte.
+- [x] `GET /crm/forecast` (`forecast.controller.js`, `forecast.service.js`, `forecast.schema.js`): `de`/`ate` (padrão 3 para trás e 3 para frente; até 24 meses), `pipelineId` (404 se não é vendas, ativo e visível), `responsavelId`, `agrupar=total|responsavel|status`. `status` exige `pipelineId` e, acrescentado, que o papel veja o campo Status. Devolve `fuso`, `hoje`, `periodo`, `meses` (todos, mesmo sem dado), `blocos`, `grupos`, `veValor`, `veProbabilidade`, `camposDesligados` e `vazio`. `vazio` ignora os filtros de pipeline e responsável.
+- [x] `GET /crm/forecast/oportunidades` (um mês com `tipo`, ou um bloco), paginada com `pagina`/`tamanho`, a convenção do módulo. `POST /crm/forecast/data-prevista`: até 200 ids, um a um pelo `editarOportunidade` (histórico e outbox de cada um); 403 antes de gravar quem não edita Data prevista; `ignoradas` com `NAO_ENCONTRADA`, `NAO_ABERTA` ou o `code` do erro.
+- [x] Acesso igual ao do quadro: pipeline oculto fora dos totais; sem Valor, todo R$ `null` (contagens ficam), inclusive em grupos e blocos; a lista tira as chaves que o papel não vê. A máscara é aplicada depois do cache.
+- [x] Cache de 60 s (`lerComCache`), chave `crm:forecast:<tenant>:<marca>:<hash dos filtros, ocultos, hoje e fuso>`. A marca é o último evento do outbox do tenant e a última mudança de status, lidos antes do agregado: escrita em oportunidade ou na probabilidade padrão troca a chave sem gancho depois do commit.
+- [x] Tenant sem oportunidade de vendas: `vazio: true`, com a resposta inteira em zeros.
 
 **Aceite**
 
-- [ ] Ponderado de um mês bate com a soma manual de 20 oportunidades.
-- [ ] Ganha às 23:30 de 31/10 em São Paulo cai em outubro.
-- [ ] OPERADOR sem permissão de Valor não recebe nenhum R$; OPERADOR não vê pipeline oculto, nem nos totais.
-- [ ] Reabrir, excluir e restaurar mexem no forecast; mudar a probabilidade padrão muda o próximo pedido.
-- [ ] p95 abaixo de 500 ms com 20 mil oportunidades (teste de carga separado, `CRM_CARGA=1`).
-- [ ] Gates verdes, proteções quebradas, boot real, zero tenant SMOKE.
+- [x] Ponderado, melhor caso e quantidade de 20 abertas (centavos, metade com override, metade com o padrão de quatro status) batem com a conta em centavos (`controllers/forecast.db.test.js`, 19 testes).
+- [x] Ganha em 01/11 02:30 UTC (31/10 23:30 em São Paulo) cai em outubro; 03:30 UTC cai em novembro.
+- [x] OPERADOR sem Valor: nenhum valor em reais na resposta, que é varrida por inteiro, nem na lista; contagens mantidas. OPERADOR não vê pipeline oculto, nem nos totais, e o `pipelineId` dele dá 404.
+- [x] Reabrir, excluir e restaurar mudam o pedido seguinte; mudar a probabilidade padrão também. Oportunidade arquivada e pessoa arquivada ficam fora; pessoa anonimizada continua no realizado.
+- [x] p95 de 433 ms (mediana 410 ms, máximo 486 ms) em 30 pedidos sem cache, com 20 mil oportunidades (`controllers/forecast-carga.db.test.js`, só com `CRM_CARGA=1`). A consulta em si leva cerca de 51 ms no banco (`EXPLAIN ANALYZE`: `idx_crm_deal_quadro_status` e `HashAggregate` com `GROUPING SETS`). O resto do tempo são as idas e vindas ao Neon de cada pedido.
+- [x] Gates verdes em 19/11/2026: 1227 de 1227 com banco e os testes de integração do Kanban, cache em memória (8 pulados: 4 exigem Redis e 4 são o teste de carga, que só roda com `CRM_CARGA=1`). Lint, formato (`--end-of-line auto`), RLS, FK, isolamento e boot real no Node (`/health` 200; `/crm/forecast` sem token 401). Nenhum tenant SMOKE sobrando.
+- [x] 13 proteções quebradas uma a uma, todas detectadas: fuso no realizado, pipeline oculto, máscara de valor, atrasadas, antes do período, override na efetiva, marca do cache, 403 antes de gravar, só abertas na ação em massa, oportunidade arquivada, pessoa arquivada, lista por papel e `vazio`. A de arquivada passou na primeira rodada e ganhou um caso de teste.
+
+**Achados**
+
+- O pedido gasta a maior parte do tempo em idas ao banco (fuso, marca, schema do papel, pipelines, agregado), não na consulta. Se o p95 subir em produção, o primeiro ganho é juntar fuso e marca numa consulta só.
+- Depois de uma carga em massa num tenant novo, o Postgres pode escolher um plano ruim até o próximo `ANALYZE` (183 ms em vez de 51 ms no teste de carga). O autovacuum resolve; numa importação grande, vale rodar `ANALYZE`.
+- Criar a pessoa já cria uma oportunidade em Novo (F-1). Teste de forecast que cria pessoa pela API precisa contar com ela; o helper do teste apaga essa oportunidade.
+
+**Handoff ao front:** `handoff-front-fc2.md`, com a divisão do trabalho do front entre agentes.
 
 ### FC3. Snapshots e assertividade
 

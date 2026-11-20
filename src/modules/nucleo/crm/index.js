@@ -20,6 +20,7 @@ import { registrarRotasScore } from './controllers/score.controller.js';
 import { registrarRotasLgpd } from './controllers/lgpd.controller.js';
 import { registrarRotasFormularios } from './controllers/formularios.controller.js';
 import { registrarRotasPublicasFormularios } from './controllers/formulario-publico.controller.js';
+import { registrarRotasForecast } from './controllers/forecast.controller.js';
 import { CRM_FEATURES, MODULO_CRM } from './constants.js';
 import { aoLigarFeaturesDoCrm } from './services/forecast-flag.service.js';
 import { provedorDePessoa } from './services/pessoa-entidade.service.js';
@@ -65,6 +66,7 @@ export const crmModule = {
     registrarRotasScore(app);
     registrarRotasLgpd(app);
     registrarRotasFormularios(app);
+    registrarRotasForecast(app);
     await registrarRotasImportExport(app);
   },
 };
