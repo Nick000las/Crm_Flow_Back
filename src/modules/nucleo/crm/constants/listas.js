@@ -1,5 +1,5 @@
 /**
- * Listas configuráveis do CRM (docs/crm/plano-configuracoes.md, M3): cada
+ * Listas configuráveis do CRM (docs/produto/crm-pessoas-e-campos.md, M3): cada
  * lista é um `kind` em `modulo_crm.crm_option`. A opção é identificada por
  * `key`, imutável e o que fica gravado no lead; `label`, cor, ordem,
  * categoria e ativo são do tenant.
@@ -142,7 +142,7 @@ export const OPCOES_LEGADAS = Object.freeze({
 });
 
 /**
- * Padrões sugeridos pela spec (docs/crm/especificacao-configuracoes.md §3)
+ * Padrões sugeridos pela spec (docs/produto/crm-pessoas-e-campos.md)
  * — só pra tenant sem nenhum lead quando a lista é semeada.
  *
  * @type {Readonly<Record<string, readonly OpcaoPadrao[]>>}

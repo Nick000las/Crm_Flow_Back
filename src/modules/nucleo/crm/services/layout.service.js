@@ -26,7 +26,7 @@ import { camposDoContexto, obterSchemaCampos } from './field-schema.service.js';
 import { obterSchemaDoPapel } from './permissoes.service.js';
 
 /**
- * SERVICE: layout do lead (docs/crm/plano-configuracoes.md, M4). Dois
+ * SERVICE: layout do lead (docs/produto/crm-pessoas-e-campos.md, M4). Dois
  * níveis: o padrão do tenant (DONO/MASTER) e o override pessoal (parcial,
  * qualquer papel, com "Voltar ao padrão").
  *

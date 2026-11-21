@@ -12,7 +12,7 @@ import { dataDaPurga, inicioDaLixeira } from './lead-filter.service.js';
 import { buscarLeadFormatado } from './leads.service.js';
 
 /**
- * SERVICE: arquivo e lixeira do lead (M5, `docs/crm/plano-configuracoes.md`).
+ * SERVICE: arquivo e lixeira do lead (M5, `docs/produto/crm-historico-arquivo-e-lgpd.md`).
  *
  * - Arquivar tira o lead da lista ativa; ele continua editável e aparece
  *   no filtro `situacao: arquivados`.

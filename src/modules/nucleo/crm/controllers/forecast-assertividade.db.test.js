@@ -12,7 +12,7 @@ import { reconciliarTenant } from '../services/reconcile.service.js';
 import { tirarSnapshotDoTenant } from '../services/forecast-snapshot.service.js';
 
 /**
- * FC3 (docs/crm/plano-execucao-formularios-forecast.md): snapshots semanais do
+ * FC3 (docs/produto/crm-forecast.md): snapshots semanais do
  * forecast e assertividade, pelo job e pela HTTP. GRAVA no banco de
  * `DATABASE_URL` (tenant SMOKE, apagado no fim): só roda com `CRM_DB_TESTS=1`,
  * num banco de dev.

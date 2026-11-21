@@ -9,7 +9,7 @@ CREATE TABLE modulo_crm.leads (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  -- Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa.
+  -- Camada 1 (docs/produto/crm-pessoas-e-campos.md) — sempre ativa.
   email VARCHAR,
   fonte_lead VARCHAR,       -- key de crm_option (kind fonte_lead), M3
   tags VARCHAR[],
@@ -69,7 +69,7 @@ ALTER TABLE modulo_crm.leads ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}
 CREATE INDEX idx_leads_custom_fields_gin ON modulo_crm.leads USING GIN (custom_fields);
 
 -- Filtros salvos e importação assíncrona (migration 0010,
--- docs/crm/plano-campos-hibridos.md passos 6 e 7). `filtros` é o mesmo
+-- docs/produto/crm-pessoas-e-campos.md). `filtros` é o mesmo
 -- body de POST /crm/leads/search; `payload` de import_jobs são as linhas
 -- já validadas que o worker consome.
 CREATE TABLE modulo_crm.crm_filter_views (
@@ -114,7 +114,7 @@ CREATE POLICY tenant_isolation ON modulo_crm.import_jobs
 
 CREATE INDEX idx_import_jobs_tenant_status ON modulo_crm.import_jobs(tenant_id, status);
 
--- Registro único de campos (migration 0012, docs/crm/plano-configuracoes.md M1).
+-- Registro único de campos (migration 0012, docs/produto/crm-pessoas-e-campos.md M1).
 CREATE TABLE modulo_crm.crm_field (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

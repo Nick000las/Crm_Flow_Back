@@ -2,7 +2,7 @@ import { inserirCamposSistema } from '../adapters/crm-fields.repository.js';
 import { CAMPOS_SISTEMA } from '../constants.js';
 
 /**
- * Reconciliação dos campos (docs/crm/plano-configuracoes.md, M1.2):
+ * Reconciliação dos campos (docs/produto/crm-pessoas-e-campos.md, M1):
  * garante que o tenant tem as linhas de `crm_field` dos campos do sistema
  * (`CAMPOS_SISTEMA`), com o padrão do contrato. Idempotente — campo já
  * existente nunca é tocado, então a configuração do tenant é preservada.

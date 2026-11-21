@@ -17,11 +17,14 @@ framework como parte de uma alteração de funcionalidade.
   Formate somente os arquivos alterados com `pnpm exec prettier --write`.
 - Para Kanban, leia [o contrato implementado](../../../docs/kanban-implementado.md)
   e [os campos dos cards](../../../docs/kanban-cards.md).
+- Para saber o que o produto já faz (regras, limites, flags e o que ficou de
+  fora), leia a [descrição do produto](../../../docs/produto/README.md) e o
+  arquivo da área antes de planejar uma mudança.
 - Examine um recurso vizinho antes de criar outra abstração. Rotas de plataforma
   ficam em `src/api/routes`; infraestrutura em `src/core`; utilitários sem regras
   de produto em `src/shared`.
 - Para busca/detalhe de leads e listas em bancos migrados para oportunidades,
-  consulte a [compatibilidade de leitura](../../../docs/crm/compatibilidade-leitura-oportunidades.md).
+  consulte a [compatibilidade de leitura](../../../docs/produto/crm-oportunidades-e-pipelines.md).
   Reutilize `crm-lead-read-model.js`: campos comerciais vêm da oportunidade
   principal; as contagens de uso de opções consideram todas as oportunidades.
   Não recrie tabelas antigas para contornar uma diferença de versões.

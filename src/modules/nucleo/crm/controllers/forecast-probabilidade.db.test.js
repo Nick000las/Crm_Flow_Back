@@ -22,7 +22,7 @@ import { provedorComercial } from '../services/quadro-comercial.service.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
- * FC1 (docs/crm/plano-execucao-formularios-forecast.md): probabilidade padrão
+ * FC1 (docs/produto/crm-forecast.md): probabilidade padrão
  * por status, volta ao padrão quando o status muda e a flag `crm.forecast`
  * ligando os campos. GRAVA no banco de `DATABASE_URL` (tenant SMOKE, apagado no
  * fim): só roda com `CRM_DB_TESTS=1`, num banco de dev.

@@ -1,5 +1,5 @@
 /**
- * Arquivo e lixeira do lead (M5, `docs/crm/plano-configuracoes.md`).
+ * Arquivo e lixeira do lead (M5, `docs/produto/crm-historico-arquivo-e-lgpd.md`).
  *
  * `situacao` é um filtro fixo da busca (e do export/views): sem ele, a
  * lista mostra só os ativos.

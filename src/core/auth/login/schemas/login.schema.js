@@ -2,7 +2,7 @@
  * Schemas Zod do fluxo de login/ativação. Pasta própria porque são vários
  * schemas (mais que os ~2 que justificariam inline no controller) — mesmo
  * critério documentado em MODULE_CONTRACT.md §2, ainda que este código não
- * seja mais um módulo sob esse contrato (ver docs/decisoes-pendentes-auth.md).
+ * seja mais um módulo sob esse contrato (ver docs/produto/plataforma.md).
  */
 import { z } from 'zod';
 import { LOGIN_MFA, PASSWORD_ACTIVATION, PASSWORD_POLICY } from '#core/auth/constants.js';

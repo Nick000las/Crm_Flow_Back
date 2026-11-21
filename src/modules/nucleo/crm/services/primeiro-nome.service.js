@@ -1,5 +1,5 @@
 /**
- * SERVICE: primeiro nome (M10, docs/crm/plano-configuracoes.md) — campo do
+ * SERVICE: primeiro nome (M10, docs/produto/crm-pessoas-e-campos.md) — campo do
  * sistema derivado do Nome e editável, pra personalizar mensagens.
  *
  * Regra (a migration 0024 fez o backfill com a mesma):

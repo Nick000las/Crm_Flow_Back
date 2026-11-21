@@ -2,7 +2,7 @@
  * Tipos do módulo CRM. Sem TypeScript, servem ao editor (via JSDoc) e como
  * documentação viva do contorno de dado que sai dos `adapters/`.
  *
- * Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa, `email`/
+ * Camada 1 (docs/produto/crm-pessoas-e-campos.md) — sempre ativa, `email`/
  * `telefone` são cada um opcional isoladamente (regra "pelo menos um dos
  * dois" é `chk_leads_email_ou_telefone` no banco + validação no service).
  *
@@ -157,7 +157,7 @@
  */
 
 /**
- * Estado de visibilidade de uma coluna de Camada 2 (docs/crm/plano-campos-hibridos.md)
+ * Estado de visibilidade de uma coluna de Camada 2 (docs/produto/crm-pessoas-e-campos.md)
  * pra um tenant. `coluna` é sempre um valor de `CAMADA_2_COLUNAS`.
  *
  * @typedef {object} FieldVisibility

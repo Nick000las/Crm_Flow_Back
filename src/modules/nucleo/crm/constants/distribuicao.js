@@ -1,5 +1,5 @@
 /**
- * Distribuição automática de leads (M12, `docs/crm/plano-configuracoes.md`).
+ * Distribuição automática de leads (M12, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 
 /** Nenhuma regra decidiu: rodízio entre todos ou o lead fica sem responsável. */

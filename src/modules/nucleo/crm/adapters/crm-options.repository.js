@@ -7,7 +7,7 @@ const FIRST_RESULT_INDEX = 0;
 
 /**
  * ADAPTER: listas configuráveis (`modulo_crm.crm_option`, migration 0016 —
- * docs/crm/plano-configuracoes.md M3). Único lugar que lê ou grava opção de
+ * docs/produto/crm-pessoas-e-campos.md M3). Único lugar que lê ou grava opção de
  * lista. SQL cru via `$queryRaw`/`$executeRaw` tagged.
  *
  * @typedef {{

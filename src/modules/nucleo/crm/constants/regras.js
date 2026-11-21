@@ -1,6 +1,6 @@
 /**
  * Regras de obrigatoriedade por status e condicionais (M8,
- * `docs/crm/plano-configuracoes.md`). O "sempre obrigatório" é o
+ * `docs/produto/crm-pessoas-e-campos.md`). O "sempre obrigatório" é o
  * `obrigatorio` do campo (M2), não uma regra.
  */
 

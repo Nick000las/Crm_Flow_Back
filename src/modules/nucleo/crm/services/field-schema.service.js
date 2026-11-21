@@ -25,8 +25,8 @@ import { reconciliarListas } from './listas-reconcile.service.js';
 import { resolverRegras } from './regras-campos.service.js';
 
 /**
- * Resolver do schema efetivo de campos (docs/crm/plano-configuracoes.md,
- * M1.4): fonte ÚNICA de metadado pra formulário, tabela, filtro, import,
+ * Resolver do schema efetivo de campos (docs/produto/crm-pessoas-e-campos.md,
+ * M1): fonte ÚNICA de metadado pra formulário, tabela, filtro, import,
  * export e validação. Lê `crm_field` (+ visibilidade por contexto),
  * semeando os campos do sistema na hora se o tenant ainda não os tiver.
  * Nenhum consumidor lê a configuração direto do banco.

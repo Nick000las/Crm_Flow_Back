@@ -6,7 +6,7 @@ export const MODULO_KANBAN = 'kanban_universal';
 /**
  * Flags do Kanban: o prefixo é a `key` do módulo (`assertModule`). Declaradas
  * antes de existir o que elas ligam, para o catálogo do admin já as listar.
- * Ver `docs/crm/plano-execucao-crm-kanban.md`, M2 e M6.
+ * Ver `docs/produto/kanban.md`, M2 e M6.
  */
 export const KANBAN_FEATURES = Object.freeze({
   QUADROS_ENTIDADE: 'kanban_universal.quadros_entidade',

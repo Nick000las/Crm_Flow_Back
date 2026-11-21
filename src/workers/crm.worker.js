@@ -34,11 +34,11 @@ import {
  * fila e delega pro service. Três filas:
  *
  * - `crm-import`: importação de planilha
- *   (docs/crm/plano-campos-filtros-import-export.md §3.3). Um job por vez:
+ *   (docs/produto/crm-busca-e-dados-em-massa.md). Um job por vez:
  *   cada import já é sequencial por linha, e concorrência aqui só
  *   disputaria o pool do Neon com o servidor HTTP.
  * - `crm-manutencao`: jobs agendados ao subir, despachados pelo nome — a
- *   purga diária da lixeira (M5, docs/crm/plano-configuracoes.md) e o
+ *   purga diária da lixeira (M5, docs/produto/crm-historico-arquivo-e-lgpd.md) e o
  *   resumo de leads esfriando, de hora em hora (M9), e o snapshot semanal
  *   do forecast, também de hora em hora (FC3).
  * - `crm-cnpj`: enriquecimento automático por CNPJ (M11b), com rate limit

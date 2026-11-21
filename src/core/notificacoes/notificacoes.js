@@ -8,7 +8,7 @@ import {
 
 /**
  * Notificação in-app (sino do shell) — do core, pra servir qualquer módulo
- * (decisão D5, docs/crm/plano-configuracoes.md). Um módulo gera com
+ * (decisão D5, docs/produto/plataforma.md). Um módulo gera com
  * `criarNotificacoes` e o usuário lê por `GET /notificacoes`.
  *
  * Idempotente pela `chaveDedup` (por usuário): um job pode gerar a mesma

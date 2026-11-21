@@ -17,7 +17,7 @@ export const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 export const PAPEIS_GESTAO = Object.freeze([ROLES.DONO, ROLES.MASTER]);
 
 /**
- * Catálogo das feature flags do CRM (`docs/crm/plano-configuracoes.md`).
+ * Catálogo das feature flags do CRM (`docs/produto/plataforma.md`).
  * Rollout gradual e kill switch, não cobrança — cada uma sai do código
  * 1-2 releases depois de estabilizar. Desligada = comportamento atual.
  */
