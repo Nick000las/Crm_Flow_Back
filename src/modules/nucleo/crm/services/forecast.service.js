@@ -95,7 +95,7 @@ export function deslocarMes(mes, quantidade) {
 }
 
 /** @param {string} de @param {string} ate @returns {number} meses de um ao outro, inclusive */
-function mesesEntre(de, ate) {
+export function mesesEntre(de, ate) {
   const indice = (mes) => {
     const [ano, mesDoAno] = mes.split('-').map(Number);
     return ano * MESES_NO_ANO + mesDoAno;
@@ -151,7 +151,7 @@ export function mesesDoPeriodo(de, ate) {
 }
 
 /** @param {string} mes */
-const primeiroDia = (mes) => `${mes}-01`;
+export const primeiroDia = (mes) => `${mes}-01`;
 
 /**
  * Decimal em texto (como sai do banco) → centavos inteiros: comparar e somar
@@ -394,7 +394,7 @@ export function chaveDoCache(tenantId, marca, pedido) {
  *
  * @param {string} tenantId
  */
-async function fusoDoTenant(tenantId) {
+export async function fusoDoTenant(tenantId) {
   const configurado = await buscarFusoDoTenant(tenantId);
   return (configurado && normalizarFusoHorario(configurado)) || FUSO_HORARIO_PADRAO;
 }

@@ -55,3 +55,40 @@ export const MOTIVOS_IGNORADA_FORECAST = Object.freeze({
 
 /** Rótulo do grupo das oportunidades sem responsável. */
 export const ROTULO_SEM_RESPONSAVEL = 'Sem responsável';
+
+/** Responsável que está no snapshot mas não existe mais em `usuarios` (FC3). */
+export const ROTULO_RESPONSAVEL_REMOVIDO = 'Responsável removido';
+
+/**
+ * Snapshot semanal do forecast (FC3). O job roda de hora em hora e, em cada
+ * tenant, grava a semana a partir de segunda às 6h no fuso dele. Já gravada
+ * (UNIQUE por tenant, semana e mês), pula: worker parado na segunda grava na
+ * próxima hora em que subir, mesmo no meio da semana.
+ */
+export const SNAPSHOT_FORECAST = Object.freeze({
+  AGENDAMENTO_ID: 'crm-snapshot-forecast',
+  JOB: 'snapshot-forecast',
+  CRON: '0 * * * *',
+  /** Na segunda, antes desta hora local, a semana do snapshot ainda não começou. */
+  HORA_LOCAL: 6,
+  /** O mês atual e os seguintes: quatro linhas por semana. */
+  MESES_A_FRENTE: 3,
+  /** Chave do `by_owner` das oportunidades sem responsável. */
+  CHAVE_SEM_RESPONSAVEL: 'sem_responsavel',
+});
+
+/** O que `tirarSnapshotDoTenant` fez num tenant. */
+export const RESULTADOS_SNAPSHOT = Object.freeze({
+  GRAVADO: 'gravado',
+  JA_EXISTIA: 'ja_existia',
+  CEDO: 'cedo',
+  SEM_FLAG: 'sem_flag',
+});
+
+/** `GET /crm/forecast/assertividade` (FC3). */
+export const LIMITES_ASSERTIVIDADE = Object.freeze({
+  /** Sem período: os seis meses fechados antes do atual. */
+  MESES_PADRAO: 6,
+  /** Casas da razão realizado / previsto. */
+  CASAS_DA_ASSERTIVIDADE: 4,
+});

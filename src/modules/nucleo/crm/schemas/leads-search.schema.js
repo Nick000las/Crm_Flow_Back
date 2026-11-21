@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { PAGINATION, TEXT_LIMITS } from '#shared/constants/index.js';
-import { BUSCA_LEADS, FILTRO_OPERADORES, LISTA_SITUACOES_LEAD } from '../constants.js';
+import {
+  BUSCA_LEADS,
+  FILTRO_OPERADORES,
+  LISTA_CICLOS_DE_VIDA,
+  LISTA_SITUACOES_LEAD,
+} from '../constants.js';
 
 // Forma só — `chave`/`valor` dependem dos campos ativos do tenant (Camadas
 // 2/3 são dado de banco), então tipo do valor e compatibilidade com o
@@ -18,6 +23,37 @@ const filtroCampoSchema = z.object({
   }),
   valor: z.unknown().optional(),
 });
+
+/** `AAAA-MM-DD`. */
+const PADRAO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * O texto é um dia que existe no calendário (`2026-02-30` não passa). Fora do
+ * formato, quem responde é a regex (uma mensagem só).
+ */
+const diaExiste = (texto) => {
+  if (!PADRAO_DIA.test(texto)) return true;
+  const data = new Date(`${texto}T00:00:00Z`);
+  return !Number.isNaN(data.getTime()) && data.toISOString().startsWith(texto);
+};
+
+/**
+ * FC4: um dia no fuso do tenant, inclusivo (`Ate` inclui o dia inteiro). Fica
+ * texto, não `Date`: é um dia do calendário, não um instante.
+ */
+const dia = () =>
+  z
+    .string({ invalid_type_error: 'Informe uma data no formato AAAA-MM-DD' })
+    .regex(PADRAO_DIA, 'Informe uma data no formato AAAA-MM-DD')
+    .refine(diaExiste, 'Informe uma data válida')
+    .optional();
+
+const quantidade = () =>
+  z
+    .number({ invalid_type_error: 'Informe uma quantidade válida' })
+    .int('Informe uma quantidade inteira')
+    .min(0, 'A quantidade não pode ser negativa')
+    .optional();
 
 /**
  * Filtro de leads sem paginação — mesmo formato salvo em
@@ -54,6 +90,27 @@ export const filtroLeadsSchema = z.object({
     .trim()
     .min(1, 'Faixa de score inválida')
     .optional(),
+  // FC4: ciclo de vida calculado das oportunidades visíveis ("é um dos").
+  cicloDeVida: z
+    .array(
+      z.enum(/** @type {[string, ...string[]]} */ ([...LISTA_CICLOS_DE_VIDA]), {
+        errorMap: () => ({
+          message: `Ciclo de vida deve ser um de: ${LISTA_CICLOS_DE_VIDA.join(', ')}`,
+        }),
+      }),
+      { invalid_type_error: 'Informe uma lista de ciclos de vida' },
+    )
+    .min(1, 'Escolha ao menos um ciclo de vida')
+    .refine((lista) => new Set(lista).size === lista.length, 'Ciclo de vida repetido')
+    .optional(),
+  // FC4: "Cliente desde" e "Última compra". `De > Ate` é conferido no filtro.
+  clienteDesdeDe: dia(),
+  clienteDesdeAte: dia(),
+  ultimaCompraDe: dia(),
+  ultimaCompraAte: dia(),
+  // FC4: oportunidades abertas. `Min > Max` é conferido no filtro.
+  oportunidadesAbertasMin: quantidade(),
+  oportunidadesAbertasMax: quantidade(),
   filtros: z
     .array(filtroCampoSchema)
     .max(BUSCA_LEADS.MAX_FILTROS, `Use no máximo ${BUSCA_LEADS.MAX_FILTROS} filtros`)

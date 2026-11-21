@@ -47,6 +47,10 @@
  * @property {Record<string, unknown>} custom_fields
  * @property {string | null} usuario_responsavel_id
  * @property {string | null} [estagio_nome]
+ * @property {'lead' | 'oportunidade' | 'cliente'} [ciclo_de_vida] FC4: calculado das oportunidades visíveis
+ * @property {string | null} [cliente_desde] FC4: primeira venda ganha (some sem o campo de data de conversão)
+ * @property {string | null} [ultima_compra] FC4: última venda ganha (idem)
+ * @property {number} [oportunidades_abertas] FC4: abertas e não arquivadas
  */
 
 /**

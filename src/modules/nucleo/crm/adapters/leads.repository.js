@@ -12,6 +12,7 @@ import {
   EVENTOS_PESSOA,
 } from '../constants.js';
 import { colunaEsfriandoDesde } from './crm-inatividade.sql.js';
+import { colunasDoCiclo } from './crm-lead-ciclo.sql.js';
 import { inserirEvento } from './crm-lead-events.repository.js';
 import { publicarEventoDaPessoa } from './crm-outbox.repository.js';
 import { condicaoPessoaVisivel, fonteLeadsVisivel } from './crm-lead-read-model.js';
@@ -49,11 +50,14 @@ const COLUNAS_BASE = Prisma.sql`
 /**
  * `inatividade` = o "agora" do cálculo do lead esfriando (M9) quando a
  * flag está ligada; sem ele, `esfriando_desde` sai `null` sem custo.
+ * `ocultos`: o ciclo de vida (FC4) conta só as oportunidades que quem lê vê.
  *
  * @param {Date | null} [inatividade]
+ * @param {string[]} [ocultos]
  */
-function colunasLeitura(inatividade = null) {
-  return Prisma.sql`${COLUNAS_BASE}, l.estagio_nome, ${colunaEsfriandoDesde(inatividade)}`;
+function colunasLeitura(inatividade = null, ocultos = []) {
+  return Prisma.sql`${COLUNAS_BASE}, l.estagio_nome, ${colunaEsfriandoDesde(inatividade)},
+    ${colunasDoCiclo(ocultos)}`;
 }
 
 /**
@@ -83,7 +87,7 @@ const COLUNAS_UUID = new Set(['usuarioResponsavelId']);
  */
 async function lerLead(tx, tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   const [lead] = await tx.$queryRaw`
-    SELECT ${colunasLeitura(inatividade)}
+    SELECT ${colunasLeitura(inatividade, ocultos)}
     FROM ${fonteLeadsVisivel(ocultos)} l
     WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid
   `;
@@ -112,7 +116,7 @@ async function lerLead(tx, tenantId, leadId, { inatividade = null, ocultos = [] 
 export function buscarLeadPorId(tenantId, leadId, { inatividade = null, ocultos = [] } = {}) {
   return getTenantClient(tenantId, async (tx) =>
     tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade)}
+      SELECT ${colunasLeitura(inatividade, ocultos)}
       FROM ${fonteLeadsVisivel(ocultos)} l
       WHERE l.id = ${leadId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.deleted_at IS NULL
     `.then((rows) => rows[FIRST_RESULT_INDEX]),
@@ -148,7 +152,7 @@ export function buscarLeadsComFiltro(
       WHERE ${where}
     `;
     const itens = await tx.$queryRaw`
-      SELECT ${colunasLeitura(inatividade)}
+      SELECT ${colunasLeitura(inatividade, ocultos)}
       FROM ${fonte} l
       WHERE ${where}
       ORDER BY l.created_at DESC, l.id

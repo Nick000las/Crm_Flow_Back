@@ -312,27 +312,51 @@ O que já existe e não muda: `crm_deal.probability_override` (0–100), `expect
 
 ### FC3. Snapshots e assertividade
 
-- [ ] Migration 0049: `crm_forecast_snapshot` (semana local, mês, ponderado, melhor caso, realizado, contagens e os mesmos números por responsável em JSONB). Um por tenant, semana e mês. Imutável, com RLS e FK por tenant.
-- [ ] Job `snapshot-forecast` de hora em hora no `crm.worker.js`: por tenant com a flag, a partir de segunda 06:00 no fuso, se a semana ainda não tem snapshot, grava o mês atual e os 3 seguintes com a consulta da FC2. Worker parado recupera na próxima hora.
-- [ ] `GET /crm/forecast/assertividade`: mês fechado = realizado / previsto do primeiro snapshot do mês (realizado no snapshot + ponderado no snapshot). **Desvio do documento do dono:** lá é só o ponderado, mas o primeiro snapshot sai até o dia 7, e o já ganho até ali ficaria fora. Mês sem snapshot: "sem dados ainda".
+**Decisões do dono (20/11/2026):** assertividade **só para a gestão** (DONO e MASTER): o snapshot inclui pipelines que o OPERADOR não vê. Para o mês M, vale o **primeiro snapshot tirado dentro de M** (semana que começa em M).
+
+**Como foi feito:** especificação, revisão e gates com Opus; migration, job e rota com Opus em esforço médio; testes de aceite e handoff com Sonnet.
+
+- [x] Migration 0049, `crm_forecast_snapshot`: semana (segunda local, CHECK), mês (dia 1, CHECK), `realized`, `weighted`, `best_case`, contagens e `by_owner` (JSONB, valores em texto decimal; `sem_responsavel` para oportunidade sem dono). `UNIQUE (tenant_id, week_start, month)`, RLS, FK do tenant em cascata, `SELECT`/`INSERT` para o `app_tenant` e trigger que recusa `UPDATE`.
+- [x] Job `snapshot-forecast` de hora em hora no `crm.worker.js` (`agendarSnapshotsDoForecast`). Para cada tenant com a flag (`tirarSnapshotDoTenant`), a partir de segunda às 6h no fuso dele: se a semana ainda não tem snapshot, grava o mês atual e os 3 seguintes. Usa a consulta da FC2 sem restrição de papel (todos os pipelines de vendas ativos), numa transação, com `ON CONFLICT DO NOTHING`. Worker parado recupera na próxima hora, com a segunda daquela semana. `taken_at` é o `agora` do job.
+- [x] `GET /crm/forecast/assertividade` (`forecast-assertividade.service.js`), só gestão e com a flag. Período padrão: os 6 meses fechados; só meses fechados (400 em `ate`); até 24 meses. Cálculos:
+  - Previsto = realizado no snapshot + ponderado no snapshot (**desvio aprovado do documento do dono**: lá é só o ponderado, mas o primeiro snapshot sai até o dia 7).
+  - Realizado = o de agora, no mesmo escopo.
+  - Assertividade = realizado / previsto, com 4 casas e conta em inteiros; previsto 0 dá `null`.
+  - `porResponsavel`, com "Sem responsável" e "Responsável removido".
+  - Mês sem snapshot: `semDados: true`, com o realizado.
+  - Meses em ordem decrescente.
 
 **Aceite**
 
-- [ ] Mudar a probabilidade padrão muda o forecast e não muda os snapshots.
-- [ ] Rodar o job duas vezes na semana grava uma vez; antes de segunda 06:00 no fuso, não grava.
-- [ ] Gates verdes, proteções quebradas, boot real com o worker, zero tenant SMOKE.
+- [x] Mudar a probabilidade padrão muda o forecast e não muda o snapshot; reabrir uma ganha também não; `UPDATE` direto é recusado pelo `app_tenant` e pelo admin (`controllers/forecast-assertividade.db.test.js`, 9 testes).
+- [x] Antes de segunda 06:00 no fuso não grava; às 06:30 grava 4 meses; repetir na semana não duplica; uma quarta sem snapshot grava com a segunda da semana; flag desligada não grava.
+- [x] O snapshot bate com o `GET /crm/forecast` do mesmo momento, por responsável. As partes do ponderado podem diferir do total em até 1 centavo por responsável, porque cada nível arredonda a própria soma exata.
+- [x] Assertividade de um mês fechado, escolha do primeiro snapshot dentro do mês (a semana que começou no mês anterior não conta), previsto zero, OPERADOR 403, flag 403, validação do período.
+- [x] Gates verdes em 20/11/2026: 1257 de 1257 com banco e os testes de integração do Kanban, cache em memória (8 pulados: 4 exigem Redis, 4 são a carga da FC2). Lint, formato (`--end-of-line auto`), RLS, FK, isolamento, boot real da API (`/health` 200; assertividade sem token 401) e do worker (sobe sem erro e agenda `snapshot-forecast`). Nenhum tenant SMOKE sobrando.
+- [x] 9 proteções quebradas uma a uma. Detectadas 8: hora local antes das 6h, segunda da semana, flag no job, semana dentro do mês (no service), previsto com o realizado, previsto zero, só gestão e só meses fechados. Não detectada: a mesma regra "semana dentro do mês" tirada só do SQL. É esperado, porque o service aplica a regra de novo e o teste pega quando ela sai de lá; é uma defesa em dobro.
+
+**Achados**
+
+- `executarSnapshotsDoForecast` (todos os tenants) não roda nos testes de banco: gravaria snapshots imutáveis de semanas fictícias nos tenants de dev. O teste usa `tirarSnapshotDoTenant`; o agendamento foi conferido no Redis com o worker real.
+- Um worker de dev ligado vai gravar snapshots de verdade toda segunda nos tenants com `crm.forecast`. É o comportamento esperado, mas a linha não sai mais (imutável).
+
+**Handoff ao front:** `handoff-front-fc3.md`.
 
 ### FC4. Colunas do ciclo de vida na tabela de leads (1A.5)
 
 Independe da flag.
 
-- [ ] Ciclo de vida, Cliente desde (`MIN(won_at)`), Última compra (`MAX(won_at)`) e Oportunidades abertas, calculadas na leitura no molde de `crm-inatividade.sql.js`, sem as excluídas e sem os pipelines ocultos do papel.
-- [ ] Filtros: ciclo de vida (um dos), cliente desde e última compra (entre datas), oportunidades abertas (mínimo e máximo).
+**Decisões do dono (20/11/2026):** as quatro colunas são calculadas na leitura, das oportunidades visíveis ao papel (o `lifecycle_stage` gravado revelaria venda em pipeline oculto). Elas seguem a regra do ciclo: compras contam só as ganhas de Vendas; abertas contam as não arquivadas de qualquer pipeline.
+
+- [x] Ciclo de vida, Cliente desde (`MIN(won_at)`), Última compra (`MAX(won_at)`) e Oportunidades abertas, calculadas na leitura no molde de `crm-inatividade.sql.js`, sem as excluídas e sem os pipelines ocultos do papel. `adapters/crm-lead-ciclo.sql.js` (uma base só para as quatro expressões), na leitura de `leads.repository.js` (`ciclo_de_vida`, `cliente_desde`, `ultima_compra`, `oportunidades_abertas`). Sem `dataConversao` para o papel (M13), as duas datas saem da resposta.
+- [x] Filtros: ciclo de vida (um dos), cliente desde e última compra (entre datas), oportunidades abertas (mínimo e máximo). `cicloDeVida`, `clienteDesdeDe/Ate`, `ultimaCompraDe/Ate` (dia no fuso do tenant, inclusivos) e `oportunidadesAbertasMin/Max` no `filtroLeadsSchema` (valem em views salvas e no export). No quadro, contam com os pipelines ocultos reais do papel. Filtro de data sem `dataConversao` → 400.
 
 **Aceite**
 
-- [ ] Ganhar a primeira preenche "Cliente desde"; ganhar outra mexe só em "Última compra"; reabrir a única ganha limpa as duas e o ciclo volta.
-- [ ] Gates verdes, proteções quebradas, boot real, zero tenant SMOKE.
+- [x] Ganhar a primeira preenche "Cliente desde"; ganhar outra mexe só em "Última compra"; reabrir a única ganha limpa as duas e o ciclo volta. `controllers/leads-ciclo.db.test.js` (8 testes): também o OPERADOR sem pipeline oculto nas quatro colunas e nos filtros, calculado = `lifecycle_stage` gravado sem oculto, arquivada e Atendimento, borda de fuso (02:30 UTC de 01/11 entra em `clienteDesdeAte=2026-10-31`), validações e M13.
+- [x] Gates verdes, proteções quebradas, boot real, zero tenant SMOKE (20/11/2026): 13 de 13 proteções quebradas detectadas (oculto ignorado, compra fora de Vendas, arquivada nas abertas, min/max trocados, excluída contando, ciclo sem Vendas, ciclo com arquivada, dia em UTC, De>Ate, Min>Max, Ate exclusivo, filtro e resposta sem M13). Bateria 1295 de 1295 (8 pulados), lint e formato limpos, RLS/FK/isolamento 5 de 5, `/health` 200, busca sem token 401, nenhum tenant SMOKE sobrando.
+
+**Handoff ao front:** `handoff-front-fc4.md`.
 
 ---
 

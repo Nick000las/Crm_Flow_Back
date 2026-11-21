@@ -8,6 +8,7 @@ import {
   MANUTENCAO_FILA,
   NOTIFICACAO_ESFRIANDO,
   PURGA_LIXEIRA,
+  SNAPSHOT_FORECAST,
 } from '#modules/nucleo/crm/constants.js';
 import {
   opcoesDoWorkerCnpj,
@@ -22,6 +23,10 @@ import {
   notificarLeadsEsfriando,
 } from '#modules/nucleo/crm/services/inatividade.service.js';
 import { processarImportacao } from '#modules/nucleo/crm/services/import.service.js';
+import {
+  agendarSnapshotsDoForecast,
+  executarSnapshotsDoForecast,
+} from '#modules/nucleo/crm/services/forecast-snapshot.service.js';
 
 /**
  * Entrypoint do worker do CRM — processo separado do HTTP
@@ -34,7 +39,8 @@ import { processarImportacao } from '#modules/nucleo/crm/services/import.service
  *   disputaria o pool do Neon com o servidor HTTP.
  * - `crm-manutencao`: jobs agendados ao subir, despachados pelo nome — a
  *   purga diária da lixeira (M5, docs/crm/plano-configuracoes.md) e o
- *   resumo de leads esfriando, de hora em hora (M9).
+ *   resumo de leads esfriando, de hora em hora (M9), e o snapshot semanal
+ *   do forecast, também de hora em hora (FC3).
  * - `crm-cnpj`: enriquecimento automático por CNPJ (M11b), com rate limit
  *   do provedor; erro transitório volta pra fila com espera crescente.
  */
@@ -52,6 +58,11 @@ const JOBS_DE_MANUTENCAO = Object.freeze({
     executar: () => notificarLeadsEsfriando(),
     resumir: (relatorio) =>
       `esfriando: ${relatorio.notificacoes} notificação(ões) em ${relatorio.tenants} tenant(s)`,
+  },
+  [SNAPSHOT_FORECAST.JOB]: {
+    executar: () => executarSnapshotsDoForecast(),
+    resumir: (relatorio) =>
+      `snapshot do forecast: ${relatorio.gravados} gravado(s), ${relatorio.pulados} pulado(s) em ${relatorio.tenants} tenant(s)`,
   },
 });
 
@@ -110,6 +121,7 @@ async function main() {
 
   await agendarPurgaDaLixeira(config.REDIS_URL);
   await agendarResumoDeEsfriando(config.REDIS_URL);
+  await agendarSnapshotsDoForecast(config.REDIS_URL);
 
   const encerrar = async () => {
     await Promise.all([importacao.close(), manutencao.close(), cnpj.close()]);

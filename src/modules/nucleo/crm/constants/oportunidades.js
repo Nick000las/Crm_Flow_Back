@@ -119,6 +119,27 @@ export const SAIDA_DOS_CAMPOS_DA_OPORTUNIDADE = Object.freeze({
   dataConversao: Object.freeze(['ganhaEm']),
 });
 
+/**
+ * Ciclo de vida da pessoa: o gravado (`leads.lifecycle_stage`, `recalcularPessoa`)
+ * e o calculado na leitura da tabela (FC4), com a mesma regra.
+ */
+export const CICLOS_DE_VIDA = Object.freeze({
+  LEAD: 'lead',
+  OPORTUNIDADE: 'oportunidade',
+  CLIENTE: 'cliente',
+});
+
+export const LISTA_CICLOS_DE_VIDA = Object.freeze(Object.values(CICLOS_DE_VIDA));
+
+/**
+ * FC4: "Cliente desde" e "Última compra" são datas de ganho, como a data de
+ * conversão. Quem não vê esse campo não as recebe nem filtra por elas (M13).
+ */
+export const CAMPO_DAS_DATAS_DO_CICLO = 'dataConversao';
+
+/** As colunas da leitura do lead que acompanham `CAMPO_DAS_DATAS_DO_CICLO`. */
+export const COLUNAS_DAS_DATAS_DO_CICLO = Object.freeze(['cliente_desde', 'ultima_compra']);
+
 /** Regra de quem assume o atendimento criado pela venda. */
 export const REGRAS_DONO_ATENDIMENTO = Object.freeze({
   PESSOA: 'person_owner',
