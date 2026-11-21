@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { AppError } from '#core/errors/app-error.js';
-import { HTTP_STATUS } from '#shared/constants/index.js';
+import { FUSO_HORARIO_PADRAO, HTTP_STATUS } from '#shared/constants/index.js';
 import { ERROR_CODES } from '#shared/http/error-codes.js';
 import {
   CAMADA,
@@ -9,12 +9,20 @@ import {
   CAMPOS_DUPLICIDADE,
   DIAS_NA_LIXEIRA,
   IDENTIFICADORES_NUMERICOS,
+  LISTA_CICLOS_DE_VIDA,
   OPERADORES_POR_TIPO,
   SITUACOES_LEAD,
   TIPOS_CAMPO,
 } from '../constants.js';
 import { condicaoEsfriando } from '../adapters/crm-inatividade.sql.js';
 import { condicaoPessoaVisivel } from '../adapters/crm-lead-read-model.js';
+import {
+  cicloDeVidaSql,
+  clienteDesdeSql,
+  diaNoFuso,
+  oportunidadesAbertasSql,
+  ultimaCompraSql,
+} from '../adapters/crm-lead-ciclo.sql.js';
 import {
   chaveDocumento,
   normalizarHora,
@@ -50,9 +58,36 @@ const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
  *   criadoDe?: Date,
  *   criadoAte?: Date,
  *   situacao?: 'ativos' | 'arquivados' | 'lixeira',
+ *   cicloDeVida?: string[],
+ *   clienteDesdeDe?: string,
+ *   clienteDesdeAte?: string,
+ *   ultimaCompraDe?: string,
+ *   ultimaCompraAte?: string,
+ *   oportunidadesAbertasMin?: number,
+ *   oportunidadesAbertasMax?: number,
  *   filtros?: FiltroCampo[],
  * }} FiltroLeads
+ *   As datas do ciclo (FC4) são `AAAA-MM-DD`, dias no fuso do tenant.
  */
+
+/** Filtros de data do ciclo (FC4): `De`/`Ate` de cada expressão. */
+const DATAS_DO_CICLO = Object.freeze([
+  Object.freeze({ de: 'clienteDesdeDe', ate: 'clienteDesdeAte', expressao: clienteDesdeSql }),
+  Object.freeze({ de: 'ultimaCompraDe', ate: 'ultimaCompraAte', expressao: ultimaCompraSql }),
+]);
+
+/** Toda chave de filtro do ciclo (FC4), pra quem chama saber se precisa do fuso/ocultos. */
+export const CHAVES_DO_FILTRO_DO_CICLO = Object.freeze([
+  'cicloDeVida',
+  ...DATAS_DO_CICLO.flatMap(({ de, ate }) => [de, ate]),
+  'oportunidadesAbertasMin',
+  'oportunidadesAbertasMax',
+]);
+
+/** Só as datas: dependem do campo de data de conversão (M13) e do fuso. */
+export const CHAVES_DAS_DATAS_DO_CICLO = Object.freeze(
+  DATAS_DO_CICLO.flatMap(({ de, ate }) => [de, ate]),
+);
 
 /** Primeiros 10 caracteres (`AAAA-MM-DD`) de uma data ISO guardada em JSONB. */
 const TAMANHO_DATA_ISO = 10;
@@ -121,8 +156,14 @@ export function condicaoDaSituacao(
  *   comArquivo?: boolean,
  *   agora?: Date,
  *   contato?: { email: boolean, telefone: boolean },
+ *   pipelinesOcultos?: string[],
+ *   ocultosDoCiclo?: string[],
+ *   fuso?: string,
  *   colunaResponsavel?: Prisma.Sql,
  * }} [opcoes] `colunaResponsavel`: no quadro, é o responsável da oportunidade (P13).
+ *   `ocultosDoCiclo`: os pipelines fora da conta dos filtros do ciclo (FC4); padrão,
+ *   `pipelinesOcultos` (o quadro não filtra a pessoa, mas o ciclo conta como o papel vê).
+ *   `fuso`: o do tenant, pros dias das datas do ciclo.
  *   `identificador`: do layout do tenant (M4), também entra na
  *   `busca`. `comArquivo`/`agora`: ver `condicaoDaSituacao`; `agora` também
  *   é o relógio do filtro `esfriando` (M9 — a flag é conferida por quem chama).
@@ -138,6 +179,8 @@ export function montarCondicoes(
     agora,
     contato = { email: true, telefone: true },
     pipelinesOcultos = [],
+    ocultosDoCiclo = pipelinesOcultos,
+    fuso = FUSO_HORARIO_PADRAO,
     colunaResponsavel = Prisma.raw('l.usuario_responsavel_id'),
   } = {},
 ) {
@@ -206,6 +249,7 @@ export function montarCondicoes(
     if (maximo !== null) condicoes.push(Prisma.sql`l.lead_score <= ${maximo}`);
     if (minimo === null && maximo === null) condicoes.push(Prisma.sql`l.lead_score IS NOT NULL`);
   }
+  condicoes.push(...condicoesDoCiclo(filtro, ocultosDoCiclo, fuso));
 
   const campoPorChave = new Map(campos.map((campo) => [campo.chave, campo]));
 
@@ -218,6 +262,78 @@ export function montarCondicoes(
   }
 
   return condicoes;
+}
+
+/**
+ * Filtros do ciclo de vida (FC4), com as mesmas expressões da leitura: o que a
+ * tabela mostra é o que o filtro acha. Datas comparadas pelo dia no fuso do
+ * tenant (inclusivas nas duas pontas).
+ *
+ * @param {FiltroLeads} filtro
+ * @param {string[]} ocultos
+ * @param {string} fuso
+ * @returns {Prisma.Sql[]}
+ */
+function condicoesDoCiclo(filtro, ocultos, fuso) {
+  const condicoes = [];
+  if (filtro.cicloDeVida !== undefined) {
+    const ciclos = filtro.cicloDeVida;
+    if (
+      !Array.isArray(ciclos) ||
+      ciclos.length === 0 ||
+      !ciclos.every((ciclo) => LISTA_CICLOS_DE_VIDA.includes(ciclo))
+    ) {
+      throw erroDeValidacaoDoFiltro(
+        'cicloDeVida',
+        `Ciclo de vida deve ser um de: ${LISTA_CICLOS_DE_VIDA.join(', ')}`,
+      );
+    }
+    condicoes.push(Prisma.sql`${cicloDeVidaSql(ocultos)} = ANY(${ciclos}::text[])`);
+  }
+
+  for (const { de, ate, expressao } of DATAS_DO_CICLO) {
+    const inicio = filtro[de];
+    const fim = filtro[ate];
+    if (inicio !== undefined && fim !== undefined && inicio > fim) {
+      throw erroDeValidacaoDoFiltro(de, 'A data inicial não pode ser depois da final');
+    }
+    if (inicio !== undefined) {
+      condicoes.push(Prisma.sql`${diaNoFuso(expressao(ocultos), fuso)} >= ${inicio}::date`);
+    }
+    if (fim !== undefined) {
+      condicoes.push(Prisma.sql`${diaNoFuso(expressao(ocultos), fuso)} <= ${fim}::date`);
+    }
+  }
+
+  const { oportunidadesAbertasMin: minimo, oportunidadesAbertasMax: maximo } = filtro;
+  if (minimo !== undefined && maximo !== undefined && minimo > maximo) {
+    throw erroDeValidacaoDoFiltro(
+      'oportunidadesAbertasMin',
+      'O mínimo não pode ser maior que o máximo',
+    );
+  }
+  if (minimo !== undefined) {
+    condicoes.push(Prisma.sql`${oportunidadesAbertasSql(ocultos)} >= ${minimo}::int`);
+  }
+  if (maximo !== undefined) {
+    condicoes.push(Prisma.sql`${oportunidadesAbertasSql(ocultos)} <= ${maximo}::int`);
+  }
+  return condicoes;
+}
+
+/**
+ * 400 num filtro de topo (fora de `filtros`), como o de "sem responsável".
+ *
+ * @param {string} chave
+ * @param {string} mensagem
+ */
+function erroDeValidacaoDoFiltro(chave, mensagem) {
+  return new AppError({
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+    code: ERROR_CODES.VALIDATION_ERROR,
+    message: mensagem,
+    fields: { [chave]: [mensagem] },
+  });
 }
 
 /**

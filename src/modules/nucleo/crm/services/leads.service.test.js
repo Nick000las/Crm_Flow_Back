@@ -5,7 +5,10 @@ import {
   atualizarLeadExistente,
   pesquisarLeads,
   listarCamposDoTenant,
+  prepararFiltro,
 } from './leads.service.js';
+import { fusoDoTenant } from './forecast.service.js';
+import { pipelinesOcultos } from './visibilidade-pipeline.service.js';
 import { listarDefinicoesPorTenant } from './field-definitions.service.js';
 import {
   buscarLeadPorId,
@@ -69,6 +72,14 @@ vi.mock('./distribuicao.service.js', async (importOriginal) => ({
   carregarContextoDistribuicao: vi.fn().mockResolvedValue(null),
   distribuir: vi.fn(),
   notificarAtribuicao: vi.fn().mockResolvedValue(1),
+}));
+// FC4: o fuso do tenant (filtros de data do ciclo) e os pipelines ocultos do papel.
+vi.mock('./forecast.service.js', () => ({
+  fusoDoTenant: vi.fn().mockResolvedValue('America/Recife'),
+}));
+vi.mock('./visibilidade-pipeline.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  pipelinesOcultos: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../adapters/crm-duplicates.repository.js', () => ({
   buscarRegras: vi.fn(),
@@ -1032,5 +1043,104 @@ describe('distribuição automática (M12)', () => {
     expect(criarLead.mock.calls[0][1].usuarioResponsavelId).toBe('usuario-criador');
     expect(criarLead.mock.calls[0][2].detalhes).toBeUndefined();
     expect(notificarAtribuicao).not.toHaveBeenCalled();
+  });
+});
+
+describe('ciclo de vida na tabela (FC4)', () => {
+  const TAMANHO_PAGINA = 20;
+  const SITUACAO_E_CICLO = 2;
+  const PAGINACAO = { pagina: 1, tamanho: TAMANHO_PAGINA };
+  const OCULTO = '00000000-0000-0000-0000-0000000000aa';
+  const COM_DATA_DE_CONVERSAO = [
+    { coluna: 'data_conversao', visivel: true, ordem: 0, obrigatorio: false },
+  ];
+  const LEAD_COM_CICLO = {
+    id: 'lead-1',
+    nome: 'Ana',
+    telefone: null,
+    ciclo_de_vida: 'cliente',
+    cliente_desde: new Date('2026-10-01T12:00:00Z'),
+    ultima_compra: new Date('2026-11-01T12:00:00Z'),
+    oportunidades_abertas: 1,
+  };
+
+  beforeEach(() => {
+    buscarLeadsComFiltro.mockResolvedValue({ total: 1, itens: [{ ...LEAD_COM_CICLO }] });
+  });
+
+  it('sem o campo de data de conversão: as datas saem; ciclo e abertas ficam', async () => {
+    const { itens } = await pesquisarLeads('tenant-1', { filtros: [], paginacao: PAGINACAO });
+    expect(itens[0]).not.toHaveProperty('cliente_desde');
+    expect(itens[0]).not.toHaveProperty('ultima_compra');
+    expect(itens[0]).toMatchObject({ ciclo_de_vida: 'cliente', oportunidades_abertas: 1 });
+  });
+
+  it('com o campo: as datas vêm', async () => {
+    listarVisibilidadeDoTenant.mockResolvedValue(COM_DATA_DE_CONVERSAO);
+    const { itens } = await pesquisarLeads('tenant-1', { filtros: [], paginacao: PAGINACAO });
+    expect(itens[0]).toMatchObject(LEAD_COM_CICLO);
+  });
+
+  it('no detalhe também', async () => {
+    buscarLeadPorId.mockResolvedValue({ ...LEAD_COM_CICLO });
+    const lead = await buscarLeadFormatado('tenant-1', 'lead-1');
+    expect(lead).not.toHaveProperty('cliente_desde');
+    expect(lead.ciclo_de_vida).toBe('cliente');
+  });
+
+  it('filtro de data sem o campo é 400 "Campo desconhecido" na chave', async () => {
+    await expect(
+      pesquisarLeads('tenant-1', {
+        ultimaCompraAte: '2026-10-31',
+        filtros: [],
+        paginacao: PAGINACAO,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      fields: { 'filtros.ultimaCompraAte': ['Campo desconhecido'] },
+    });
+    expect(buscarLeadsComFiltro).not.toHaveBeenCalled();
+  });
+
+  it('ciclo e abertas não dependem de campo, nem buscam o fuso', async () => {
+    await pesquisarLeads('tenant-1', {
+      cicloDeVida: ['cliente'],
+      oportunidadesAbertasMin: 1,
+      filtros: [],
+      paginacao: PAGINACAO,
+    });
+    expect(buscarLeadsComFiltro).toHaveBeenCalled();
+    expect(fusoDoTenant).not.toHaveBeenCalled();
+  });
+
+  it('filtro de data com o campo usa o fuso do tenant', async () => {
+    listarVisibilidadeDoTenant.mockResolvedValue(COM_DATA_DE_CONVERSAO);
+    await pesquisarLeads('tenant-1', {
+      clienteDesdeAte: '2026-10-31',
+      filtros: [],
+      paginacao: PAGINACAO,
+    });
+    expect(fusoDoTenant).toHaveBeenCalledWith('tenant-1');
+    const [, condicoes] = buscarLeadsComFiltro.mock.calls[0];
+    expect(condicoes.flatMap((condicao) => condicao.values)).toContain('America/Recife');
+  });
+
+  it('no quadro, o ciclo conta sem os pipelines ocultos do papel', async () => {
+    pipelinesOcultos.mockResolvedValue([OCULTO]);
+    const { condicoes } = await prepararFiltro(
+      'tenant-1',
+      { cicloDeVida: ['cliente'], filtros: [] },
+      undefined,
+      {},
+    );
+    pipelinesOcultos.mockResolvedValue([]);
+    // Situação e o ciclo: o quadro não ganha o filtro da pessoa visível.
+    expect(condicoes).toHaveLength(SITUACAO_E_CICLO);
+    expect(condicoes[1].values).toContainEqual([OCULTO]);
+  });
+
+  it('no quadro sem filtro do ciclo, os ocultos nem são buscados', async () => {
+    await prepararFiltro('tenant-1', { filtros: [] }, undefined, {});
+    expect(pipelinesOcultos).not.toHaveBeenCalled();
   });
 });

@@ -15,7 +15,14 @@ import {
   customFieldsParaArmazenamento,
   exigidoNaCriacao,
 } from './field-schema.service.js';
-import { dataDaPurga, erroDeFiltro, montarCondicoes } from './lead-filter.service.js';
+import {
+  CHAVES_DAS_DATAS_DO_CICLO,
+  CHAVES_DO_FILTRO_DO_CICLO,
+  dataDaPurga,
+  erroDeFiltro,
+  montarCondicoes,
+} from './lead-filter.service.js';
+import { fusoDoTenant } from './forecast.service.js';
 import {
   camposDeDuplicidadeAlterados,
   encontrarDuplicados,
@@ -66,8 +73,10 @@ import {
 import {
   ACESSOS_CAMPO,
   CAMADA,
+  CAMPO_DAS_DATAS_DO_CICLO,
   CAMPOS_DUPLICIDADE,
   CAMPOS_SISTEMA,
+  COLUNAS_DAS_DATAS_DO_CICLO,
   CRM_FEATURES,
   ORIGENS_REGISTRO,
   SITUACOES_LEAD,
@@ -549,6 +558,14 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
   ) {
     throw erroDeFiltro(CHAVE_VALOR, 'Campo desconhecido');
   }
+  // FC4 + M13: "Cliente desde" e "Última compra" são datas de conversão.
+  const comDatasDoCiclo = CHAVES_DAS_DATAS_DO_CICLO.filter((chave) => filtro[chave] !== undefined);
+  if (
+    comDatasDoCiclo.length > 0 &&
+    !schema.campos.some((campo) => campo.chave === CAMPO_DAS_DATAS_DO_CICLO)
+  ) {
+    throw erroDeFiltro(comDatasDoCiclo[0], 'Campo desconhecido');
+  }
   const faixaDoScore = filtro.faixaScore
     ? await limitesDaFaixa(tenantId, filtro.faixaScore)
     : undefined;
@@ -559,8 +576,29 @@ export async function prepararFiltro(tenantId, filtro, papel, noQuadro) {
     comArquivo,
     agora: inatividade ?? undefined,
     ...(noQuadro ?? { pipelinesOcultos: ocultos }),
+    ...(await contextoDoCiclo(tenantId, filtro, papel, { noQuadro, ocultos, comDatasDoCiclo })),
   });
   return { condicoes, schema, inatividade, ocultos };
+}
+
+/**
+ * O que os filtros do ciclo de vida (FC4) precisam, só quando há algum: o fuso
+ * do tenant (dias das datas) e, no quadro, os pipelines ocultos reais do papel
+ * (o quadro não filtra a pessoa, mas o ciclo não pode contar pipeline oculto).
+ *
+ * @param {string} tenantId
+ * @param {import('./lead-filter.service.js').FiltroLeads} filtro
+ * @param {string | undefined} papel
+ * @param {{ noQuadro?: object, ocultos: string[], comDatasDoCiclo: string[] }} contexto
+ * @returns {Promise<{ fuso?: string, ocultosDoCiclo?: string[] }>}
+ */
+async function contextoDoCiclo(tenantId, filtro, papel, { noQuadro, ocultos, comDatasDoCiclo }) {
+  if (!CHAVES_DO_FILTRO_DO_CICLO.some((chave) => filtro[chave] !== undefined)) return {};
+  const [fuso, ocultosDoCiclo] = await Promise.all([
+    comDatasDoCiclo.length > 0 ? fusoDoTenant(tenantId) : undefined,
+    noQuadro ? pipelinesOcultos(tenantId, papel) : ocultos,
+  ]);
+  return { ...(fuso ? { fuso } : {}), ocultosDoCiclo };
 }
 
 /**
@@ -739,6 +777,10 @@ function formatarLead(lead, { campos, definicoes }) {
   }
   for (const campo of CAMPOS_SISTEMA) {
     if (!ligados.has(campo.systemKey)) delete leadFormatado[campo.coluna];
+  }
+  // FC4: as datas do ciclo acompanham a data de conversão (M13).
+  if (!ligados.has(CAMPO_DAS_DATAS_DO_CICLO)) {
+    for (const coluna of COLUNAS_DAS_DATAS_DO_CICLO) delete leadFormatado[coluna];
   }
   if (lead.deleted_at) leadFormatado.purga_em = dataDaPurga(lead.deleted_at);
 

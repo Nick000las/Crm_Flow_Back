@@ -111,3 +111,11 @@ export const dataPrevistaEmLoteBodySchema = z
       .pipe(z.coerce.date({ errorMap: () => ({ message: 'Informe uma data válida' }) })),
   })
   .strict();
+
+// GET /crm/forecast/assertividade. Sem período, os seis meses fechados antes do
+// atual (no service, que conhece o fuso); `de > ate`, o limite de meses e o
+// "só meses fechados" também.
+export const assertividadeQuerySchema = z.object({
+  de: mes('Informe o mês inicial no formato AAAA-MM'),
+  ate: mes('Informe o mês final no formato AAAA-MM'),
+});

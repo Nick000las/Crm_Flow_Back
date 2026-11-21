@@ -460,3 +460,123 @@ describe('tipos do M11 no filtro', () => {
     ).toThrow(/não se aplica/);
   });
 });
+
+describe('filtros do ciclo de vida (FC4)', () => {
+  const OCULTO = '00000000-0000-0000-0000-0000000000aa';
+  const FUSO = 'America/Recife';
+  const DUAS_ABERTAS = 2;
+  const CINCO_ABERTAS = 5;
+  const QUATRO_LIMITES = 4;
+  const DE_E_ATE = 2;
+  const COM_PESSOA_VISIVEL = 3;
+
+  /** Condições além da situação. */
+  const doCiclo = (filtro, opcoes) => montarCondicoes(filtro, CAMPOS, opcoes).slice(1);
+
+  it('cicloDeVida vira "é um dos" sobre o ciclo calculado', () => {
+    const condicoes = doCiclo({ cicloDeVida: ['cliente', 'lead'] });
+    expect(condicoes).toHaveLength(1);
+    expect(sqlDe(condicoes)).toContain('= ANY(?::text[])');
+    expect(sqlDe(condicoes)).toContain('bool_or');
+    expect(valoresDe(condicoes)).toContainEqual(['cliente', 'lead']);
+  });
+
+  it('ciclo inválido ou lista vazia é 400 no cicloDeVida', () => {
+    for (const cicloDeVida of [['prospect'], [], 'cliente']) {
+      expect(() => montarCondicoes({ cicloDeVida }, CAMPOS)).toThrow(
+        expect.objectContaining({
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          fields: { cicloDeVida: [expect.stringContaining('Ciclo de vida deve ser um de')] },
+        }),
+      );
+    }
+  });
+
+  it('datas comparam o dia no fuso do tenant, inclusivas nas duas pontas', () => {
+    const condicoes = doCiclo(
+      {
+        clienteDesdeDe: '2026-10-01',
+        clienteDesdeAte: '2026-10-31',
+        ultimaCompraDe: '2026-11-01',
+        ultimaCompraAte: '2026-11-30',
+      },
+      { fuso: FUSO },
+    );
+    expect(condicoes).toHaveLength(QUATRO_LIMITES);
+    const [desdeDe, desdeAte, ultimaDe, ultimaAte] = condicoes;
+    expect(desdeDe.sql).toContain('min(d.won_at)');
+    expect(desdeDe.sql).toMatch(/AT TIME ZONE 'UTC'\) AT TIME ZONE \?\)::date >= \?::date$/);
+    expect(desdeAte.sql).toMatch(/::date <= \?::date$/);
+    expect(ultimaDe.sql).toContain('max(d.won_at)');
+    expect(ultimaAte.sql).toMatch(/::date <= \?::date$/);
+    expect(desdeDe.values).toContain(FUSO);
+    expect(desdeDe.values.at(-1)).toBe('2026-10-01');
+    expect(ultimaAte.values.at(-1)).toBe('2026-11-30');
+  });
+
+  it('sem fuso informado, o padrão', () => {
+    const [condicao] = doCiclo({ ultimaCompraAte: '2026-10-31' });
+    expect(condicao.values).toContain('America/Sao_Paulo');
+  });
+
+  it('De depois do Ate é 400 no De', () => {
+    for (const [de, ate] of [
+      ['clienteDesdeDe', 'clienteDesdeAte'],
+      ['ultimaCompraDe', 'ultimaCompraAte'],
+    ]) {
+      expect(() => montarCondicoes({ [de]: '2026-11-02', [ate]: '2026-11-01' }, CAMPOS)).toThrow(
+        expect.objectContaining({
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          fields: { [de]: ['A data inicial não pode ser depois da final'] },
+        }),
+      );
+    }
+    // O mesmo dia nas duas pontas vale.
+    expect(doCiclo({ clienteDesdeDe: '2026-11-01', clienteDesdeAte: '2026-11-01' })).toHaveLength(
+      DE_E_ATE,
+    );
+  });
+
+  it('abertas: mínimo e máximo inclusivos; Min > Max é 400 no Min', () => {
+    const condicoes = doCiclo({
+      oportunidadesAbertasMin: DUAS_ABERTAS,
+      oportunidadesAbertasMax: CINCO_ABERTAS,
+    });
+    expect(condicoes).toHaveLength(DE_E_ATE);
+    expect(condicoes[0].sql).toMatch(/>= \?::int$/);
+    expect(condicoes[1].sql).toMatch(/<= \?::int$/);
+    expect(condicoes[0].sql).toContain('d.archived_at IS NULL');
+    expect(condicoes[0].values.at(-1)).toBe(DUAS_ABERTAS);
+    expect(() =>
+      montarCondicoes(
+        { oportunidadesAbertasMin: CINCO_ABERTAS, oportunidadesAbertasMax: DUAS_ABERTAS },
+        CAMPOS,
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        fields: { oportunidadesAbertasMin: ['O mínimo não pode ser maior que o máximo'] },
+      }),
+    );
+    // Zero é um filtro de verdade (quem não tem nenhuma aberta).
+    expect(doCiclo({ oportunidadesAbertasMax: 0 })).toHaveLength(1);
+  });
+
+  it('conta sem os pipelines ocultos do papel (D4)', () => {
+    const condicoes = montarCondicoes({ cicloDeVida: ['cliente'] }, CAMPOS, {
+      pipelinesOcultos: [OCULTO],
+    });
+    // Situação, pessoa visível e o ciclo.
+    expect(condicoes).toHaveLength(COM_PESSOA_VISIVEL);
+    expect(condicoes[2].sql).toContain('d.pipeline_id <> ALL(?::uuid[])');
+    expect(condicoes[2].values).toContainEqual([OCULTO]);
+  });
+
+  it('no quadro: ocultos só no ciclo, sem filtrar a pessoa', () => {
+    const condicoes = montarCondicoes({ oportunidadesAbertasMin: 1 }, CAMPOS, {
+      ocultosDoCiclo: [OCULTO],
+    });
+    // Situação e o ciclo.
+    expect(condicoes).toHaveLength(DE_E_ATE);
+    expect(condicoes[1].values).toContainEqual([OCULTO]);
+  });
+});

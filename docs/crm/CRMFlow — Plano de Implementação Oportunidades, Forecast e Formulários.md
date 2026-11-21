@@ -147,7 +147,7 @@ A tabela de leads mostra Status, Valor, Responsável do negócio etc. da **oport
 
 - Drawer da pessoa: chip de ciclo de vida no cabeçalho (`Lead` / `Em negociação` / `Cliente desde mm/aaaa`) e aba **Oportunidades** listando todas, com status, valor, previsão e responsável.
 - Botão **Nova oportunidade** na ficha (é como o cliente volta a comprar sem duplicar cadastro).
-- Colunas e filtros novos na tabela: Ciclo de vida, Cliente desde, Última compra, Oportunidades abertas.
+- Colunas e filtros novos na tabela: Ciclo de vida, Cliente desde, Última compra, Oportunidades abertas. **Back pronto (FC4, 20/11/2026):** calculados na leitura, sem os pipelines ocultos do papel; ver `handoff-front-fc4.md`.
 - Campos: ação **Mover para Oportunidade** para campos personalizados que pertencem ao negócio.
 
 ### 1A.6 Migração e backfill
