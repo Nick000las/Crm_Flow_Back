@@ -1,5 +1,5 @@
 /**
- * Pontuação de leads (M14, `docs/crm/plano-configuracoes.md`). O score é o
+ * Pontuação de leads (M14, `docs/produto/crm-qualidade-e-produtividade.md`). O score é o
  * campo nativo "Lead score" (`leadScore` / `lead_score`).
  */
 

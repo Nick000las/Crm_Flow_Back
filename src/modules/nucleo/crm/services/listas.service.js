@@ -21,7 +21,7 @@ import {
 import { invalidarSchemaCampos, obterSchemaCampos } from './field-schema.service.js';
 
 /**
- * SERVICE: listas configuráveis (docs/crm/plano-configuracoes.md, M3) —
+ * SERVICE: listas configuráveis (docs/produto/crm-pessoas-e-campos.md, M3) —
  * Status, Origem, Motivo de perda, Tipo de atividade e Tag. Toda regra
  * mora aqui; a tela só reflete:
  *

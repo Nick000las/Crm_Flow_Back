@@ -1,7 +1,7 @@
 import { TIPOS_CAMPO } from './campos.js';
 
 /**
- * Formulários (FM1, docs/crm/plano-execucao-formularios-forecast.md).
+ * Formulários (FM1, docs/produto/crm-formularios.md).
  *
  * O formulário junta campos da pessoa que já existem no CRM (decisão do dono,
  * 07/11/2026) e perguntas próprias, cuja resposta fica só na resposta do

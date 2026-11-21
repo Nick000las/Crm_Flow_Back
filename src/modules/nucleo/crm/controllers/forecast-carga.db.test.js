@@ -11,7 +11,7 @@ import { CATEGORIAS_STATUS, CRM_FEATURES, MODULO_CRM } from '../constants.js';
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
- * FC2 (docs/crm/plano-execucao-formularios-forecast.md): teste de carga do
+ * FC2 (docs/produto/crm-forecast.md): teste de carga do
  * forecast com 20 mil oportunidades. GRAVA no banco de `DATABASE_URL` (tenant
  * SMOKE, apagado no fim): só roda com `CRM_DB_TESTS=1` e `CRM_CARGA=1`, fora da
  * bateria normal.

@@ -33,7 +33,7 @@ import {
 } from './tipos-campo.service.js';
 
 /**
- * SERVICE: enriquecimento por CNPJ (M11b, docs/crm/plano-configuracoes.md).
+ * SERVICE: enriquecimento por CNPJ (M11b, docs/produto/crm-qualidade-e-produtividade.md).
  *
  * - `consultarCnpj`: cache global de 30 dias; só chama o provedor no miss.
  * - Lupa (`consultarParaLupa`): devolve os dados e a sugestão por campo;

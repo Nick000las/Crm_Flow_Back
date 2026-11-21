@@ -1,5 +1,5 @@
 /**
- * Lead esfriando (M9, `docs/crm/plano-configuracoes.md`). Cada status tem
+ * Lead esfriando (M9, `docs/produto/crm-qualidade-e-produtividade.md`). Cada status tem
  * os dias sem interação até o lead esfriar (`crm_option.stale_days`; sem
  * valor = desligado). "Esfriando" é calculado na leitura, nunca gravado.
  */

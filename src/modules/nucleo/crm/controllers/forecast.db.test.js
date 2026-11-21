@@ -16,7 +16,7 @@ import {
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
- * FC2 (docs/crm/plano-execucao-formularios-forecast.md): consulta e API do
+ * FC2 (docs/produto/crm-forecast.md): consulta e API do
  * forecast, só pela HTTP. GRAVA no banco de `DATABASE_URL` (tenant SMOKE,
  * apagado no fim): só roda com `CRM_DB_TESTS=1`, num banco de dev.
  *

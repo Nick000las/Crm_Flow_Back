@@ -72,7 +72,7 @@ export function registrarRotasLeads(app) {
   });
 
   // POST (não GET): filtro combinado com campos customizados não cabe bem
-  // em query string (docs/crm/plano-campos-filtros-import-export.md §2.2).
+  // em query string (docs/produto/crm-busca-e-dados-em-massa.md).
   app.post('/crm/leads/search', async (req, reply) => {
     const { tenantId, role } = req.tenantContext;
     const body = pesquisarLeadsBodySchema.parse(req.body ?? {});

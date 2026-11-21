@@ -1,5 +1,5 @@
 /**
- * Layout do lead (docs/crm/plano-configuracoes.md, M4): identificador,
+ * Layout do lead (docs/produto/crm-pessoas-e-campos.md, M4): identificador,
  * subtítulo, destaques, seções do drawer e colunas padrão da tabela.
  *
  * Cada item do layout é uma "referência": o `id` de um campo em

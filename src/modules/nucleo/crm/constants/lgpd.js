@@ -1,5 +1,5 @@
 /**
- * Base legal LGPD (M15, `docs/crm/plano-configuracoes.md`). Os quatro
+ * Base legal LGPD (M15, `docs/produto/crm-historico-arquivo-e-lgpd.md`). Os quatro
  * campos são do sistema (Camada 2, `constants/campos.js`); valores fixos
  * (categorias da lei, CHECK no banco), não lista do tenant.
  */

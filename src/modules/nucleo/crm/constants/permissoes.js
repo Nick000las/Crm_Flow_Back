@@ -1,7 +1,7 @@
 import { ROLES } from '#shared/constants/index.js';
 
 /**
- * Permissão por campo (M13, `docs/crm/plano-configuracoes.md`). Espelha o
+ * Permissão por campo (M13, `docs/produto/crm-pessoas-e-campos.md`). Espelha o
  * CHECK de `crm_field_permission.access` (migration 0012). Sem linha = `edit`.
  */
 export const ACESSOS_CAMPO = Object.freeze({

@@ -462,7 +462,7 @@ async function validarDuplicidadeNaEdicao(tenantId, leadId, input, ignorarDuplic
 }
 
 /**
- * Fonte única pra formulário/filtro/mapeamento de import (docs/crm/plano-campos-hibridos.md,
+ * Fonte única pra formulário/filtro/mapeamento de import (docs/produto/crm-pessoas-e-campos.md,
  * decisão 5) — Camada 1 + Camada 2 visível pro tenant + Camada 3
  * (definições customizadas), no mesmo shape `{ chave, label, tipo, camada,
  * obrigatorio, ordem, visibilidade, opcoes? }`. Com `contexto` (M2), só os
@@ -750,9 +750,9 @@ function validarObrigatoriosNaCriacao(campos, input) {
 
 /**
  * Campo oculto em TODOS os contextos é "desligado": o dado bruto não sai
- * na resposta HTTP, não só some da tela (docs/crm/plano-campos-hibridos.md,
- * seção 3). Vale igual pras três camadas — coluna nativa (Camada 1 que
- * pode ser ocultada, Camada 2) e personalizado. Oculto só em alguns
+ * na resposta HTTP, não só some da tela (docs/produto/crm-pessoas-e-campos.md).
+ * Vale igual pras três camadas — coluna nativa (Camada 1 que pode ser
+ * ocultada, Camada 2) e personalizado. Oculto só em alguns
  * contextos continua vindo; cada tela filtra pelo seu (`camposDoContexto`).
  *
  * Também aplica `formatarTelefoneBR`. `custom_fields` é gravado por `id`

@@ -15,7 +15,7 @@ import {
 import { reconciliarTenant } from '../services/reconcile.service.js';
 
 /**
- * FC4 (docs/crm/plano-execucao-formularios-forecast.md): colunas do ciclo de
+ * FC4 (docs/produto/crm-oportunidades-e-pipelines.md): colunas do ciclo de
  * vida na tabela de leads (`ciclo_de_vida`, `cliente_desde`, `ultima_compra`,
  * `oportunidades_abertas`) e os filtros delas, só pela HTTP. GRAVA no banco de
  * `DATABASE_URL` (tenant SMOKE, apagado no fim): só roda com `CRM_DB_TESTS=1`,

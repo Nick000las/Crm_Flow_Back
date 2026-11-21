@@ -33,7 +33,7 @@ import { obterSchemaCampos } from './field-schema.service.js';
 import { normalizarValorDoTipo, valorValidoParaTipo } from './tipos-campo.service.js';
 
 /**
- * SERVICE: formulários (FM1, docs/crm/plano-execucao-formularios-forecast.md).
+ * SERVICE: formulários (FM1, docs/produto/crm-formularios.md).
  *
  * O formulário junta campos da pessoa que já existem no CRM, cada um ligado
  * pelo dono (decisão de 07/11/2026), e perguntas próprias, cuja resposta fica

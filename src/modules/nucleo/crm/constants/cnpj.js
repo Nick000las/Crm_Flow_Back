@@ -1,5 +1,5 @@
 /**
- * Enriquecimento por CNPJ (M11b, `docs/crm/plano-configuracoes.md`).
+ * Enriquecimento por CNPJ (M11b, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 import { TIPOS_CAMPO } from './campos.js';
 

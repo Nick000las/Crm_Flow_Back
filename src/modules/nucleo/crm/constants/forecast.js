@@ -1,5 +1,5 @@
 /**
- * Forecast (FC1–FC3, docs/crm/plano-execucao-formularios-forecast.md).
+ * Forecast (FC1–FC3, docs/produto/crm-forecast.md).
  */
 
 /**

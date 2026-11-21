@@ -1,5 +1,5 @@
 /**
- * Atividades e histórico do lead (M6, `docs/crm/plano-configuracoes.md`).
+ * Atividades e histórico do lead (M6, `docs/produto/crm-historico-arquivo-e-lgpd.md`).
  */
 
 /** Tipos de `crm_lead_event` (sem CHECK no banco: tipo novo não exige migration). */

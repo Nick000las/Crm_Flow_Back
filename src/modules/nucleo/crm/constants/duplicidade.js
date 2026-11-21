@@ -1,5 +1,5 @@
 /**
- * Duplicidade e mesclagem (M7, `docs/crm/plano-configuracoes.md`).
+ * Duplicidade e mesclagem (M7, `docs/produto/crm-qualidade-e-produtividade.md`).
  */
 
 export const ACOES_DUPLICIDADE = Object.freeze({

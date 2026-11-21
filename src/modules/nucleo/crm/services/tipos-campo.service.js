@@ -3,7 +3,7 @@ import { cnpjValido, cpfValido, emailSchema, uuidSchema } from '#shared/validato
 import { PARTES_ENDERECO, TAMANHO_UF, TIPOS_CAMPO, TIPOS_LISTA } from '../constants.js';
 
 /**
- * Regras por tipo de campo (docs/crm/plano-configuracoes.md, M2.3) —
+ * Regras por tipo de campo (docs/produto/crm-pessoas-e-campos.md, M2) —
  * funções puras, uma fonte só pro formulário/PUT (`leads.service.js`), a
  * planilha (`import.service.js`) e o filtro (`lead-filter.service.js`),
  * pra personalizados e pros nativos do mesmo tipo (e-mail, telefone). Tipo

@@ -69,7 +69,7 @@ import { converterCelula, valorAusente } from './tipos-campo.service.js';
 
 /**
  * SERVICE: importação de leads por planilha
- * (docs/crm/plano-campos-filtros-import-export.md §3.3). Fluxo:
+ * (docs/produto/crm-busca-e-dados-em-massa.md). Fluxo:
  * preview (não grava) → validate (valida tudo, grava job `pendente` com as
  * linhas válidas) → confirm (enfileira) → worker chama `processarImportacao`.
  * Nada é gravado em `leads` dentro de um request HTTP.

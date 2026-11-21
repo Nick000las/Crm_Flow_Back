@@ -18,7 +18,7 @@ import {
 } from './field-schema.service.js';
 
 /**
- * SERVICE: área Configurações → Campos (docs/crm/plano-configuracoes.md,
+ * SERVICE: área Configurações → Campos (docs/produto/crm-pessoas-e-campos.md,
  * M2), sobre `crm_field`. Toda regra de
  * capacidade (`canHide`/`canMakeOptional`/`canRename`) é validada aqui;
  * a tela só reflete.

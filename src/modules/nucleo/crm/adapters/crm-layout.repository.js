@@ -4,7 +4,7 @@ const FIRST_RESULT_INDEX = 0;
 
 /**
  * ADAPTER: layout do lead (`crm_layout_config` e `crm_user_layout_override`,
- * migration 0017 — docs/crm/plano-configuracoes.md M4). O formato do JSON é
+ * migration 0017 — docs/produto/crm-pessoas-e-campos.md M4). O formato do JSON é
  * responsabilidade de `layout.service.js`; aqui só se lê e grava.
  *
  * @typedef {import('../services/layout.service.js').LayoutRefs} LayoutRefs

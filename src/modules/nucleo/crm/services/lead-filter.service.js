@@ -35,7 +35,7 @@ const TIPOS_NUMERICOS = new Set([TIPOS_CAMPO.NUMERO, TIPOS_CAMPO.MONETARIO]);
 
 /**
  * SERVICE: traduz o filtro de POST /crm/leads/search em fragmentos SQL
- * parametrizados (docs/crm/plano-campos-filtros-import-export.md §2.3).
+ * parametrizados (docs/produto/crm-busca-e-dados-em-massa.md).
  * Função pura — não acessa banco; o adapter só junta os fragmentos.
  *
  * Regras de segurança:

@@ -13,7 +13,7 @@ import {
 } from '../constants.js';
 
 /**
- * Reconciliação das listas (docs/crm/plano-configuracoes.md, M3.2):
+ * Reconciliação das listas (docs/produto/crm-pessoas-e-campos.md, M3):
  * garante que o tenant tem as listas semeadas e que toda tag já usada num
  * lead existe como opção. Idempotente — opção existente nunca é tocada.
  *

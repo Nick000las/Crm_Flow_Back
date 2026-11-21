@@ -13,7 +13,7 @@ import { montarCondicoes } from './lead-filter.service.js';
 import { CONTEXTOS_VISIBILIDADE, CRM_FEATURES, VIEW_ESFRIANDO } from '../constants.js';
 
 /**
- * SERVICE: views de filtro salvas (docs/crm/plano-campos-filtros-import-export.md §2.5).
+ * SERVICE: views de filtro salvas (docs/produto/crm-busca-e-dados-em-massa.md).
  * Aplicar uma view é o frontend reenviar `filtros` pra POST /crm/leads/search
  * — o filtro é revalidado ali contra os campos vigentes, já que um campo
  * pode ter sido desligado/removido depois da view salva.

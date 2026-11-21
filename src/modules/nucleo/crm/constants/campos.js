@@ -60,7 +60,7 @@ export const TIPOS_COM_OPCOES = Object.freeze(['selecao', 'selecao_multipla']);
 export const CAMADA = Object.freeze({ CAMADA_1: 1, CAMADA_2: 2, CAMADA_3: 3 });
 
 /**
- * Campos nativos de Camada 2 (docs/crm/plano-campos-hibridos.md) — chave
+ * Campos nativos de Camada 2 (docs/produto/crm-pessoas-e-campos.md) — chave
  * camelCase (usada em `leads.schema.js`/`CriarLeadInput`/`AtualizarLeadInput`,
  * mesmo padrão de `funilEstagioId` → `funil_estagio_id`) mapeada pra coluna
  * real de `modulo_crm.leads` (migration 0009). Única fonte tanto pro nome
@@ -165,7 +165,7 @@ export const CAMADA_2_METADADOS = Object.freeze({
 });
 
 /**
- * Metadado fixo de Camada 1 (docs/crm/plano-campos-hibridos.md), mesmo
+ * Metadado fixo de Camada 1 (docs/produto/crm-pessoas-e-campos.md), mesmo
  * shape que `FieldDefinition` (Camada 3) — usado por
  * `listarCamposDoTenant` (leads.service.js) pra montar a seção "camada: 1"
  * de `GET /crm/leads/fields`. Sem tabela: Camada 1 não varia por tenant.
@@ -243,7 +243,7 @@ export const CAMADA_1_CAMPOS = Object.freeze({
 
 /**
  * O que o tenant pode mudar em cada campo do sistema (M1,
- * docs/crm/plano-configuracoes.md). Validado no back — a UI só reflete.
+ * docs/produto/crm-pessoas-e-campos.md). Validado no back — a UI só reflete.
  * Identidade e contato (`nome`/`email`/`telefone`) e `status` (base do
  * funil e das regras por categoria) nunca somem; o resto da Camada 1 pode
  * ser ocultado por contexto (M2). `email`/`telefone` não viram

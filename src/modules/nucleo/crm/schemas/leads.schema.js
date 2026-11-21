@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { BRAZIL_PHONE, TEXT_LIMITS } from '#shared/constants/index.js';
 import { LISTA_BASES_LEGAIS } from '../constants.js';
 
-// Camada 1 (docs/crm/plano-campos-hibridos.md) — sempre ativa, mesmo nível
+// Camada 1 (docs/produto/crm-pessoas-e-campos.md) — sempre ativa, mesmo nível
 // de nome/telefone. `email`/`telefone` são cada um opcional isoladamente
 // (regra "pelo menos um dos dois" é validada no service, contra o objeto
 // completo — não dá pra expressar "A ou B obrigatório" por campo isolado).

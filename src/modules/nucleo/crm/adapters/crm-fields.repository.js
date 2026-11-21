@@ -6,7 +6,7 @@ const FIRST_RESULT_INDEX = 0;
 
 /**
  * ADAPTER: registro único de campos (`modulo_crm.crm_field` +
- * `crm_field_visibility`, migration 0012 — docs/crm/plano-configuracoes.md
+ * `crm_field_visibility`, migration 0012 — docs/produto/crm-pessoas-e-campos.md
  * M1). Único lugar que lê ou grava configuração de campo; o modelo antigo
  * (`tenant_lead_field_definitions`/`tenant_lead_field_visibility`) foi
  * removido na migration 0014. SQL cru via `$queryRaw`/`$executeRaw` tagged.
